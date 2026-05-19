@@ -11,3 +11,7 @@ Use it to record decisions that were not in the spec, things that had to change,
 Commit implementation work incrementally with detailed messages.
 
 Use the format `<scope>:<message>`, for example `feat:add relationship memory agent search` or `test:add candidate confirmation coverage`.
+
+## Destructive Commands
+
+Do not run destructive commands without explicit user approval, including `rm -rf`, `git reset --hard`, `git clean -fdx`, force pushes, deleting branches, dropping databases, broad `chmod` or `chown`, or deleting user files.

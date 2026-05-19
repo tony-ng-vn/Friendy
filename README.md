@@ -24,6 +24,13 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Natural-language context capture.
 - Simple fuzzy memory search with match explanations.
 
+## Docs
+
+- [Product spec](docs/product-spec.md)
+- [Demo plan](docs/demo-plan.md)
+- [Handoff](docs/handoff.md)
+- [Codex access setup](docs/codex-access.md)
+
 ## Explicit Non-Goals For V1
 
 - No iMessage reading.
