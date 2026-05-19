@@ -30,6 +30,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - [Demo plan](docs/demo-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
+- [Original Superpowers planning artifacts](docs/superpowers/README.md)
 
 ## Explicit Non-Goals For V1
 

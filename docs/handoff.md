@@ -52,6 +52,7 @@ npm run build
 - `docs/product-spec.md`: product definition, MVP loop, guardrails, and future features.
 - `docs/demo-plan.md`: 60-second demo script.
 - `docs/codex-access.md`: recommended Codex command access setup.
+- `docs/superpowers/`: original Superpowers spec and implementation plan artifacts.
 - `implementation-notes.html`: running implementation decisions and verification notes.
 - `src/App.tsx`: demo UI.
 - `src/agent.ts`: agent message handling and search.
