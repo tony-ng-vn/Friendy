@@ -8,4 +8,4 @@
 - [x] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
 - [x] Run required verification on the feature branch.
 - [x] Merge to `main` and re-verify.
-- [ ] Push `main` and audit requirements.
+- [x] Push `main` and audit requirements.
