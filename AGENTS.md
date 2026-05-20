@@ -15,3 +15,9 @@ Use the format `<scope>:<message>`, for example `feat:add relationship memory ag
 ## Destructive Commands
 
 Do not run destructive commands without explicit user approval, including `rm -rf`, `git reset --hard`, `git clean -fdx`, force pushes, deleting branches, dropping databases, broad `chmod` or `chown`, or deleting user files.
+
+## Code Comments
+
+Use comments sparingly and only when they make the code easier to understand.
+
+Prefer simple, useful comments that explain intent, constraints, or non-obvious tradeoffs. Do not add comments that merely restate what the next line of code already says.
