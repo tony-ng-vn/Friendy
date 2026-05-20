@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "agent:terminal": "tsx src/relationship/transports/terminalTransport.ts",
     "agent:spectrum": "tsx src/relationship/transports/spectrumTransport.ts",
+    "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
