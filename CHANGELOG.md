@@ -8,7 +8,7 @@ This file records the main product, architecture, and verification progress for 
 
 - Friendy is framed as an iMessage-first relationship memory agent built around Photon/Spectrum as the communication transport.
 - The MVP focus is new phone contact detection, event/context mapping, user confirmation over iMessage, structured memory save, and later search by vague human context.
-- The repo is on `main`, pushed to GitHub, with the core checks passing:
+- The repo is on `main`, pushed to GitHub, with the core checks passing from the latest completed mainline run:
   - `npm test`
   - `npm run build`
   - `npm run eval:agent`
@@ -143,6 +143,17 @@ This file records the main product, architecture, and verification progress for 
   - fails clearly outside macOS.
 - Kept real Contacts access out of tests, builds, evals, product checks, and normal agent runs.
 
+### Local macOS Contact/Calendar Checker
+
+- Added `npm run ingest:local:check`.
+- Added real macOS Contacts and Calendar provider adapters behind the explicit local command.
+- Added deterministic `--mock` mode so local checker behavior can be verified without macOS permissions.
+- Added `.friendy/local-contact-snapshot.json` as the local baseline snapshot path and ignored `.friendy/` in git.
+- Kept the checker dry-run by default: it prints the Friendy confirmation prompt and does not send a live iMessage.
+- Guarded live Spectrum sending behind `FRIENDY_LOCAL_CHECK_SEND=1` plus a target phone number from `FRIENDY_LOCAL_CHECK_TO_PHONE` or `FRIENDY_OWNER_PHONE`.
+- Routed detected contacts through the existing contact snapshot diff, calendar matching, repository, pending candidate queue, and confirmation prompt boundary.
+- Preserved the no-event case by creating a pending candidate and asking the user where they met the person.
+
 ### iMessage Contact Confirmation Flow
 
 - Added `npm run check:imessage-e2e`.
@@ -191,19 +202,21 @@ who did I run into from high school at Photon?
 
 ### Verification Snapshot
 
-- Latest full verification on `main` passed:
-  - `npm test`: 23 files, 92 tests.
+- Latest full verification on `feature/local-macos-contact-calendar-checker` passed:
+  - `npm test`: 25 files, 101 tests.
   - `npm run build`: TypeScript and Vite production build passed.
   - `npm run eval:agent`: 12/12 required cases passed.
   - `npm run check:imessage-e2e`: passed.
   - `npm run ingest:check`: passed.
+  - `npm run ingest:local:check -- --mock`: printed the Friendy confirmation prompt for `Friendy-101` and stayed in dry-run mode.
   - `git diff --check`: passed.
+  - Forbidden-term search for old show-oriented wording: no matches.
 
 ### Current Limitations
 
-- Contact/calendar detection is still fixture-based for normal product checks.
-- Real Contacts access exists only as an explicit macOS smoke command.
-- Real Apple Calendar ingestion is not implemented yet.
+- Contact/calendar detection is deterministic for normal product checks and explicit-command-only for real local macOS reads.
+- Real Contacts access exists only in explicit local commands.
+- Real Apple Calendar ingestion exists only in the explicit local checker, not durable production sync.
 - No background watcher/daemon exists yet.
 - No durable database exists yet.
 - No onboarding/signup flow exists yet.
@@ -214,10 +227,8 @@ who did I run into from high school at Photon?
 
 ### Recommended Next Step
 
-- Build an explicit local macOS Contacts + Calendar checker/watcher that plugs into the existing ingestion boundary:
-  - snapshot Contacts,
-  - detect new phone/email methods,
-  - map the detected time to calendar events,
-  - create a pending candidate,
-  - send or print the Friendy confirmation prompt,
-  - let the existing iMessage/Spectrum runtime handle confirmation and later search.
+- Harden the explicit local checker into a user-controlled production signal:
+  - validate real macOS AppleScript behavior on a machine with Contacts/Calendar permissions,
+  - persist candidates durably,
+  - connect the printed prompt path to live Spectrum sending only after user-controlled configuration,
+  - keep confirmation and later search in the existing iMessage/Spectrum runtime.

@@ -63,7 +63,7 @@ flowchart LR
   K --> L[Composed iMessage response]
 ```
 
-Today, ingestion is fixture-based in the repo. The important architectural boundary is already present and covered by `npm run check:imessage-e2e`: contact detection creates pending candidates, and the iMessage/Spectrum-style agent flow confirms or ignores those candidates before memory is saved.
+Today, ingestion has two safe paths in the repo. Fixture checks keep the core behavior deterministic, and the explicit local macOS checker can read real Contacts/Calendar only when `npm run ingest:local:check` is run. The important architectural boundary is covered by `npm run check:imessage-e2e` and the local checker: contact detection creates pending candidates, and the iMessage/Spectrum-style agent flow confirms or ignores those candidates before memory is saved.
 
 ## Agent Loop
 
@@ -116,7 +116,7 @@ src/relationship/transports/
   iMessage/Spectrum and terminal adapters
 
 src/relationship/ingestion/
-  fixture contact snapshot diffing and fixture calendar ingestion
+  fixture contact snapshot diffing, fixture calendar ingestion, and explicit local macOS Contacts/Calendar checker
 
 src/relationship/interpretation.ts
 src/relationship/openRouterInterpreter.ts
@@ -150,7 +150,8 @@ src/relationship/evals/
 ## Current Limitations
 
 - Contact detection is fixture-based except for the explicit macOS Contacts smoke command.
-- Calendar matching is fixture-based.
+- The real local checker is explicit command-line tooling, not a background watcher or mobile production detector.
+- Calendar matching can use fixture events or the explicit local Apple Calendar adapter, but durable production calendar sync is not implemented.
 - Memory is in-memory, not production durable storage.
 - Spectrum/iMessage is wired as the primary live transport, and `npm run check:imessage-e2e` exercises a deterministic local Spectrum/iMessage-style path without sending live messages.
 - LinkedIn, X, Instagram, and other social connection sources are future detectors, not MVP requirements.
@@ -171,4 +172,4 @@ flowchart TD
 
 The product flow should prove this product behavior before adding more connection sources or a richer UI.
 
-The next production milestone is replacing the fixture contact detector with a real approved phone-contact watcher while keeping the same pending-candidate and iMessage confirmation boundary.
+The next production milestone is turning the explicit local checker into an approved user-controlled contact/calendar signal source while keeping the same pending-candidate and iMessage confirmation boundary.

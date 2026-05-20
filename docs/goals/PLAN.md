@@ -5,6 +5,6 @@
 - [x] Add RED tests for local macOS providers and checker orchestration.
 - [x] Implement local provider adapters and checker orchestration.
 - [x] Add `npm run ingest:local:check`.
-- [ ] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
-- [ ] Run required verification on the feature branch.
+- [x] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
+- [x] Run required verification on the feature branch.
 - [ ] Merge to `main`, re-verify, push, and audit requirements.

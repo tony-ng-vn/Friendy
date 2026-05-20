@@ -58,10 +58,10 @@ npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 git diff --check
-rg -n "demo|Demo"
+repo-wide forbidden-term search for old show-oriented wording
 ```
 
-`rg -n "demo|Demo"` must return no matches.
+The repo-wide forbidden-term search must return no matches.
 
 ## Completion Criteria
 

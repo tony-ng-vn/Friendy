@@ -42,6 +42,10 @@
       <li>Added an explicit macOS Contacts smoke command for manual integration checks. It only accepts <code>Friendy-&lt;number&gt;</code> names, creates or reuses one exact test contact, derives a deterministic phone number, and fails clearly outside macOS.</li>
       <li>Removed product-flow wording that framed Friendy as something built for showing off instead of as the actual project. Renamed fixture commands and files to <code>check:imessage-e2e</code>, <code>ingest:check</code>, and <code>*Flow</code>/<code>*Check</code> names so future work treats them as product verification paths.</li>
       <li>Added <code>CHANGELOG.md</code> as the project-level progress log from the initial scaffold through the current iMessage-first relationship-memory MVP.</li>
+      <li>Added the explicit local macOS contact/calendar checker as command-line tooling instead of a background watcher. This keeps real Contacts/Calendar reads user-triggered while proving the real sensor boundary.</li>
+      <li>Stored local checker snapshot state under <code>.friendy/local-contact-snapshot.json</code> and ignored <code>.friendy/</code> because the file is machine-local state, not project source.</li>
+      <li>Kept local checker sending dry-run by default. Live Spectrum sending requires <code>FRIENDY_LOCAL_CHECK_SEND=1</code> plus a target phone number so a local read cannot accidentally message the user.</li>
+      <li>Routed the local checker through the existing ingestion, repository, candidate queue, and prompt builder instead of creating a separate path for real Contacts/Calendar data.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -87,6 +91,9 @@
       <li>Ran <code>npm run ingest:check</code>: fixture ingestion printed Maya Chen and Nina Park detections, ranked event guesses, and the pending queue.</li>
       <li>Ran current feature-branch verification after the terminology cleanup: <code>npm test</code> passed with 23 files and 92 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, <code>git diff --check</code> passed, and the forbidden-term search returned no matches.</li>
       <li>After fast-forwarding <code>main</code> for the iMessage contact confirmation flow, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, <code>npm run check:imessage-e2e</code>, <code>npm run ingest:check</code>, <code>git diff --check</code>, and the forbidden-term search successfully.</li>
+      <li>For the local macOS checker goal, first ran RED tests where <code>localMacAdapters.ts</code>, <code>localCheck.ts</code>, and the <code>ingest:local:check</code> script were missing, then added provider adapters, local checker orchestration, CLI state handling, dry-run prompt output, and guarded live-send behavior.</li>
+      <li>Ran targeted local checker verification: adapter and checker tests passed, <code>npm run ingest:local:check -- --mock</code> printed the Friendy confirmation prompt for <code>Friendy-101</code>, and real-provider mode failed clearly on non-macOS with the mock-mode hint.</li>
+      <li>Ran local checker feature-branch verification: <code>npm test</code> passed with 25 files and 101 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, <code>npm run ingest:local:check -- --mock</code> printed the dry-run Friendy prompt for <code>Friendy-101</code>, <code>git diff --check</code> passed, and the forbidden-term search returned no matches.</li>
     </ul>
   </body>
 </html>

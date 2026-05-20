@@ -33,6 +33,7 @@ Transport message
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
 - Current iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
+- Current local macOS checker goal: `docs/goals/local-macos-contact-calendar-checker-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -56,6 +57,9 @@ Transport message
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
 - `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
 - `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion product flow pipeline.
+- `src/relationship/ingestion/localMacAdapters.ts`: explicit macOS Contacts/Calendar adapters, parser helpers, and non-macOS guards.
+- `src/relationship/ingestion/localCheck.ts`: provider-neutral local contact/calendar checker that creates candidates and confirmation prompts.
+- `src/relationship/ingestion/localCheckCli.ts`: `npm run ingest:local:check` entry point, state file handling, dry-run default, and guarded live Spectrum sender.
 - `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
 - `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
 - `src/relationship/transports/`: communication adapters and deterministic iMessage E2E product flow; product logic should live above this layer.
@@ -69,6 +73,7 @@ npm run agent:terminal -- "yes, recruiting agents, played piano"
 npm run eval:agent
 npm run check:imessage-e2e
 npm run ingest:check
+npm run ingest:local:check -- --mock
 npm run agent:spectrum
 ```
 
@@ -79,6 +84,15 @@ npm run ingest:contacts:smoke -- --name Friendy-001
 ```
 
 This command is explicit, accepts only `Friendy-<number>` names, and must not run from tests, build, evals, or `ingest:check`.
+
+Explicit local Contacts/Calendar checker:
+
+```bash
+npm run ingest:local:check -- --mock
+npm run ingest:local:check
+```
+
+The mock mode is deterministic and safe for non-macOS verification. The real mode reads macOS Contacts and Calendar only when the command is invoked, stores local snapshot state in `.friendy/local-contact-snapshot.json`, and defaults to printing the Friendy confirmation prompt instead of sending a live message.
 
 Use targeted tests while developing:
 
@@ -94,6 +108,8 @@ npm test -- src/relationship/transports/imessageE2eFlow.test.ts
 npm test -- src/relationship/candidateConfirmation.test.ts
 npm test -- src/relationship/ingestion/contactSnapshot.test.ts
 npm test -- src/relationship/ingestion/ingestionPipeline.test.ts
+npm test -- src/relationship/ingestion/localMacAdapters.test.ts
+npm test -- src/relationship/ingestion/localCheck.test.ts
 npm test -- src/relationship/contacts/contactsSmoke.test.ts
 ```
 
@@ -115,6 +131,17 @@ OpenRouter interpreter:
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
 ```
+
+Local checker:
+
+```bash
+FRIENDY_LOCAL_USER_ID=
+FRIENDY_LOCAL_CHECK_SEND=1
+FRIENDY_LOCAL_CHECK_TO_PHONE=
+FRIENDY_OWNER_PHONE=
+```
+
+`FRIENDY_LOCAL_CHECK_SEND=1` is required before the local checker sends a live Spectrum/iMessage prompt. Without it, the command stays in dry-run mode.
 
 Never commit secrets.
 

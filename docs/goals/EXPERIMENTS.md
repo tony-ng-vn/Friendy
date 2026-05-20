@@ -34,3 +34,23 @@
   - `npm run ingest:local:check -- --mock`
   - `npm run ingest:local:check`
 - GREEN result: Targeted tests passed with 3 files and 14 tests. Mock local check printed the Friendy confirmation prompt for `Friendy-101`. Real-provider mode failed clearly on non-macOS with the expected mock-mode hint.
+
+## Docs: Local Checker Scope
+
+- Date: 2026-05-20
+- Files updated: `README.md`, `REFERENCE.md`, `docs/ai-system-architecture.md`, `CHANGELOG.md`, `implementation-notes.html`, goal docs, and the implementation plan.
+- Result: Documented explicit local command behavior, dry-run default, live-send guard, non-macOS behavior, local snapshot state, and the boundary between fixture checks and real macOS reads.
+
+## Verification: Feature Branch
+
+- Date: 2026-05-20
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `npm run check:imessage-e2e`
+  - `npm run ingest:check`
+  - `npm run ingest:local:check -- --mock`
+  - `git diff --check`
+  - repo-wide forbidden-term search for old show-oriented wording
+- Result: Passed. The unit suite reported 25 files and 101 tests. The eval suite passed 12/12 required cases. The local checker mock printed the Friendy confirmation prompt for `Friendy-101` and stayed in dry-run mode.

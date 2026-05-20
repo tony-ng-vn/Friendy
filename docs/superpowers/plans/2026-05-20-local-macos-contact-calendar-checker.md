@@ -192,10 +192,10 @@ npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 git diff --check
-rg -n "demo|Demo"
+repo-wide forbidden-term search for old show-oriented wording
 ```
 
-Expected: all commands pass except `rg`, which must return no matches and exit 1.
+Expected: all commands pass except the forbidden-term search, which must return no matches and exit 1.
 
 - [ ] **Step 3: Commit docs**
 

@@ -2,14 +2,14 @@
 
 Friendy is an iMessage-first relationship memory agent, built on Photon/Spectrum, that helps you remember and refind people you met during approved event windows.
 
-The current version is a local prototype. It uses mocked calendar and contact signals to prove the core agent loop before building native mobile Contacts/Calendar integrations.
+The current version is a local prototype. It uses deterministic fixture signals for repeatable checks and now has an explicit macOS local checker for real Contacts/Calendar reads when the user runs the command.
 
 ## MVP Loop
 
-1. Friendy notices an upcoming event from a mocked calendar feed.
+1. Friendy notices an upcoming event from a calendar feed.
 2. The Photon-style agent asks whether to remember new people during that event.
 3. The user approves the memory window.
-4. Mocked contact deltas appear after the event.
+4. Contact deltas appear after the event.
 5. The agent asks the user to confirm which contacts were actually met.
 6. The user adds context in natural language.
 7. Later, the user can ask vague recall questions like `who was playing piano at dinner?`.
@@ -103,6 +103,7 @@ npm run build
 npm run eval:agent
 npm run check:imessage-e2e
 npm run ingest:check
+npm run ingest:local:check -- --mock
 ```
 
 ## Product Flow Script
@@ -224,6 +225,32 @@ npm run ingest:contacts:smoke -- --name Friendy-001
 This command is explicit and is never run by `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:check`. It only accepts names matching `Friendy-<number>`, creates or reuses that exact test contact, and prints the exact name and phone method it created or reused. On non-macOS environments it fails clearly while fixture ingestion continues to work.
 
 To manually delete a smoke-test contact, open the macOS Contacts app, search for the exact test name such as `Friendy-001`, select that contact, and delete it.
+
+## Local macOS Contact/Calendar Checker
+
+Run the deterministic local checker path without real macOS permissions:
+
+```bash
+npm run ingest:local:check -- --mock
+```
+
+This exercises the same path the real local checker uses: contact snapshot diff, calendar event match, pending candidate creation, and Friendy confirmation prompt output. It does not send a live iMessage.
+
+On macOS, run the real explicit local check:
+
+```bash
+npm run ingest:local:check
+```
+
+The first run saves a baseline snapshot at `.friendy/local-contact-snapshot.json`. After that, add a test contact named like `Friendy-101` with a phone number or email, then run the command again. Friendy compares the new Contacts snapshot against the baseline, reads Apple Calendar events around the detection window, maps the new contact method to the best event, creates a pending candidate, and prints the confirmation prompt.
+
+The command is dry-run by default. Live Spectrum sending requires all normal Spectrum credentials plus an explicit send flag:
+
+```bash
+FRIENDY_LOCAL_CHECK_SEND=1 FRIENDY_LOCAL_CHECK_TO_PHONE=+15550100000 npm run ingest:local:check
+```
+
+If `FRIENDY_LOCAL_CHECK_TO_PHONE` is missing, Friendy falls back to `FRIENDY_OWNER_PHONE`. On non-macOS environments, real-provider mode fails clearly and points to the mock command so fixture checks still work.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 
