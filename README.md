@@ -1,6 +1,6 @@
 # Friendy
 
-Friendy is a Photon-centric relationship memory agent that helps you remember and refind people you met during approved event windows.
+Friendy is an iMessage-first relationship memory agent, built on Photon/Spectrum, that helps you remember and refind people you met during approved event windows.
 
 The current version is a local demo prototype. It uses mocked calendar and contact signals to prove the core agent loop before building native mobile Contacts/Calendar integrations.
 
@@ -13,6 +13,59 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 5. The agent asks the user to confirm which contacts were actually met.
 6. The user adds context in natural language.
 7. Later, the user can ask vague recall questions like `who was playing piano at dinner?`.
+
+## How The AI System Works
+
+Friendy is an AI system, not just an LLM call. The system combines contact signals, event context, iMessage conversation, structured interpretation, deterministic tools, relationship memory, search, response composition, and evals.
+
+The product loop:
+
+```text
+new phone contact
+-> event/context guess
+-> Friendy texts the user in iMessage
+-> user confirms or ignores
+-> user adds messy human context
+-> Friendy saves structured relationship memory
+-> user later searches by context in iMessage
+-> Friendy returns likely person and contact route
+```
+
+The current architecture flow:
+
+```text
+contact snapshot diff
+-> newly detected phone/email method
+-> detectedAt from snapshot data
+-> calendar event match
+-> pending contact candidate
+-> iMessage confirmation prompt
+-> user reply
+-> interpreted intent
+-> deterministic tool call
+-> relationship memory
+-> later fuzzy search
+-> composed iMessage response
+```
+
+The model may help interpret messy user language, but it does not directly mutate memory. State changes go through deterministic tools for confirmation, memory writes, ignores, event corrections, and searches.
+
+Friendy also separates context that humans often blend together:
+
+- `eventContext`: where or when this interaction happened.
+- `relationshipContext`: prior history or backstory.
+- `userNote`: the user's raw or lightly cleaned memory.
+- `contactMethod`: how to reach the person.
+
+Example:
+
+```text
+met abc at Photon Residency II after havent met him since high school in minnesota
+```
+
+Friendy should treat `Photon Residency II` as the current event and `high school in Minnesota` as relationship backstory, not confuse the two.
+
+See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the full system boundary, current limitations, and next milestone.
 
 ## What This Demo Includes
 
@@ -35,6 +88,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 ## Docs
 
 - [Product spec](docs/product-spec.md)
+- [AI system architecture](docs/ai-system-architecture.md)
 - [Demo plan](docs/demo-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
