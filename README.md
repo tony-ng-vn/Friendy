@@ -67,24 +67,6 @@ Friendy should treat `Photon Residency II` as the current event and `high school
 
 See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the full system boundary, current limitations, and next milestone.
 
-## What This Demo Includes
-
-- Chat-first Photon agent interface.
-- Mocked `Photon Residency Dinner` calendar event.
-- Mocked new contact queue.
-- Detected-contact to calendar-event matching with ranked event guesses.
-- User-approved memory session.
-- Candidate confirmation and ignore flow.
-- Corrected-event confirmation when the user says the guessed event was wrong.
-- No-event confirmation when the user supplies event context manually.
-- Natural-language context capture.
-- Multi-turn context carryover for follow-up phrases like `also met Felix Ng`.
-- Natural-language date parsing with stored raw and normalized date context.
-- Field-aware memory search that lets role, project, school, and specific context outrank generic shared event words.
-- Conversational replies that do not expose raw match scoring.
-- Relationship-agent eval harness for messy multi-turn trajectories and safety invariants.
-- Fixture-based contact/calendar ingestion that proves a contact snapshot diff can become a pending confirmation candidate without reading real Contacts or calendars.
-
 ## Docs
 
 - [Product spec](docs/product-spec.md)
