@@ -10,3 +10,4 @@ Recommended order:
 
 Each goal should keep `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, and `docs/goals/EXPERIMENT_NOTES.md` updated while running.
 
+For exact copy/paste prompts, use `friendy-goal-runbook.md`.
