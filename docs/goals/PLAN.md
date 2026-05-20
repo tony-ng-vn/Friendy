@@ -8,4 +8,4 @@
 - [x] Implement conversation context carryover, full-name capture, and date context storage.
 - [x] Update `README.md`, `REFERENCE.md`, and `implementation-notes.html` for architecture changes.
 - [x] Run required verification commands.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.

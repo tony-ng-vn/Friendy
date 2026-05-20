@@ -43,3 +43,14 @@
 - Smoke result: Saved Amaya, Sarah Fah, and Felix Ng; Felix inherited `Photon Residency II`; event search returned all three; room search returned Felix Ng with Amaya context; community-lead search returned Sarah Fah.
 - Command: `git diff --check`
 - Result: Passed.
+
+## Task 4 Verification: Main Merge
+
+- Date: 2026-05-20
+- Merge: Fast-forwarded `main` from `9b7c8cd` to `297c0ef`.
+- Command on `main`: `npm test`
+- Result: Passed, 16 files and 51 tests.
+- Command on `main`: `npm run build`
+- Result: Passed.
+- Command on `main`: `git diff --check`
+- Result: Passed.

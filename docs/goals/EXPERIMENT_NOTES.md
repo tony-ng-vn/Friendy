@@ -5,3 +5,4 @@
 - 2026-05-20: Added a contract regression for `dateContext: null` because strict structured-output models need an explicit nullable value when no date was parsed. Validation now converts null to internal `undefined`.
 - 2026-05-20: Updated README, REFERENCE, and relationship AGENTS guidance to mention conversation-context carryover and chrono-node temporal parsing.
 - 2026-05-20: Feature-branch verification found a TypeScript-only issue after the Zod transform made `dateContext` a required output key. Added `dateContext: undefined` to fallback base interpretations, reran full tests, build, smoke harness, and diff check successfully.
+- 2026-05-20: Fast-forwarded `main` and reran `npm test`, `npm run build`, and `git diff --check` successfully on the merged branch.
