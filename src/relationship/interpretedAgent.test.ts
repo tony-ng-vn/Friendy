@@ -100,12 +100,16 @@ describe("interpreted relationship agent", () => {
     const roomSearch = await agent.handleMessage(inbound("Who slept in the same room?"));
     expect(roomSearch.outbound.text).toContain("Felix Ng");
     expect(roomSearch.outbound.text).toContain("Amaya");
+    expect(roomSearch.outbound.text).not.toContain("matched:");
+    expect(roomSearch.outbound.text).not.toContain("manual contact");
 
     const roleSearch = await agent.handleMessage(inbound("Who was the community lead?"));
     expect(roleSearch.outbound.text).toContain("Sarah Fah");
+    expect(roleSearch.outbound.text).toContain("community lead");
+    expect(roleSearch.outbound.text).not.toContain("matched:");
   });
 
-  it("returns multiple residency matches instead of one overconfident match", async () => {
+  it("returns multiple residency matches conversationally instead of one overconfident match", async () => {
     const { agent } = createTestAgent();
     await saveAmayaAndZhiyuan(agent);
 
@@ -113,8 +117,10 @@ describe("interpreted relationship agent", () => {
 
     expect(result.outbound.text).toContain("Amaya");
     expect(result.outbound.text).toContain("Zhiyuan");
-    expect(result.outbound.text).toContain("2");
+    expect(result.outbound.text).toContain("I found");
     expect(result.outbound.text).not.toMatch(/^Likely Amaya/);
+    expect(result.outbound.text).not.toContain("matched:");
+    expect(result.outbound.text).not.toContain("manual contact");
   });
 
   it("finds Zhiyuan from a vague Swift project search", async () => {
@@ -133,8 +139,11 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("Who slept in the same bed?"));
 
-    expect(result.outbound.text).toContain("Amaya");
+    expect(result.outbound.text).toContain("I think that was Amaya");
     expect(result.outbound.text).toContain("bed");
+    expect(result.outbound.text).toContain("I don't have a contact link saved yet.");
+    expect(result.outbound.text).not.toContain("matched:");
+    expect(result.outbound.text).not.toContain("manual contact");
   });
 
   it("handles ignore without a pending candidate through the interpreted path", async () => {
@@ -142,8 +151,18 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("ignore"));
 
-    expect(result.outbound.text).toBe("I do not see a pending contact to ignore.");
+    expect(result.outbound.text).toBe("I don't see a pending contact to ignore right now.");
     expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+  });
+
+  it("answers no-match searches without leaking debug language", async () => {
+    const { agent } = createTestAgent();
+
+    const result = await agent.handleMessage(inbound("Who was the robotics founder from brunch?"));
+
+    expect(result.outbound.text).toMatch(/I don't have enough/i);
+    expect(result.outbound.text).not.toContain("matched:");
+    expect(result.outbound.text).not.toContain("manual contact");
   });
 
   it("asks clarification for vague references and does not save a fake memory", async () => {

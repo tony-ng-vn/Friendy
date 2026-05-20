@@ -1,6 +1,13 @@
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
+import {
+  composeClarificationReply,
+  composeIgnoreCandidateReply,
+  composeNoMatchReply,
+  composeSaveConfirmation,
+  composeSearchReply
+} from "./responseComposer";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage } from "./types";
@@ -92,7 +99,7 @@ function executeInterpretation(
   toolCalls: AgentToolCall[]
 ): string {
   if (interpretation.needsClarification || interpretation.intent === "clarify") {
-    return interpretation.clarificationQuestion || "What do you remember about them?";
+    return composeClarificationReply(interpretation.clarificationQuestion);
   }
 
   if (interpretation.intent === "capture_memory") {
@@ -107,7 +114,7 @@ function executeInterpretation(
     return ignorePendingCandidate(message, tools, toolCalls);
   }
 
-  return "I need a name, event, date, or context before I can save or search that.";
+  return composeNoMatchReply();
 }
 
 function captureMemories(
@@ -126,11 +133,10 @@ function captureMemories(
   });
 
   if (memories.length === 1) {
-    const memory = memories[0];
-    return `Saved. I'll remember ${memory.displayName} as "${memory.contextNote}".`;
+    return composeSaveConfirmation({ memories });
   }
 
-  return `Saved ${memories.length} people: ${memories.map((memory) => memory.displayName).join(", ")}.`;
+  return composeSaveConfirmation({ memories });
 }
 
 function searchMemories(
@@ -144,15 +150,10 @@ function searchMemories(
   const matches = tools.search_memories(message.userId, query);
 
   if (matches.length === 0) {
-    return "I do not have a confident match yet. Give me a name, event, date, or context you remember.";
+    return composeNoMatchReply();
   }
 
-  if (matches.length > 1) {
-    return `I found ${matches.length} likely matches: ${matches.map(summarizeMatch).join("; ")}.`;
-  }
-
-  const top = matches[0];
-  return `Likely ${top.memory.displayName}. ${top.reason} Contact: ${top.memory.primaryContactLabel}.`;
+  return composeSearchReply({ matches, ambiguous: isAmbiguous(matches) });
 }
 
 function ignorePendingCandidate(
@@ -164,16 +165,12 @@ function ignorePendingCandidate(
   const candidate = tools.list_pending_candidates(message.userId)[0];
 
   if (!candidate) {
-    return "I do not see a pending contact to ignore.";
+    return composeIgnoreCandidateReply();
   }
 
   toolCalls.push("ignore_candidate");
   tools.ignore_candidate(message.userId, candidate.id);
-  return `Ignored ${candidate.displayName}.`;
-}
-
-function summarizeMatch(match: MemorySearchResult): string {
-  return `${match.memory.displayName} (${match.reason} Contact: ${match.memory.primaryContactLabel})`;
+  return composeIgnoreCandidateReply({ candidateName: candidate.displayName });
 }
 
 function buildMemoryNote(
@@ -234,4 +231,12 @@ function updateConversationContext(
 function hasRecentPersonReference(text: string, recentPeople: string[]): boolean {
   const normalized = text.toLowerCase();
   return recentPeople.some((name) => normalized.includes(name.toLowerCase()));
+}
+
+function isAmbiguous(matches: MemorySearchResult[]): boolean {
+  if (matches.length < 2) {
+    return false;
+  }
+
+  return matches[0].score - matches[1].score <= 2;
 }

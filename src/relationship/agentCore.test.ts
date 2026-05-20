@@ -27,7 +27,7 @@ describe("relationship agent core", () => {
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
 
-  it("searches saved memories and returns a confident match", () => {
+  it("searches saved memories and returns a conversational confident match", () => {
     const repo = createRelationshipRepository({
       users: [demoUser],
       calendarEvents: [demoLongEvent, demoShortEvent]
@@ -45,8 +45,10 @@ describe("relationship agent core", () => {
     });
 
     expect(result.toolCalls).toContain("search_memories");
-    expect(result.outbound.text).toContain("Likely Maya Chen");
+    expect(result.outbound.text).toContain("I think that was Maya Chen");
     expect(result.outbound.text).toContain("played piano");
+    expect(result.outbound.text).not.toContain("matched:");
+    expect(result.outbound.text).not.toContain("manual contact");
   });
 
   it("saves a natural first-person meeting sentence as searchable memory", () => {
@@ -77,7 +79,9 @@ describe("relationship agent core", () => {
       receivedAt: "2026-05-20T12:04:00.000Z"
     });
 
-    expect(searchResult.outbound.text).toContain("Likely Amaya");
+    expect(searchResult.outbound.text).toContain("I think that was Amaya");
+    expect(searchResult.outbound.text).not.toContain("matched:");
+    expect(searchResult.outbound.text).not.toContain("manual contact");
   });
 
   it("asks a clarification question when search confidence is close", () => {
@@ -98,8 +102,10 @@ describe("relationship agent core", () => {
       receivedAt: "2026-05-20T12:10:00.000Z"
     });
 
-    expect(result.outbound.text).toContain("I found two");
-    expect(result.outbound.text).toContain("Which dinner");
+    expect(result.outbound.text).toContain("I found 2");
+    expect(result.outbound.text).toContain("Which person");
+    expect(result.outbound.text).not.toContain("matched:");
+    expect(result.outbound.text).not.toContain("manual contact");
   });
 });
 

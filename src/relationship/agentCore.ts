@@ -1,5 +1,11 @@
 import type { AgentCoreResult, AgentToolCall, InboundAgentMessage } from "./types";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
+import {
+  composeIgnoreCandidateReply,
+  composeNoMatchReply,
+  composeSaveConfirmation,
+  composeSearchReply
+} from "./responseComposer";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
@@ -31,7 +37,7 @@ export function createRelationshipAgent(tools: RelationshipTools) {
 
         return reply(
           message,
-          `Saved. I'll remember ${memory.displayName} from ${memory.eventTitle ?? "that context"} as "${memory.contextNote}".`,
+          composeSaveConfirmation({ memories: [memory] }),
           toolCalls
         );
       }
@@ -41,43 +47,34 @@ export function createRelationshipAgent(tools: RelationshipTools) {
         const candidates = tools.list_pending_candidates(message.userId);
         const candidate = candidates[0];
         if (!candidate) {
-          return reply(message, "I do not see a pending contact to ignore.", toolCalls);
+          return reply(message, composeIgnoreCandidateReply(), toolCalls);
         }
 
         toolCalls.push("ignore_candidate");
         tools.ignore_candidate(message.userId, candidate.id);
-        return reply(message, `Ignored ${candidate.displayName}.`, toolCalls);
+        return reply(message, composeIgnoreCandidateReply({ candidateName: candidate.displayName }), toolCalls);
       }
 
       if (looksLikeManualMemory(lower)) {
         const parsed = parseManualMemory(normalized);
         toolCalls.push("create_manual_memory");
         const memory = tools.create_manual_memory(message.userId, parsed.name, parsed.contextNote, parsed.contactMethod);
-        return reply(message, `Saved. I'll remember ${memory.displayName} as "${memory.contextNote}".`, toolCalls);
+        return reply(message, composeSaveConfirmation({ memories: [memory] }), toolCalls);
       }
 
       toolCalls.push("search_memories");
       const matches = tools.search_memories(message.userId, normalized);
 
       if (matches.length === 0) {
-        return reply(
-          message,
-          "I do not have a confident match yet. Give me a name, event, date, or context you remember.",
-          toolCalls
-        );
+        return reply(message, composeNoMatchReply(), toolCalls);
       }
 
       if (isAmbiguous(matches)) {
-        const names = matches.slice(0, 2).map((match) => `${match.memory.displayName} from ${match.memory.eventTitle}`);
-        return reply(message, `I found two possible matches: ${names.join(" and ")}. Which dinner do you mean?`, toolCalls);
+        return reply(message, composeSearchReply({ matches: matches.slice(0, 2), ambiguous: true }), toolCalls);
       }
 
       const top = matches[0];
-      return reply(
-        message,
-        `Likely ${top.memory.displayName}. ${top.reason} Contact: ${top.memory.primaryContactLabel}.`,
-        toolCalls
-      );
+      return reply(message, composeSearchReply({ matches: [top] }), toolCalls);
     }
   };
 }
