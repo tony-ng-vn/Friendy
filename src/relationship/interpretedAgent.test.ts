@@ -191,6 +191,7 @@ describe("interpreted relationship agent", () => {
     expect(eventSearch.outbound.text).toContain("Nina Park");
     expect(eventSearch.outbound.text).toContain("Leo");
     expect(eventSearch.outbound.text).toContain("Rina");
+    expect(eventSearch.outbound.text).not.toContain("Which person");
   });
 
   it("keeps ambiguous dinner-founder queries as narrowing questions", async () => {

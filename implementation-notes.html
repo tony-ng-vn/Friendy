@@ -30,6 +30,7 @@
       <li>Contextual Memory Capture V2 adds a small conversation-context layer inside the interpreted agent so follow-up messages like <code>also met Felix Ng...</code> can inherit the active event and date context from recent turns.</li>
       <li>Added <code>chrono-node</code> for natural-language date parsing. Friendy now stores both the raw date phrase and a normalized local date/date instant on relationship memories when a message contains temporal context.</li>
       <li>Added a deterministic <code>responseComposer</code> boundary for user-facing save, search, no-match, clarification, and ignore replies. Search tools still select matches, while the composer prevents raw match reasons, score language, and placeholder labels such as <code>manual contact</code> from leaking into iMessage-style responses.</li>
+      <li>Updated deterministic memory search to score fields separately. Narrow searches now let role, project, school/class, alias, and specific context outrank generic shared event terms, while event-wide recall queries still return multiple people from the event.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -51,6 +52,8 @@
       <li>For the response-composer goal, ran <code>npm test -- src/relationship/responseComposer.test.ts src/relationship/interpretedAgent.test.ts src/relationship/agentCore.test.ts</code>: composer unit coverage and interpreted/deterministic agent reply integration passed with 3 files and 18 tests.</li>
       <li>Ran response-composer feature-branch verification: <code>npm test</code> passed with 17 files and 55 tests, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for the response-composer goal, reran <code>npm test</code>, <code>npm run build</code>, and <code>git diff --check</code> successfully.</li>
+      <li>For the field-aware search goal, ran <code>npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts</code>: Maya/Nina recruiting founder, Leo/Rina devtools, CMU, event-wide Photon Residency II recall, and dinner-founder ambiguity tests passed.</li>
+      <li>Ran the deterministic field-aware search demo transcript saved in <code>docs/goals/field-aware-memory-search-demo.md</code>.</li>
     </ul>
   </body>
 </html>

@@ -153,7 +153,7 @@ function searchMemories(
     return composeNoMatchReply();
   }
 
-  return composeSearchReply({ matches, ambiguous: isAmbiguous(matches) });
+  return composeSearchReply({ matches, ambiguous: !isEventWideRecallQuery(message.text) && isAmbiguous(matches) });
 }
 
 function ignorePendingCandidate(
@@ -238,5 +238,9 @@ function isAmbiguous(matches: MemorySearchResult[]): boolean {
     return false;
   }
 
-  return matches[0].score - matches[1].score <= 2;
+  return matches[0].score - matches[1].score <= 6;
+}
+
+function isEventWideRecallQuery(text: string): boolean {
+  return /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(text);
 }

@@ -6,7 +6,7 @@ Architecture boundaries:
 
 - `eventMapper.ts` maps contact detection time to calendar context deterministically.
 - `repository.ts` owns in-memory persistence boundaries.
-- `tools.ts` exposes small deterministic actions for the agent.
+- `tools.ts` exposes small deterministic actions for the agent, including field-aware search ranking.
 - `responseComposer.ts` owns deterministic user-facing wording. It may format selected facts, but it must not choose matches, write memories, or expose raw search reasons.
 - `agentCore.ts` is the current deterministic router.
 - `interpretation.ts` is the contract for LLM-to-JSON interpretation.
@@ -21,6 +21,7 @@ Rules:
 - Keep user-facing replies short enough for iMessage.
 - Never pretend certainty when search results are ambiguous.
 - Do not leak raw search internals such as `matched:`, score details, tool debug text, or placeholder labels like `manual contact` in user-facing replies.
+- Keep memory search deterministic unless a goal explicitly adds a model reranker. Role, project, school/class, alias, and specific context should outrank generic shared event words for narrow searches.
 - Add tests for realistic messy user messages, not only ideal command syntax.
 
 Useful test targets:

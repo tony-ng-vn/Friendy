@@ -25,7 +25,7 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current response-composer goal: `docs/goals/relationship-agent-response-composer-goal.md`
+- Current field-aware search goal: `docs/goals/field-aware-memory-search-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -39,7 +39,7 @@ Transport message
 - `src/relationship/fixtures.ts`: deterministic demo user, events, detected contacts, and ambiguous memories.
 - `src/relationship/eventMapper.ts`: deterministic contact-to-calendar matching.
 - `src/relationship/repository.ts`: in-memory repository boundary for candidates, memories, events, and future logs.
-- `src/relationship/tools.ts`: bounded tool API used by the agent.
+- `src/relationship/tools.ts`: bounded tool API used by the agent, including deterministic field-aware memory search.
 - `src/relationship/responseComposer.ts`: deterministic user-facing wording for save/search/no-match/clarify/ignore replies.
 - `src/relationship/agentCore.ts`: current deterministic relationship-agent router.
 - `src/relationship/env.ts`: local env loading for standalone `tsx` scripts.

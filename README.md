@@ -24,7 +24,8 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Natural-language context capture.
 - Multi-turn context carryover for follow-up phrases like `also met Felix Ng`.
 - Natural-language date parsing with stored raw and normalized date context.
-- Simple fuzzy memory search with conversational replies that do not expose raw match scoring.
+- Field-aware memory search that lets role, project, school, and specific context outrank generic shared event words.
+- Conversational replies that do not expose raw match scoring.
 
 ## Docs
 
@@ -100,6 +101,8 @@ Who did I meet at Photon Residency II?
 Date phrases are parsed with `chrono-node` against the inbound message timestamp and configured user timezone, so messages like `I met Maya yesterday at Photon Residency II dinner` store both the raw phrase and a normalized date.
 
 Search and save replies are composed through `src/relationship/responseComposer.ts`. The search tools still choose matches deterministically, but user-facing replies avoid raw phrases such as `matched:`, internal reason strings, and placeholder labels like `manual contact`.
+
+Search ranking is field-aware: narrow queries such as `Find the recruiting agents founder from Photon` prefer role/project/context matches over broad event overlap, while broad event queries such as `Who did I meet at Photon Residency II?` still list everyone from that event.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 

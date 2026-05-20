@@ -18,3 +18,15 @@
 - Fix: Replaced flattened haystack scoring with deterministic field-aware scoring that separates event, role, project, school/class, alias, context, and tags. Narrow searches now require enough term coverage and collapse to the top result only when its specific-field score clearly beats the next match. Event-wide searches remain broad.
 - Green command: `npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts`
 - Green result: Passed, 2 files and 17 tests.
+- Follow-up red command: `npm test -- src/relationship/interpretedAgent.test.ts`
+- Follow-up red result: Failed because event-wide Photon Residency II recall listed all people but still asked `Which person do you mean?`.
+- Follow-up fix: Suppressed ambiguity prompts for event-wide recall queries and widened the close-score ambiguity threshold for narrow searches.
+- Follow-up green command: `npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts src/relationship/agentCore.test.ts`
+- Follow-up green result: Passed, 3 files and 22 tests.
+
+## Task 2 Demo Transcript
+
+- Date: 2026-05-20
+- Command: deterministic `node_modules/.bin/tsx --eval "<field-aware event-goer transcript>"`
+- Result: Maya was the only confident match for recruiting-agents founder, Leo was the only confident devtools match, Rina matched CMU, Photon Residency II event recall listed Maya/Leo/Nina/Rina, and dinner-founder ambiguity asked a narrowing question.
+- Transcript: `docs/goals/field-aware-memory-search-demo.md`.

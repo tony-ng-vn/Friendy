@@ -8,7 +8,8 @@ Recommended order:
 
 1. `contextual-memory-capture-v2-goal.md`
 2. `relationship-agent-response-composer-goal.md`
-3. `contact-event-verification-queue-goal.md`
+3. `field-aware-memory-search-goal.md`
+4. `contact-event-verification-queue-goal.md`
 
 Each goal should keep `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, and `docs/goals/EXPERIMENT_NOTES.md` updated while running.
 
