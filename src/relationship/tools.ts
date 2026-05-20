@@ -36,7 +36,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 
       const scored = repo
         .listMemories(userId)
-        .map((memory) => scoreMemory(memory, queryAnalysis, query))
+        .map((memory) => scoreMemory(memory, queryAnalysis))
         .filter((result) => result.score > 0)
         .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
 
@@ -101,11 +101,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
  * event words. Event-wide "who did I meet" searches are the exception: those intentionally return
  * every matching event memory instead of collapsing to one top person.
  */
-function scoreMemory(
-  memory: RelationshipMemory,
-  query: SearchQueryAnalysis,
-  rawQuery: string
-): InternalMemorySearchResult {
+function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): InternalMemorySearchResult {
   const fields = extractMemorySearchFields(memory);
   const matched = new Set<string>();
   let score = 0;
