@@ -1,5 +1,5 @@
 import { extractTags, type RelationshipRepository } from "./repository";
-import type { ContactCandidateDetected, RelationshipMemory } from "./types";
+import type { ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
 /** Search hit with explanation text the agent can show directly to the user. */
 export type MemorySearchResult = {
@@ -56,12 +56,20 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return { ignored: true };
     },
 
-    create_manual_memory(userId: string, name: string, contextNote: string, contactMethod = "manual contact") {
+    create_manual_memory(
+      userId: string,
+      name: string,
+      contextNote: string,
+      contactMethod = "manual contact",
+      options: { eventTitle?: string; dateContext?: RelationshipDateContext } = {}
+    ) {
       const memory: RelationshipMemory = {
         id: `memory_manual_${Date.now()}`,
         userId,
         displayName: name,
         primaryContactLabel: contactMethod,
+        eventTitle: options.eventTitle,
+        dateContext: options.dateContext,
         contextNote,
         tags: extractTags(contextNote),
         confidence: 0.6,

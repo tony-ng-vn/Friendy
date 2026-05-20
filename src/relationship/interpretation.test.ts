@@ -100,6 +100,7 @@ describe("message interpretation contract", () => {
         "confidence",
         "people",
         "event",
+        "dateContext",
         "contextNote",
         "query",
         "tags",

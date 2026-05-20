@@ -1,6 +1,7 @@
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
+import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage } from "./types";
 
@@ -11,10 +12,17 @@ type InterpretedRelationshipAgentOptions = {
   tools: RelationshipTools;
   interpreter: MessageInterpreter;
   now?: () => string;
+  timezone?: string;
 };
 
 type InterpretedAgentResult = AgentCoreResult & {
   interaction: AgentInteraction;
+};
+
+type ConversationContext = {
+  activeEventName?: string;
+  activeDateContext?: TemporalContext;
+  recentPeople: string[];
 };
 
 /**
@@ -27,15 +35,25 @@ export function createInterpretedRelationshipAgent({
   repo,
   tools,
   interpreter,
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
+  const conversationContexts = new Map<string, ConversationContext>();
+
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
       const startedAt = Date.now();
       const interpreted = await interpreter.interpret(message);
-      const interpretation = interpreted.interpretation;
+      const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
+      const interpretation = enrichInterpretationWithContext(
+        interpreted.interpretation,
+        existingContext,
+        parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
+        message.text
+      );
       const toolCalls: AgentToolCall[] = [];
       const outboundText = executeInterpretation(message, interpretation, tools, toolCalls);
+      conversationContexts.set(message.userId, updateConversationContext(existingContext, interpretation));
 
       const interaction = repo.addInteraction({
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -101,7 +119,10 @@ function captureMemories(
   const memories = interpretation.people.map((person) => {
     const note = buildMemoryNote(interpretation, person);
     toolCalls.push("create_manual_memory");
-    return tools.create_manual_memory(message.userId, person.name, note, "manual contact");
+    return tools.create_manual_memory(message.userId, person.name, note, "manual contact", {
+      eventTitle: interpretation.event.name || undefined,
+      dateContext: interpretation.dateContext
+    });
   });
 
   if (memories.length === 1) {
@@ -161,6 +182,7 @@ function buildMemoryNote(
 ): string {
   const details = [
     interpretation.event.name ? `event: ${interpretation.event.name}` : "",
+    interpretation.dateContext ? `date: ${interpretation.dateContext.rawText} (${interpretation.dateContext.localDate})` : "",
     interpretation.contextNote,
     person.aliases.length > 0 ? `alias: ${person.aliases.join(", ")}` : "",
     person.companyOrSchool ? `school/company: ${person.companyOrSchool}` : "",
@@ -170,4 +192,46 @@ function buildMemoryNote(
   ];
 
   return details.map((detail) => detail.trim()).filter(Boolean).join(" | ");
+}
+
+function enrichInterpretationWithContext(
+  interpretation: MessageInterpretation,
+  context: ConversationContext,
+  dateContext: TemporalContext | undefined,
+  rawText: string
+): MessageInterpretation {
+  if (interpretation.intent !== "capture_memory") {
+    return interpretation;
+  }
+
+  const shouldCarryContext = /\balso\b/i.test(rawText) || hasRecentPersonReference(rawText, context.recentPeople);
+
+  return {
+    ...interpretation,
+    event: {
+      ...interpretation.event,
+      name: interpretation.event.name || (shouldCarryContext ? context.activeEventName ?? "" : "")
+    },
+    dateContext: dateContext ?? interpretation.dateContext ?? (shouldCarryContext ? context.activeDateContext : undefined)
+  };
+}
+
+function updateConversationContext(
+  context: ConversationContext,
+  interpretation: MessageInterpretation
+): ConversationContext {
+  if (interpretation.intent !== "capture_memory") {
+    return context;
+  }
+
+  return {
+    activeEventName: interpretation.event.name || context.activeEventName,
+    activeDateContext: interpretation.dateContext ?? context.activeDateContext,
+    recentPeople: [...context.recentPeople, ...interpretation.people.map((person) => person.name)].slice(-10)
+  };
+}
+
+function hasRecentPersonReference(text: string, recentPeople: string[]): boolean {
+  const normalized = text.toLowerCase();
+  return recentPeople.some((name) => normalized.includes(name.toLowerCase()));
 }

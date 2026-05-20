@@ -42,6 +42,18 @@ export const messageInterpretationJsonSchema = {
       },
       required: ["name", "dateText", "location"]
     },
+    dateContext: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        rawText: { type: "string" },
+        localDate: { type: "string" },
+        startsAt: { type: "string" },
+        endsAt: { type: "string" },
+        timezone: { type: "string" }
+      },
+      required: ["rawText", "localDate", "startsAt", "endsAt", "timezone"]
+    },
     contextNote: {
       type: "string",
       description: "Human-readable memory note to save when intent is capture_memory."
@@ -69,6 +81,7 @@ export const messageInterpretationJsonSchema = {
     "confidence",
     "people",
     "event",
+    "dateContext",
     "contextNote",
     "query",
     "tags",
@@ -102,6 +115,15 @@ export const messageInterpretationSchema = z
     confidence: z.number().min(0).max(1),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),
+    dateContext: z
+      .object({
+        rawText: z.string(),
+        localDate: z.string(),
+        startsAt: z.string(),
+        endsAt: z.string().optional(),
+        timezone: z.string()
+      })
+      .optional(),
     contextNote: z.string().default(""),
     query: z.string().default(""),
     tags: z.array(z.string()).default([]),

@@ -201,7 +201,7 @@ function buildCaptureInterpretation(text: string, name: string): MessageInterpre
       {
         name,
         aliases,
-        companyOrSchool: /cmu/i.test(text) ? "CMU" : "",
+        companyOrSchool: extractCompanyOrSchool(text),
         classYear: extractClassYear(text),
         project,
         role: inferRole(text)
@@ -229,7 +229,9 @@ function baseInterpretation(overrides: Partial<MessageInterpretation>): MessageI
 }
 
 function extractCapturedName(text: string): string {
-  const match = /\b(?:i\s+)?(?:also\s+)?met\s+([A-Z][a-zA-Z'-]*)\b/.exec(text);
+  const match = /\b(?:and\s+)?(?:i\s+)?(?:also\s+)?met\s+([A-Z][a-zA-Z'-]*(?:\s+[A-Z][a-zA-Z'-]*){0,2})\b/.exec(
+    text
+  );
   return match?.[1] ?? "";
 }
 
@@ -244,6 +246,15 @@ function extractAliases(text: string): string[] {
 
 function extractClassYear(text: string): string {
   return /\b20\d{2}\b/.exec(text)?.[0] ?? "";
+}
+
+function extractCompanyOrSchool(text: string): string {
+  if (/\bcmu\b/i.test(text)) {
+    return "CMU";
+  }
+
+  const schoolMatch = /\bgo(?:es)?\s+to\s+([A-Z][A-Z0-9&.-]*)\b/.exec(text);
+  return schoolMatch?.[1] ?? "";
 }
 
 function extractProject(text: string): string {
@@ -265,6 +276,9 @@ function inferRole(text: string): string {
   }
   if (/founder/i.test(text)) {
     return "founder";
+  }
+  if (/community lead/i.test(text)) {
+    return "community lead";
   }
   return "";
 }

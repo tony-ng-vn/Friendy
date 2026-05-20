@@ -3,9 +3,9 @@
 - [x] Read `AGENTS.md`, `REFERENCE.md`, and `docs/goals/contextual-memory-capture-v2-goal.md`.
 - [x] Inspect current branch and worktree before editing.
 - [x] Create feature branch for implementation work.
-- [ ] Write failing tests for Amaya/Sarah Fah/Felix Ng multi-turn capture and search.
-- [ ] Add real natural-language date parsing with `chrono-node` and failing tests.
-- [ ] Implement conversation context carryover, full-name capture, and date context storage.
+- [x] Write failing tests for Amaya/Sarah Fah/Felix Ng multi-turn capture and search.
+- [x] Add real natural-language date parsing with `chrono-node` and failing tests.
+- [x] Implement conversation context carryover, full-name capture, and date context storage.
 - [ ] Update `README.md`, `REFERENCE.md`, and `implementation-notes.html` for architecture changes.
 - [ ] Run required verification commands.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.

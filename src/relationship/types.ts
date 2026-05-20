@@ -16,6 +16,15 @@ export type CalendarEventKind = "short" | "long" | "all_day";
 
 export type AgentPlatform = "imessage" | "terminal" | "web";
 
+/** Normalized natural-language date context parsed from the user's message. */
+export type RelationshipDateContext = {
+  rawText: string;
+  localDate: string;
+  startsAt: string;
+  endsAt?: string;
+  timezone: string;
+};
+
 /** Product user whose personal contacts, calendar context, and memories are scoped together. */
 export type User = {
   id: string;
@@ -73,6 +82,7 @@ export type RelationshipMemory = {
   primaryContactLabel: string;
   eventId?: string;
   eventTitle?: string;
+  dateContext?: RelationshipDateContext;
   contextNote: string;
   tags: string[];
   confidence: number;
