@@ -22,6 +22,8 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - User-approved memory session.
 - Candidate confirmation and ignore flow.
 - Natural-language context capture.
+- Multi-turn context carryover for follow-up phrases like `also met Felix Ng`.
+- Natural-language date parsing with stored raw and normalized date context.
 - Simple fuzzy memory search with match explanations.
 
 ## Docs
@@ -85,6 +87,17 @@ Then search with:
 ```text
 who did I meet at Photon Residency?
 ```
+
+Friendy also carries recent event context across follow-up messages:
+
+```text
+I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(
+I also met Sarah Fah who ran Photon Residency II as the community lead
+And also met Felix Ng who goes to UBC and sleep in the same room with me and Amaya
+Who did I meet at Photon Residency II?
+```
+
+Date phrases are parsed with `chrono-node` against the inbound message timestamp and configured user timezone, so messages like `I met Maya yesterday at Photon Residency II dinner` store both the raw phrase and a normalized date.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 

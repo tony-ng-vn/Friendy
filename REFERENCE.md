@@ -12,6 +12,7 @@ Current architecture direction:
 Transport message
 -> normalized InboundAgentMessage
 -> message interpretation
+-> conversation context enrichment
 -> deterministic relationship tools
 -> memory repository
 -> logged response
@@ -21,7 +22,8 @@ Transport message
 
 - Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
 - Agent navigation structure: `docs/agent-navigation.md`
-- Current LLM interpreter goal: `docs/goals/llm-message-interpreter-goal.md`
+- Goal queue: `docs/goals/README.md`
+- Current contextual memory goal: `docs/goals/contextual-memory-capture-v2-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -38,7 +40,10 @@ Transport message
 - `src/relationship/tools.ts`: bounded tool API used by the agent.
 - `src/relationship/agentCore.ts`: current deterministic relationship-agent router.
 - `src/relationship/env.ts`: local env loading for standalone `tsx` scripts.
-- `src/relationship/interpretation.ts`: in-progress LLM interpretation contract.
+- `src/relationship/interpretation.ts`: LLM interpretation contract.
+- `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
+- `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
+- `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
 - `src/relationship/transports/`: communication adapters; product logic should live above this layer.
 
 ## Commands
@@ -54,7 +59,9 @@ Use targeted tests while developing:
 
 ```bash
 npm test -- src/relationship/agentCore.test.ts
+npm test -- src/relationship/interpretedAgent.test.ts
 npm test -- src/relationship/interpretation.test.ts
+npm test -- src/relationship/temporalContext.test.ts
 ```
 
 ## Environment
@@ -69,7 +76,7 @@ SPECTRUM_PROJECT_SECRET=
 FRIENDY_AGENT_NUMBER=+14156056081
 ```
 
-Planned for OpenRouter interpreter:
+OpenRouter interpreter:
 
 ```bash
 OPENROUTER_API_KEY=
@@ -90,4 +97,4 @@ See `docs/agent-navigation.md` for the full source-backed rationale.
 
 ## Current Caution
 
-There may be active WIP on `feature/llm-message-interpreter`. Inspect `git status --short --branch` before editing and do not revert unrelated work.
+Inspect `git status --short --branch` before editing and do not revert unrelated work. Active goal-mode work may update `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, and `docs/goals/EXPERIMENT_NOTES.md`.

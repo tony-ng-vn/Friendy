@@ -8,7 +8,9 @@ Architecture boundaries:
 - `repository.ts` owns in-memory persistence boundaries.
 - `tools.ts` exposes small deterministic actions for the agent.
 - `agentCore.ts` is the current deterministic router.
-- `interpretation.ts` is the in-progress contract for LLM-to-JSON interpretation.
+- `interpretation.ts` is the contract for LLM-to-JSON interpretation.
+- `interpretedAgent.ts` enriches validated interpretations with recent conversation context before deterministic tools execute.
+- `temporalContext.ts` owns chrono-node date parsing; do not hand-roll relative-date rules in agent code.
 - `transports/` adapts communication surfaces and should not own product logic.
 
 Rules:
@@ -23,6 +25,8 @@ Useful test targets:
 
 ```bash
 npm test -- src/relationship/agentCore.test.ts
+npm test -- src/relationship/interpretedAgent.test.ts
 npm test -- src/relationship/interpretation.test.ts
+npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/tools.test.ts
 ```
