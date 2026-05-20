@@ -74,6 +74,18 @@ Run the local terminal agent demo:
 npm run agent:terminal -- "yes, recruiting agents, played piano"
 ```
 
+The iMessage/Spectrum agent also accepts natural save messages such as:
+
+```text
+I met Amaya at Photon Residency II, and we talked about AI agents
+```
+
+Then search with:
+
+```text
+who did I meet at Photon Residency?
+```
+
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 
 ```bash

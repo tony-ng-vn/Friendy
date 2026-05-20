@@ -112,17 +112,39 @@ function cleanConfirmationNote(value: string): string {
 }
 
 function looksLikeManualMemory(value: string): boolean {
-  return value.startsWith("met ") || value.startsWith("remember ");
+  return (
+    value.startsWith("met ") ||
+    value.startsWith("remember ") ||
+    value.startsWith("i met ") ||
+    value.startsWith("i remember ")
+  );
 }
 
 function parseManualMemory(value: string) {
-  const cleaned = value.replace(/^(met|remember)\s+/i, "");
-  const [namePart, ...contextParts] = cleaned.split(",");
+  const cleaned = value.replace(/^(i\s+)?(met|remember)\s+/i, "").trim();
+  const [namePart, ...contextParts] = splitManualMemory(cleaned);
+
   return {
     name: namePart.trim(),
     contextNote: contextParts.join(",").trim() || "manual memory",
     contactMethod: undefined
   };
+}
+
+function splitManualMemory(value: string): string[] {
+  const [beforeComma, ...afterCommaParts] = value.split(",");
+  const afterComma = afterCommaParts.join(",").trim();
+  const eventMatch = beforeComma.match(/^(.+?)\s+(at|during|from)\s+(.+)$/i);
+
+  if (!eventMatch) {
+    return [beforeComma, afterComma].filter(Boolean);
+  }
+
+  const [, name, preposition, eventContext] = eventMatch;
+  // Preserve the event phrase as context so later vague searches can match where the user met them.
+  const context = [`${preposition} ${eventContext}`, afterComma].filter(Boolean).join(", ");
+
+  return [name, context];
 }
 
 function isAmbiguous(matches: MemorySearchResult[]): boolean {

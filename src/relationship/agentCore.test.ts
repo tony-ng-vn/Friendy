@@ -49,6 +49,37 @@ describe("relationship agent core", () => {
     expect(result.outbound.text).toContain("played piano");
   });
 
+  it("saves a natural first-person meeting sentence as searchable memory", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createRelationshipAgent(tools);
+
+    const saveResult = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(",
+      receivedAt: "2026-05-20T12:03:00.000Z"
+    });
+
+    expect(saveResult.outbound.text).toContain("Saved");
+    expect(repo.listMemories(demoUser.id)[0]).toMatchObject({
+      displayName: "Amaya"
+    });
+    expect(repo.listMemories(demoUser.id)[0].contextNote).toContain("Photon Residency II");
+
+    const searchResult = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "who slept in the same bed at Photon?",
+      receivedAt: "2026-05-20T12:04:00.000Z"
+    });
+
+    expect(searchResult.outbound.text).toContain("Likely Amaya");
+  });
+
   it("asks a clarification question when search confidence is close", () => {
     const repo = createRelationshipRepository({
       users: [demoUser],
