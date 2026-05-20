@@ -27,3 +27,19 @@
 - Fix: Updated the interpretation schema to accept nullable `dateContext` and transform it to `undefined` for internal code.
 - Green command: `npm test -- src/relationship/interpretation.test.ts src/relationship/openRouterInterpreter.test.ts`
 - Green result: Passed, 2 files and 11 tests.
+
+## Task 3 Verification: Feature Branch
+
+- Date: 2026-05-20
+- Command: `npm test`
+- Result: Passed, 16 files and 51 tests.
+- Command: `npm run build`
+- Initial result: Failed because `MessageInterpretation` now requires a `dateContext` output property after Zod transform, while the rule-based fallback base object omitted it.
+- Fix: Added `dateContext: undefined` to the fallback base interpretation.
+- Build retry result: Passed.
+- Re-run command: `npm test`
+- Re-run result: Passed, 16 files and 51 tests.
+- Smoke command: `node_modules/.bin/tsx --eval "<Amaya/Sarah Fah/Felix Ng harness>"`
+- Smoke result: Saved Amaya, Sarah Fah, and Felix Ng; Felix inherited `Photon Residency II`; event search returned all three; room search returned Felix Ng with Amaya context; community-lead search returned Sarah Fah.
+- Command: `git diff --check`
+- Result: Passed.

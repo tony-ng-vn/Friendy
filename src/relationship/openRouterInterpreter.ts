@@ -219,6 +219,7 @@ function baseInterpretation(overrides: Partial<MessageInterpretation>): MessageI
     confidence: 0.5,
     people: [],
     event: { name: "", dateText: "", location: "" },
+    dateContext: undefined,
     contextNote: "",
     query: "",
     tags: [],

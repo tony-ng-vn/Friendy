@@ -7,5 +7,5 @@
 - [x] Add real natural-language date parsing with `chrono-node` and failing tests.
 - [x] Implement conversation context carryover, full-name capture, and date context storage.
 - [x] Update `README.md`, `REFERENCE.md`, and `implementation-notes.html` for architecture changes.
-- [ ] Run required verification commands.
+- [x] Run required verification commands.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
