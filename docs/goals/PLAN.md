@@ -1,13 +1,11 @@
-# LLM Message Interpreter Goal Plan
+# Contextual Memory Capture V2 Goal Plan
 
-- [x] Read `AGENTS.md`, `REFERENCE.md`, and `docs/goals/llm-message-interpreter-goal.md`.
-- [x] Inspect current branch and WIP before editing.
-- [x] Read the LLM interpreter spec and Superpowers implementation plan.
-- [x] Complete and commit the message interpretation contract.
-- [x] Add repository-backed interaction logging.
-- [x] Add OpenRouter structured-output interpreter with deterministic fallback.
-- [x] Add interpreted relationship-agent execution with MVP behavior tests.
-- [x] Wire Spectrum/iMessage transport through the interpreted agent.
-- [x] Update README and `implementation-notes.html`.
-- [x] Run all required verification commands.
-- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Read `AGENTS.md`, `REFERENCE.md`, and `docs/goals/contextual-memory-capture-v2-goal.md`.
+- [x] Inspect current branch and worktree before editing.
+- [x] Create feature branch for implementation work.
+- [ ] Write failing tests for Amaya/Sarah Fah/Felix Ng multi-turn capture and search.
+- [ ] Add real natural-language date parsing with `chrono-node` and failing tests.
+- [ ] Implement conversation context carryover, full-name capture, and date context storage.
+- [ ] Update `README.md`, `REFERENCE.md`, and `implementation-notes.html` for architecture changes.
+- [ ] Run required verification commands.
+- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
