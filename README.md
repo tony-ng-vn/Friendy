@@ -20,32 +20,33 @@ Friendy is an AI system, not just an LLM call. The system combines contact signa
 
 The product loop:
 
-```text
-new phone contact
--> event/context guess
--> Friendy texts the user in iMessage
--> user confirms or ignores
--> user adds messy human context
--> Friendy saves structured relationship memory
--> user later searches by context in iMessage
--> Friendy returns likely person and contact route
+```mermaid
+flowchart TD
+  A[New phone contact] --> B[Guess event/context]
+  B --> C[Friendy texts user in iMessage]
+  C --> D{User confirms?}
+  D -->|Ignore| E[Dismiss candidate]
+  D -->|Confirm| F[User adds messy human context]
+  F --> G[Save structured relationship memory]
+  G --> H[User later searches by context in iMessage]
+  H --> I[Return likely person and contact route]
 ```
 
 The current architecture flow:
 
-```text
-contact snapshot diff
--> newly detected phone/email method
--> detectedAt from snapshot data
--> calendar event match
--> pending contact candidate
--> iMessage confirmation prompt
--> user reply
--> interpreted intent
--> deterministic tool call
--> relationship memory
--> later fuzzy search
--> composed iMessage response
+```mermaid
+flowchart LR
+  A[Contact snapshot diff] --> B[New phone/email method]
+  B --> C[detectedAt from snapshot]
+  C --> D[Calendar event match]
+  D --> E[Pending contact candidate]
+  E --> F[iMessage confirmation prompt]
+  F --> G[User reply]
+  G --> H[Structured interpretation]
+  H --> I[Deterministic tool call]
+  I --> J[Relationship memory]
+  J --> K[Later fuzzy search]
+  K --> L[Composed iMessage response]
 ```
 
 The model may help interpret messy user language, but it does not directly mutate memory. State changes go through deterministic tools for confirmation, memory writes, ignores, event corrections, and searches.

@@ -8,15 +8,16 @@ Friendy is an iMessage-first relationship memory AI system. The LLM is not the w
 
 ## Product Loop
 
-```text
-new phone contact
--> event/context guess
--> Friendy texts the user in iMessage
--> user confirms or ignores
--> user adds messy human context
--> Friendy saves structured relationship memory
--> user later searches by context in iMessage
--> Friendy returns likely person and contact route
+```mermaid
+flowchart TD
+  A[New phone contact] --> B[Event/context guess]
+  B --> C[Friendy texts user in iMessage]
+  C --> D{User confirms?}
+  D -->|Ignore| E[Dismiss candidate]
+  D -->|Confirm| F[User adds messy human context]
+  F --> G[Save structured relationship memory]
+  G --> H[User later searches by context in iMessage]
+  H --> I[Return likely person and contact route]
 ```
 
 The MVP focuses on phone contacts as the first connection source and iMessage as the only primary communication surface. LinkedIn, X, Instagram, and other connection sources can become future detectors, but they are not part of the current MVP.
@@ -47,33 +48,33 @@ These parts are outside the current MVP:
 
 ## Current Architecture Flow
 
-```text
-contact snapshot diff
--> newly detected phone/email method
--> detectedAt from snapshot data
--> calendar event match
--> pending contact candidate
--> iMessage confirmation prompt
--> user reply
--> interpreted intent
--> deterministic tool call
--> relationship memory
--> later fuzzy search
--> composed iMessage response
+```mermaid
+flowchart LR
+  A[Contact snapshot diff] --> B[New phone/email method]
+  B --> C[detectedAt from snapshot data]
+  C --> D[Calendar event match]
+  D --> E[Pending contact candidate]
+  E --> F[iMessage confirmation prompt]
+  F --> G[User reply]
+  G --> H[Interpreted intent]
+  H --> I[Deterministic tool call]
+  I --> J[Relationship memory]
+  J --> K[Later fuzzy search]
+  K --> L[Composed iMessage response]
 ```
 
 Today, ingestion is fixture-based in the repo. The important architectural boundary is already present: contact detection creates pending candidates, and the agent flow confirms or ignores those candidates before memory is saved.
 
 ## Agent Loop
 
-```text
-InboundAgentMessage
--> interpret message
--> enrich with recent conversation context
--> choose bounded action
--> execute deterministic tool
--> compose user-facing reply
--> log/evaluate behavior
+```mermaid
+flowchart TD
+  A[InboundAgentMessage] --> B[Interpret message]
+  B --> C[Enrich with recent conversation context]
+  C --> D[Choose bounded action]
+  D --> E[Execute deterministic tool]
+  E --> F[Compose user-facing reply]
+  F --> G[Log and evaluate behavior]
 ```
 
 The model may help interpret messy language, but it should not directly mutate memory. Writes, ignores, event corrections, and searches go through explicit deterministic tools so the system can be tested and audited.
@@ -159,13 +160,13 @@ src/relationship/evals/
 
 The next milestone is the iMessage-first contact confirmation loop:
 
-```text
-new phone contact detected
--> Friendy texts the user
--> user replies with messy context
--> Friendy separates event context from relationship backstory
--> deterministic tool saves confirmed memory
--> later iMessage search retrieves the person
+```mermaid
+flowchart TD
+  A[New phone contact detected] --> B[Friendy texts the user]
+  B --> C[User replies with messy context]
+  C --> D[Separate event context from relationship backstory]
+  D --> E[Deterministic tool saves confirmed memory]
+  E --> F[Later iMessage search retrieves the person]
 ```
 
 The demo should prove this product behavior before adding more connection sources or a richer UI.
