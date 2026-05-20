@@ -11,4 +11,4 @@
 - [x] Run deterministic local demo transcript covering detected-contact -> event-map -> queue -> confirm -> save -> search.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html` if architecture or behavior changes.
 - [x] Run required verification commands.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
