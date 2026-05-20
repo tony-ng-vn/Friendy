@@ -9,4 +9,4 @@
 - [x] Verify replies do not leak `matched:`, raw scoring/debug language, internal reason strings, or `manual contact`.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
 - [x] Run required verification commands.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
