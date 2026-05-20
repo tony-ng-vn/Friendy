@@ -62,6 +62,7 @@
       <li>For the contact-event verification queue goal, first ran a RED targeted suite where corrected-event, no-event confirmation, and Spectrum first-inbound identity tests failed as expected.</li>
       <li>Ran the focused GREEN suite <code>npm test -- src/relationship/repository.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts</code>: 4 files and 33 tests passed.</li>
       <li>Ran the deterministic contact-event verification demo transcript saved in <code>docs/goals/contact-event-verification-queue-demo.md</code>.</li>
+      <li>Ran contact-event verification feature-branch checks: <code>npm test</code> passed with 17 files and 70 tests, <code>npm run build</code> passed, <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code> passed, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>

@@ -30,3 +30,13 @@
 - Command: `npm exec tsx -- -e "<relationship repository/tools/agent transcript command>"`
 - Transcript: `docs/goals/contact-event-verification-queue-demo.md`
 - Result: Deterministic output covered detected contact, ranked event guesses, pending queue, proactive prompt, corrected-event confirmation, saved memory, cleared queue, and later search retrieval.
+
+## Feature Branch Verification
+
+- Date: 2026-05-20
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run agent:terminal -- "yes, recruiting agents, played piano"`
+  - `git diff --check`
+- Result: Passed before recording this verification note. `npm test` passed with 17 files and 70 tests; `npm run build` completed TypeScript and Vite production build; terminal smoke saved Maya Chen from Photon Residency Dinner; `git diff --check` reported no whitespace errors.

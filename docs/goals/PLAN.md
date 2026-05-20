@@ -10,5 +10,5 @@
 - [x] Implement Spectrum runtime conversation identity without hardcoded owner phone/user for first inbound conversations.
 - [x] Run deterministic local demo transcript covering detected-contact -> event-map -> queue -> confirm -> save -> search.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html` if architecture or behavior changes.
-- [ ] Run required verification commands.
+- [x] Run required verification commands.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
