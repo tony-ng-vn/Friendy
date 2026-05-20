@@ -24,7 +24,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Natural-language context capture.
 - Multi-turn context carryover for follow-up phrases like `also met Felix Ng`.
 - Natural-language date parsing with stored raw and normalized date context.
-- Simple fuzzy memory search with match explanations.
+- Simple fuzzy memory search with conversational replies that do not expose raw match scoring.
 
 ## Docs
 
@@ -66,7 +66,7 @@ In the chat UI:
 3. Send `save Maya: played piano, AI recruiting founder`.
 4. Confirm saved memories show Maya.
 5. Send `who was playing piano at dinner`.
-6. Friendy should return Maya with the saved context and contact label.
+6. Friendy should return Maya with the saved context in a human-sounding reply.
 
 ## Relationship Agent Core
 
@@ -98,6 +98,8 @@ Who did I meet at Photon Residency II?
 ```
 
 Date phrases are parsed with `chrono-node` against the inbound message timestamp and configured user timezone, so messages like `I met Maya yesterday at Photon Residency II dinner` store both the raw phrase and a normalized date.
+
+Search and save replies are composed through `src/relationship/responseComposer.ts`. The search tools still choose matches deterministically, but user-facing replies avoid raw phrases such as `matched:`, internal reason strings, and placeholder labels like `manual contact`.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 

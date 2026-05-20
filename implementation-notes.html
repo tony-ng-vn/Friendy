@@ -29,6 +29,7 @@
       <li>Kept Spectrum/iMessage as a transport adapter by moving interpreted execution into a testable Spectrum runtime helper that returns reply text plus compact interaction logs.</li>
       <li>Contextual Memory Capture V2 adds a small conversation-context layer inside the interpreted agent so follow-up messages like <code>also met Felix Ng...</code> can inherit the active event and date context from recent turns.</li>
       <li>Added <code>chrono-node</code> for natural-language date parsing. Friendy now stores both the raw date phrase and a normalized local date/date instant on relationship memories when a message contains temporal context.</li>
+      <li>Added a deterministic <code>responseComposer</code> boundary for user-facing save, search, no-match, clarification, and ignore replies. Search tools still select matches, while the composer prevents raw match reasons, score language, and placeholder labels such as <code>manual contact</code> from leaking into iMessage-style responses.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -47,6 +48,7 @@
       <li>For Contextual Memory Capture V2, ran <code>npm test -- src/relationship/interpretedAgent.test.ts src/relationship/temporalContext.test.ts</code>: Amaya/Sarah Fah/Felix Ng context carryover and date parsing tests passed. Also ran adjacent interpretation/OpenRouter/tools tests after updating the structured-output schema contract for <code>dateContext</code>.</li>
       <li>Ran Contextual Memory Capture V2 feature-branch verification: <code>npm test</code> passed with 16 files and 51 tests, <code>npm run build</code> passed after aligning fallback interpretation typing for <code>dateContext</code>, the Amaya/Sarah Fah/Felix Ng harness saved and retrieved all three people correctly, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for Contextual Memory Capture V2, reran <code>npm test</code>, <code>npm run build</code>, and <code>git diff --check</code> successfully.</li>
+      <li>For the response-composer goal, ran <code>npm test -- src/relationship/responseComposer.test.ts src/relationship/interpretedAgent.test.ts src/relationship/agentCore.test.ts</code>: composer unit coverage and interpreted/deterministic agent reply integration passed with 3 files and 18 tests.</li>
     </ul>
   </body>
 </html>

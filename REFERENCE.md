@@ -14,6 +14,7 @@ Transport message
 -> message interpretation
 -> conversation context enrichment
 -> deterministic relationship tools
+-> deterministic response composition
 -> memory repository
 -> logged response
 ```
@@ -23,7 +24,7 @@ Transport message
 - Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
-- Current contextual memory goal: `docs/goals/contextual-memory-capture-v2-goal.md`
+- Current response-composer goal: `docs/goals/relationship-agent-response-composer-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -38,6 +39,7 @@ Transport message
 - `src/relationship/eventMapper.ts`: deterministic contact-to-calendar matching.
 - `src/relationship/repository.ts`: in-memory repository boundary for candidates, memories, events, and future logs.
 - `src/relationship/tools.ts`: bounded tool API used by the agent.
+- `src/relationship/responseComposer.ts`: deterministic user-facing wording for save/search/no-match/clarify/ignore replies.
 - `src/relationship/agentCore.ts`: current deterministic relationship-agent router.
 - `src/relationship/env.ts`: local env loading for standalone `tsx` scripts.
 - `src/relationship/interpretation.ts`: LLM interpretation contract.
@@ -60,6 +62,7 @@ Use targeted tests while developing:
 ```bash
 npm test -- src/relationship/agentCore.test.ts
 npm test -- src/relationship/interpretedAgent.test.ts
+npm test -- src/relationship/responseComposer.test.ts
 npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 ```
