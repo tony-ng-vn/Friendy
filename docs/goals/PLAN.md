@@ -10,4 +10,4 @@
 - [x] Run a deterministic local demo transcript covering the measurable queries.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html` if architecture or commands change.
 - [x] Run required verification commands.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.

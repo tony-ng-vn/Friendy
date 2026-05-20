@@ -40,3 +40,14 @@
 - Result: Passed.
 - Command: `git diff --check`
 - Result: Passed.
+
+## Task 4 Verification: Main Merge
+
+- Date: 2026-05-20
+- Merge: Fast-forwarded `main` from `69d2e80` to `3629048`.
+- Command on `main`: `npm test`
+- Result: Passed, 17 files and 60 tests.
+- Command on `main`: `npm run build`
+- Result: Passed.
+- Command on `main`: `git diff --check`
+- Result: Passed.

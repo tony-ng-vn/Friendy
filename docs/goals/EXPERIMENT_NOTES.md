@@ -6,3 +6,4 @@
 - 2026-05-20: Demo transcript initially showed event-wide recall unnecessarily asking `Which person do you mean?`, while mixed dinner-founder ambiguity did not ask a narrowing question. Fixed ambiguity handling so broad event recall lists without narrowing and close narrow matches still ask.
 - 2026-05-20: Saved the deterministic transcript to `docs/goals/field-aware-memory-search-demo.md` and updated README, REFERENCE, scoped relationship-agent guidance, and implementation notes.
 - 2026-05-20: Feature-branch verification passed with full `npm test`, `npm run build`, and `git diff --check`.
+- 2026-05-20: Fast-forwarded `main` and reran `npm test`, `npm run build`, and `git diff --check` successfully before pushing.
