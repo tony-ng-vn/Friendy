@@ -36,3 +36,15 @@
   - `npm run ingest:demo`
   - `git diff --check`
 - Result: Passed. Full tests reported 21 files and 89 tests. Eval harness passed 12/12 required cases with 0 unsafe mutations and 0 hallucinations. Ingest demo printed deterministic detected contacts, candidate ids, ranked event guesses, and pending queue.
+
+## VERIFY: Main Required Gates
+
+- Date: 2026-05-20
+- Branch: `main`
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `npm run ingest:demo`
+  - `git diff --check`
+- Result: Passed after fast-forwarding `main`. Full tests reported 21 files and 89 tests. Eval harness passed 12/12 required cases with 0 unsafe mutations and 0 hallucinations. Ingest demo printed the same deterministic candidate/event summary.

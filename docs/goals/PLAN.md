@@ -12,4 +12,4 @@
 - [x] Update evals if ingestion changes the core flow.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
 - [x] Run required verification commands on feature branch.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
