@@ -1,11 +1,12 @@
-# Contextual Memory Capture V2 Goal Plan
+# Relationship Agent Response Composer Goal Plan
 
-- [x] Read `AGENTS.md`, `REFERENCE.md`, and `docs/goals/contextual-memory-capture-v2-goal.md`.
+- [x] Read `AGENTS.md`, `REFERENCE.md`, and `docs/goals/relationship-agent-response-composer-goal.md`.
 - [x] Inspect current branch and worktree before editing.
-- [x] Create feature branch for implementation work.
-- [x] Write failing tests for Amaya/Sarah Fah/Felix Ng multi-turn capture and search.
-- [x] Add real natural-language date parsing with `chrono-node` and failing tests.
-- [x] Implement conversation context carryover, full-name capture, and date context storage.
-- [x] Update `README.md`, `REFERENCE.md`, and `implementation-notes.html` for architecture changes.
-- [x] Run required verification commands.
-- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Create feature branch for response composer work.
+- [x] Run baseline tests on the feature branch.
+- [ ] Write failing tests for conversational save, search, no-match, clarify, ignore, and multiple-match replies.
+- [ ] Add a `responseComposer` boundary and wire it into relationship agents.
+- [ ] Verify replies do not leak `matched:`, raw scoring/debug language, internal reason strings, or `manual contact`.
+- [ ] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
+- [ ] Run required verification commands.
+- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
