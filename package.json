@@ -11,6 +11,7 @@
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "check:imessage-e2e": "tsx src/relationship/transports/imessageE2eFlow.ts",
     "ingest:check": "tsx src/relationship/ingestion/ingestCheck.ts",
+    "ingest:local:check": "tsx src/relationship/ingestion/localCheckCli.ts",
     "ingest:contacts:smoke": "tsx src/relationship/contacts/contactsSmokeCli.ts",
     "test": "vitest run",
     "test:watch": "vitest"

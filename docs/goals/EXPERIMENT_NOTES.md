@@ -6,3 +6,4 @@
 - 2026-05-20: Baseline `npm test` passed with 23 files and 92 tests before local-checker behavior changes.
 - 2026-05-20: Added local macOS adapter tests first, watched them fail on the missing module, then added parser/platform-guard implementation. Real `osascript` execution is isolated behind explicit adapter functions.
 - 2026-05-20: Added local checker tests first, watched them fail on the missing module, then wired the checker through the existing ingestion pipeline and candidate review prompt builder.
+- 2026-05-20: Added `ingest:local:check` with `--mock` deterministic verification. Real-provider mode fails clearly off macOS and `.friendy/` is ignored because it stores local contact snapshot state.

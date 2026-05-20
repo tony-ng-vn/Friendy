@@ -138,8 +138,8 @@ function buildCalendarAppleScript(windowStartIso: string, windowEndIso: string):
   const end = dateParts(windowEndIso);
 
   return [
-    `set windowStart to ${appleScriptDateExpression(start)}`,
-    `set windowEnd to ${appleScriptDateExpression(end)}`,
+    ...appleScriptDateAssignment("windowStart", start),
+    ...appleScriptDateAssignment("windowEnd", end),
     'tell application "Calendar"',
     "set outputRows to {}",
     "repeat with targetCalendar in calendars",
@@ -166,17 +166,16 @@ function buildCalendarAppleScript(windowStartIso: string, windowEndIso: string):
   ].join("\n");
 }
 
-function appleScriptDateExpression(parts: DateParts): string {
+function appleScriptDateAssignment(variableName: string, parts: DateParts): string[] {
   return [
-    "(current date)",
-    `set year of result to ${parts.year}`,
-    `set month of result to ${parts.month}`,
-    `set day of result to ${parts.day}`,
-    `set hours of result to ${parts.hour}`,
-    `set minutes of result to ${parts.minute}`,
-    `set seconds of result to ${parts.second}`,
-    "result"
-  ].join("\n");
+    `set ${variableName} to current date`,
+    `set year of ${variableName} to ${parts.year}`,
+    `set month of ${variableName} to ${parts.month}`,
+    `set day of ${variableName} to ${parts.day}`,
+    `set hours of ${variableName} to ${parts.hour}`,
+    `set minutes of ${variableName} to ${parts.minute}`,
+    `set seconds of ${variableName} to ${parts.second}`
+  ];
 }
 
 type DateParts = {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import packageJson from "../../../package.json";
 import { createFixtureCalendarEventProvider } from "./ingestionPipeline";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEvent } from "../types";
@@ -7,6 +8,10 @@ import { runLocalContactCalendarCheck } from "./localCheck";
 const userId = "user_local";
 
 describe("local contact/calendar checker", () => {
+  it("exposes the local checker as an explicit npm script", () => {
+    expect(packageJson.scripts["ingest:local:check"]).toBe("tsx src/relationship/ingestion/localCheckCli.ts");
+  });
+
   it("creates a pending candidate and dry-run prompt for the best calendar event", async () => {
     const result = await runLocalContactCalendarCheck({
       before: beforeSnapshot(),

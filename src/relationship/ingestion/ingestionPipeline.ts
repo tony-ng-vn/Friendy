@@ -6,7 +6,7 @@ import { detectNewContactMethods } from "./contactSnapshot";
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
 export type CalendarEventProvider = {
-  source: "fixture";
+  source: "fixture" | "apple_calendar";
   listEvents(userId: string): CalendarEvent[];
 };
 
