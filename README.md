@@ -66,6 +66,23 @@ In the chat UI:
 5. Send `who was playing piano at dinner`.
 6. Friendy should return Maya with the saved context and contact label.
 
+## Relationship Agent Core
+
+Run the local terminal agent demo:
+
+```bash
+npm run agent:terminal -- "yes, recruiting agents, played piano"
+```
+
+Run the Spectrum/iMessage agent when Spectrum credentials are available:
+
+```bash
+cp .env.example .env
+npm run agent:spectrum
+```
+
+The agent number for the first iMessage channel is `+14156056081`.
+
 ## Product Direction
 
 Friendy should stay agent-centric. A future mobile companion app can provide Contacts and Calendar signals, but the user-facing product is the Photon agent that asks, confirms, remembers, searches, explains, and helps follow up.

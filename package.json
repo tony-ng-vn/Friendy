@@ -7,12 +7,14 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
     "agent:terminal": "tsx src/relationship/transports/terminalTransport.ts",
+    "agent:spectrum": "tsx src/relationship/transports/spectrumTransport.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "spectrum-ts": "^1.9.2"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.0",
