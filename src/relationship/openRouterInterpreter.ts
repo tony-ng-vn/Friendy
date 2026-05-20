@@ -249,11 +249,11 @@ function extractClassYear(text: string): string {
 function extractProject(text: string): string {
   const projectMatch = /\bmaking\s+(.+)$/i.exec(text);
   if (projectMatch?.[1]) {
-    return projectMatch[1].trim();
+    return normalizeProjectText(projectMatch[1].trim());
   }
 
   if (/swift|computer|phone|clicky|wisper|wispr/i.test(text)) {
-    return text;
+    return normalizeProjectText(text);
   }
 
   return "";
@@ -327,4 +327,10 @@ function isVagueReference(normalized: string): boolean {
 
 function capitalize(value: string): string {
   return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);
+}
+
+function normalizeProjectText(value: string): string {
+  return value
+    .replace(/\bswift\b/gi, "Swift")
+    .replace(/\bwispe?r\s+flow\b/gi, "Wispr Flow");
 }

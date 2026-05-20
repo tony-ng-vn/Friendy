@@ -33,3 +33,13 @@
 - Fix: Added OpenRouter structured-output request builder, one invalid-output retry, deterministic fallback interpreter, and OpenRouter env config defaults.
 - Green command: `npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/env.test.ts`
 - Green result: Passed, 2 files and 7 tests.
+
+## Task 4 Red/Green: Interpreted Agent
+
+- Date: 2026-05-20
+- Red command: `npm test -- src/relationship/interpretedAgent.test.ts`
+- Red result: Failed because `src/relationship/interpretedAgent.ts` was missing.
+- First green attempt: Added interpreted execution wrapper. One test failed because lower-case `swift` leaked into the user-facing response and stop-word matching let Amaya appear in the Swift search.
+- Fix: Normalized project names for common product terms and tightened lexical stop words.
+- Green command: `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/tools.test.ts src/relationship/openRouterInterpreter.test.ts`
+- Green result: Passed, 3 files and 14 tests.

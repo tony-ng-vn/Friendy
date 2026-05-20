@@ -128,7 +128,43 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
  * we know lexical search is the bottleneck.
  */
 export function extractTags(text: string): string[] {
-  const stopWords = new Set(["about", "with", "from", "that", "this", "there", "their", "should", "person"]);
+  const stopWords = new Set([
+    "about",
+    "also",
+    "and",
+    "are",
+    "did",
+    "for",
+    "from",
+    "have",
+    "her",
+    "him",
+    "his",
+    "i",
+    "in",
+    "into",
+    "me",
+    "of",
+    "ok",
+    "on",
+    "person",
+    "same",
+    "she",
+    "should",
+    "that",
+    "the",
+    "their",
+    "there",
+    "this",
+    "through",
+    "to",
+    "was",
+    "we",
+    "who",
+    "with",
+    "you",
+    "your"
+  ]);
   const tags = text
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
