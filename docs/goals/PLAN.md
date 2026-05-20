@@ -1,14 +1,15 @@
-# Relationship Agent Eval Harness Goal Plan
+# Contact Calendar Ingestion Goal Plan
 
 - [x] Read active goal objective from the Codex goal context.
 - [x] Read `docs/goals/goal-writing-guide.md`.
 - [x] Inspect current branch and worktree before editing.
-- [x] Create feature branch for relationship-agent eval harness work.
+- [x] Create feature branch for contact/calendar ingestion work.
 - [x] Run baseline tests on the feature branch.
-- [x] Write failing tests for eval runner case coverage, metrics, deterministic CLI behavior, nonzero failure exit, and optional OpenRouter gating.
-- [x] Implement eval runner under `src/relationship/evals/`.
-- [x] Add at least 12 trajectory eval cases covering every required scenario.
-- [x] Add `npm run eval:agent`.
-- [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
-- [x] Run required verification commands on feature branch.
-- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [ ] Write failing tests for contact snapshot diff, fixture calendar provider, ingestion enqueue, demo CLI, and explicit Contacts smoke safety.
+- [ ] Implement fixture-based contact/calendar ingestion modules.
+- [ ] Add `npm run ingest:demo`.
+- [ ] Add optional explicit `npm run ingest:contacts:smoke` command with safe test-contact behavior.
+- [ ] Update evals if ingestion changes the core flow.
+- [ ] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
+- [ ] Run required verification commands on feature branch.
+- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
