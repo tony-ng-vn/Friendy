@@ -41,4 +41,27 @@ describe("spectrum transport", () => {
     });
     expect(runtime.repo.listInteractions(demoUser.id)).toHaveLength(1);
   });
+
+  it("uses the first inbound Spectrum space as conversation identity when no user exists yet", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z"
+    });
+
+    await runtime.handleInboundText({
+      text: "I met Amaya at Photon Residency II, recruiting agents founder",
+      spaceId: "space_first_inbound",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    const search = await runtime.handleInboundText({
+      text: "Who was the recruiting agents founder from Photon?",
+      spaceId: "space_first_inbound",
+      receivedAt: "2026-05-20T12:05:00.000Z"
+    });
+
+    expect(search.replyText).toContain("Amaya");
+    expect(runtime.repo.listInteractions("space_first_inbound")).toHaveLength(2);
+    expect(runtime.repo.listMemories("space_first_inbound")[0].displayName).toBe("Amaya");
+  });
 });

@@ -14,7 +14,7 @@ import type { AgentInteraction, InboundAgentMessage } from "../types";
 
 /** Small transport input shape so Spectrum specifics do not leak into the agent core. */
 export type SpectrumInboundInput = {
-  userId: string;
+  userId?: string;
   text: string;
   spaceId?: string;
   receivedAt: string;
@@ -41,7 +41,7 @@ export type CompactInteractionLog = {
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
 export function toInboundAgentMessage(input: SpectrumInboundInput): InboundAgentMessage {
   return {
-    userId: input.userId,
+    userId: resolveSpectrumUserId(input),
     platform: "imessage",
     spaceId: input.spaceId,
     text: input.text,
@@ -99,17 +99,19 @@ export async function startSpectrumFriendyAgent() {
 
   for await (const [space, message] of app.messages) {
     await space.responding(async () => {
-      const inbound = toInboundAgentMessage({
-        userId: demoUser.id,
+      const result = await runtime.handleInboundText({
         text: message.content.type === "text" ? message.content.text : "",
         spaceId: space.id,
         receivedAt: new Date().toISOString()
       });
-      const result = await runtime.handleInboundText(inbound);
       console.info("[friendy:agent_interaction]", JSON.stringify(result.log));
       await message.reply(result.replyText);
     });
   }
+}
+
+function resolveSpectrumUserId(input: SpectrumInboundInput): string {
+  return input.userId?.trim() || input.spaceId?.trim() || demoUser.id;
 }
 
 function toCompactInteractionLog(interaction: AgentInteraction): CompactInteractionLog {

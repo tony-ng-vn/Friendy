@@ -128,6 +128,7 @@ export type OutboundAgentMessage = {
 export type AgentToolCall =
   | "search_memories"
   | "list_pending_candidates"
+  | "list_candidate_event_matches"
   | "get_candidate"
   | "confirm_candidate"
   | "ignore_candidate"

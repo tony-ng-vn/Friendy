@@ -1,5 +1,6 @@
 import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
+import type { CalendarEvent } from "./types";
 
 describe("relationship repository", () => {
   it("creates a pending contact candidate with event matches", () => {
@@ -16,6 +17,51 @@ describe("relationship repository", () => {
     expect(matches[0].eventTitle).toBe("Photon Residency Dinner");
   });
 
+  it("creates a pending contact candidate during one clear event", () => {
+    const clearEvent: CalendarEvent = {
+      id: "event_ai_meetup",
+      userId: demoUser.id,
+      title: "AI Meetup",
+      startsAt: "2026-05-15T20:00:00-07:00",
+      endsAt: "2026-05-15T23:00:00-07:00",
+      timezone: "America/Los_Angeles",
+      calendarSource: "simulated",
+      eventKind: "short"
+    };
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [clearEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact(demoDetectedContact);
+    const matches = repo.listEventMatches(candidate.id);
+
+    expect(candidate.status).toBe("pending");
+    expect(matches).toEqual([
+      expect.objectContaining({
+        eventTitle: "AI Meetup",
+        rank: 1
+      })
+    ]);
+  });
+
+  it("keeps candidates pending when no calendar event overlaps", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...demoDetectedContact,
+      displayName: "No Event Person",
+      detectedAt: "2026-06-01T12:00:00-07:00"
+    });
+
+    expect(candidate.status).toBe("pending");
+    expect(repo.listEventMatches(candidate.id)).toEqual([]);
+    expect(repo.listPendingCandidates(demoUser.id).map((item) => item.displayName)).toEqual(["No Event Person"]);
+  });
+
   it("confirms a candidate into a relationship memory", () => {
     const repo = createRelationshipRepository({
       users: [demoUser],
@@ -29,6 +75,21 @@ describe("relationship repository", () => {
     expect(memory.displayName).toBe("Maya Chen");
     expect(memory.eventTitle).toBe("Photon Residency Dinner");
     expect(memory.tags).toContain("piano");
+  });
+
+  it("stores a corrected event title when confirmation chooses another event", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(demoDetectedContact);
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, not dinner", undefined, {
+      eventTitle: "Photon Residency"
+    });
+
+    expect(memory.eventTitle).toBe("Photon Residency");
+    expect(memory.eventId).toBeUndefined();
   });
 
   it("ignores a candidate without creating a memory", () => {

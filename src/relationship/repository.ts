@@ -18,6 +18,10 @@ type RepositorySeed = {
   interactions?: AgentInteraction[];
 };
 
+type ConfirmCandidateOptions = {
+  eventTitle?: string;
+};
+
 /** Minimal repository contract inferred from the in-memory implementation. */
 export type RelationshipRepository = ReturnType<typeof createRelationshipRepository>;
 
@@ -66,14 +70,19 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
         .sort((a, b) => a.rank - b.rank);
     },
 
-    confirmCandidate(candidateId: string, contextNote: string, eventId?: string): RelationshipMemory {
+    confirmCandidate(
+      candidateId: string,
+      contextNote: string,
+      eventId?: string,
+      options: ConfirmCandidateOptions = {}
+    ): RelationshipMemory {
       const candidate = candidates.find((item) => item.id === candidateId);
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
 
       candidate.status = "confirmed";
-      const selectedMatch = selectEventMatch(eventMatches, candidateId, eventId);
+      const selectedMatch = options.eventTitle && !eventId ? undefined : selectEventMatch(eventMatches, candidateId, eventId);
       const memory: RelationshipMemory = {
         id: `memory_${candidate.id}`,
         userId: candidate.userId,
@@ -81,7 +90,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
         displayName: candidate.displayName,
         primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
         eventId: selectedMatch?.calendarEventId,
-        eventTitle: selectedMatch?.eventTitle,
+        eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
         contextNote,
         tags: extractTags(contextNote),
         confidence: selectedMatch?.confidence ?? 0.5,

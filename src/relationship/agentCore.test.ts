@@ -27,6 +27,107 @@ describe("relationship agent core", () => {
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
 
+  it("saves a corrected event when the confirmation names a different overlapping event", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "yes, actually at Photon Residency, recruiting agents",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    const [memory] = repo.listMemories(demoUser.id);
+    expect(result.toolCalls).toContain("confirm_candidate");
+    expect(memory.eventTitle).toBe("Photon Residency");
+    expect(memory.eventId).toBe(demoLongEvent.id);
+    expect(memory.contextNote).toContain("recruiting agents");
+    expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
+  });
+
+  it("saves a no-event candidate with event context supplied during confirmation", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...demoDetectedContact,
+      displayName: "Nina Park",
+      detectedAt: "2026-06-01T12:00:00-07:00"
+    });
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "yes, met at SF AI Meetup, building robots",
+      receivedAt: "2026-06-01T12:05:00.000Z"
+    });
+
+    const [memory] = repo.listMemories(demoUser.id);
+    expect(result.toolCalls).toContain("confirm_candidate");
+    expect(memory.displayName).toBe("Nina Park");
+    expect(memory.eventTitle).toBe("SF AI Meetup");
+    expect(memory.contextNote).toContain("building robots");
+  });
+
+  it("ignores a pending candidate without saving memory", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "ignore",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.toolCalls).toEqual(["list_pending_candidates", "ignore_candidate"]);
+    expect(result.outbound.text).toContain("Ignored Maya Chen");
+    expect(repo.getCandidate(candidate.id)?.status).toBe("ignored");
+    expect(repo.listMemories(demoUser.id)).toEqual([]);
+  });
+
+  it("retrieves a verified contact after confirmation by event and context search", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate(demoDetectedContact);
+    const agent = createRelationshipAgent(tools);
+
+    agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "yes, recruiting agents, played piano",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    const searchResult = agent.handleMessage({
+      userId: demoUser.id,
+      platform: "terminal",
+      text: "who was the recruiting agents person from Photon dinner?",
+      receivedAt: "2026-05-20T12:05:00.000Z"
+    });
+
+    expect(searchResult.toolCalls).toContain("search_memories");
+    expect(searchResult.outbound.text).toContain("I think that was Maya Chen");
+    expect(searchResult.outbound.text).toContain("recruiting agents");
+  });
+
   it("searches saved memories and returns a conversational confident match", () => {
     const repo = createRelationshipRepository({
       users: [demoUser],
@@ -114,5 +215,11 @@ describe("candidate review prompt", () => {
     const prompt = buildCandidateReviewPrompt("Maya Chen", "Photon Residency Dinner");
 
     expect(prompt).toBe("I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?");
+  });
+
+  it("asks where they met when no event was matched", () => {
+    const prompt = buildCandidateReviewPrompt("Nina Park");
+
+    expect(prompt).toBe("I noticed you added Nina Park. Where did you meet them?");
   });
 });

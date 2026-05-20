@@ -51,12 +51,26 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return repo.getCandidate(candidateId);
     },
 
-    confirm_candidate(userId: string, candidateId: string, contextNote: string, eventId?: string) {
+    list_candidate_event_matches(userId: string, candidateId: string) {
       const candidate = repo.getCandidate(candidateId);
       if (!candidate || candidate.userId !== userId) {
         throw new Error(`Candidate not found for user: ${candidateId}`);
       }
-      return repo.confirmCandidate(candidateId, contextNote, eventId);
+      return repo.listEventMatches(candidateId);
+    },
+
+    confirm_candidate(
+      userId: string,
+      candidateId: string,
+      contextNote: string,
+      eventId?: string,
+      options: { eventTitle?: string } = {}
+    ) {
+      const candidate = repo.getCandidate(candidateId);
+      if (!candidate || candidate.userId !== userId) {
+        throw new Error(`Candidate not found for user: ${candidateId}`);
+      }
+      return repo.confirmCandidate(candidateId, contextNote, eventId, options);
     },
 
     ignore_candidate(userId: string, candidateId: string) {

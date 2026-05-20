@@ -1,4 +1,5 @@
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
+import { isConfirmationReply, resolveCandidateConfirmation } from "./candidateConfirmation";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
 import {
@@ -98,6 +99,10 @@ function executeInterpretation(
   tools: RelationshipTools,
   toolCalls: AgentToolCall[]
 ): string {
+  if (isConfirmationReply(message.text)) {
+    return confirmPendingCandidate(message, tools, toolCalls);
+  }
+
   if (interpretation.needsClarification || interpretation.intent === "clarify") {
     return composeClarificationReply(interpretation.clarificationQuestion);
   }
@@ -154,6 +159,30 @@ function searchMemories(
   }
 
   return composeSearchReply({ matches, ambiguous: !isEventWideRecallQuery(message.text) && isAmbiguous(matches) });
+}
+
+function confirmPendingCandidate(
+  message: InboundAgentMessage,
+  tools: RelationshipTools,
+  toolCalls: AgentToolCall[]
+): string {
+  toolCalls.push("list_pending_candidates");
+  const candidate = tools.list_pending_candidates(message.userId)[0];
+
+  if (!candidate) {
+    return "I do not see a pending contact to confirm.";
+  }
+
+  toolCalls.push("list_candidate_event_matches");
+  const eventMatches = tools.list_candidate_event_matches(message.userId, candidate.id);
+  const confirmation = resolveCandidateConfirmation(message.text, eventMatches);
+
+  toolCalls.push("confirm_candidate");
+  const memory = tools.confirm_candidate(message.userId, candidate.id, confirmation.contextNote, confirmation.eventId, {
+    eventTitle: confirmation.eventTitle
+  });
+
+  return composeSaveConfirmation({ memories: [memory] });
 }
 
 function ignorePendingCandidate(

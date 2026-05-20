@@ -1,5 +1,6 @@
 import type { AgentCoreResult, AgentToolCall, InboundAgentMessage } from "./types";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
+import { isConfirmationReply, resolveCandidateConfirmation } from "./candidateConfirmation";
 import {
   composeIgnoreCandidateReply,
   composeNoMatchReply,
@@ -22,7 +23,7 @@ export function createRelationshipAgent(tools: RelationshipTools) {
       const lower = normalized.toLowerCase();
       const toolCalls: AgentToolCall[] = [];
 
-      if (isConfirmationReply(lower)) {
+      if (isConfirmationReply(normalized)) {
         toolCalls.push("list_pending_candidates");
         const candidates = tools.list_pending_candidates(message.userId);
         const candidate = candidates[0];
@@ -31,9 +32,13 @@ export function createRelationshipAgent(tools: RelationshipTools) {
           return reply(message, "I do not see a pending contact to confirm.", toolCalls);
         }
 
-        const contextNote = cleanConfirmationNote(normalized);
+        toolCalls.push("list_candidate_event_matches");
+        const eventMatches = tools.list_candidate_event_matches(message.userId, candidate.id);
+        const confirmation = resolveCandidateConfirmation(normalized, eventMatches);
         toolCalls.push("confirm_candidate");
-        const memory = tools.confirm_candidate(message.userId, candidate.id, contextNote);
+        const memory = tools.confirm_candidate(message.userId, candidate.id, confirmation.contextNote, confirmation.eventId, {
+          eventTitle: confirmation.eventTitle
+        });
 
         return reply(
           message,
@@ -98,14 +103,6 @@ function reply(message: InboundAgentMessage, text: string, toolCalls: AgentToolC
     },
     toolCalls
   };
-}
-
-function isConfirmationReply(value: string): boolean {
-  return value === "yes" || value.startsWith("yes,") || value.startsWith("yep") || value.startsWith("yeah");
-}
-
-function cleanConfirmationNote(value: string): string {
-  return value.replace(/^(yes|yep|yeah)\s*,?\s*/i, "").trim() || "met at event";
 }
 
 function looksLikeManualMemory(value: string): boolean {

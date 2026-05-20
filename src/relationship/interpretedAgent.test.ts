@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { demoUser } from "./fixtures";
+import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
 import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
@@ -153,6 +153,33 @@ describe("interpreted relationship agent", () => {
 
     expect(result.outbound.text).toBe("I don't see a pending contact to ignore right now.");
     expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+  });
+
+  it("confirms a pending contact through the interpreted path used by Spectrum", async () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate(demoDetectedContact);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("yes, actually at Photon Residency, recruiting agents"));
+
+    const [memory] = repo.listMemories(demoUser.id);
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(memory.eventTitle).toBe("Photon Residency");
+    expect(memory.contextNote).toContain("recruiting agents");
   });
 
   it("answers no-match searches without leaking debug language", async () => {
