@@ -2,8 +2,8 @@
 
 - [x] Create goal and implementation plan docs.
 - [x] Run baseline tests on the feature branch.
-- [ ] Add RED tests for local macOS providers and checker orchestration.
-- [ ] Implement local provider adapters and checker orchestration.
+- [x] Add RED tests for local macOS providers and checker orchestration.
+- [x] Implement local provider adapters and checker orchestration.
 - [ ] Add `npm run ingest:local:check`.
 - [ ] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
 - [ ] Run required verification on the feature branch.
