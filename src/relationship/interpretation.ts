@@ -101,7 +101,7 @@ export const messageInterpretationSchema = z
     intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
     confidence: z.number().min(0).max(1),
     people: z.array(personInterpretationSchema).default([]),
-    event: eventInterpretationSchema.default({}),
+    event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),
     contextNote: z.string().default(""),
     query: z.string().default(""),
     tags: z.array(z.string()).default([]),

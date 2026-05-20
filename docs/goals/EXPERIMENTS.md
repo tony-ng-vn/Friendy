@@ -52,3 +52,17 @@
 - Fix: Added a testable Spectrum runtime that delegates to the interpreted agent, returns reply text, and creates compact interaction logs for the live Spectrum loop to print.
 - Green command: `npm test -- src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts`
 - Green result: Passed, 2 files and 9 tests.
+
+## Task 6 Verification: Feature Branch
+
+- Date: 2026-05-20
+- Command: `npm test`
+- Result: Passed, 15 files and 46 tests.
+- Command: `npm run build`
+- Initial result: Failed because `eventInterpretationSchema.default({})` was valid at runtime but too narrow for TypeScript; Zod expected explicit `name`, `dateText`, and `location`.
+- Fix: Changed the event default to `{ name: "", dateText: "", location: "" }`.
+- Build retry result: Passed.
+- Command: `npm run agent:terminal -- "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :("`
+- Result: Passed; terminal demo saved Amaya with Photon Residency bed context.
+- Command: `git diff --check`
+- Result: Passed.

@@ -9,5 +9,5 @@
 - [x] Add interpreted relationship-agent execution with MVP behavior tests.
 - [x] Wire Spectrum/iMessage transport through the interpreted agent.
 - [x] Update README and `implementation-notes.html`.
-- [ ] Run all required verification commands.
+- [x] Run all required verification commands.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
