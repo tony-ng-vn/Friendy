@@ -96,6 +96,28 @@ npm run agent:spectrum
 
 The agent number for the first iMessage channel is `+14156056081`.
 
+Configure the LLM interpreter in `.env.local`:
+
+```bash
+SPECTRUM_PROJECT_ID=
+SPECTRUM_PROJECT_SECRET=
+FRIENDY_AGENT_NUMBER=+14156056081
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+```
+
+`OPENROUTER_API_KEY` is optional for local testing. If it is missing, Friendy falls back to a deterministic interpreter so the MVP examples still run without model access. When OpenRouter is configured, the model only returns validated structured intent JSON; deterministic backend tools still perform all memory writes and searches.
+
+Live iMessage smoke test:
+
+```text
+I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(
+Who did I meet at the residency?
+Ok so at the residency, I also met Zhiyuan who also call zed, go to CMU, class 2028 and making swift project that allow you to control your computer through your phone with a clicky UI and similar function like Wisper Flow
+Who was making the Swift project?
+that person from the thing
+```
+
 ## Product Direction
 
 Friendy should stay agent-centric. A future mobile companion app can provide Contacts and Calendar signals, but the user-facing product is the Photon agent that asks, confirms, remembers, searches, explains, and helps follow up.

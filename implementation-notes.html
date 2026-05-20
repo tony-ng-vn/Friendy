@@ -25,6 +25,8 @@
       <li>Added explicit <code>.env.local</code>/<code>.env</code> loading for standalone <code>tsx</code> agent scripts because Vite env loading does not apply to <code>npm run agent:spectrum</code>.</li>
       <li>Expanded manual memory capture so the live agent accepts natural first-person messages like <code>I met Amaya at Photon Residency II...</code> instead of only command-style <code>met Name, context</code> inputs.</li>
       <li>Added <code>docs/agent-navigation.md</code> to document the repo navigation strategy: keep <code>REFERENCE.md</code> as the index, keep <code>AGENTS.md</code> files short and scoped, and avoid turning always-loaded instructions into copied specs.</li>
+      <li>Added an LLM interpretation layer for Friendy messages. OpenRouter is used only to produce validated intent JSON; deterministic relationship tools still execute all memory writes, searches, ignores, and clarification behavior.</li>
+      <li>Kept Spectrum/iMessage as a transport adapter by moving interpreted execution into a testable Spectrum runtime helper that returns reply text plus compact interaction logs.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -35,6 +37,9 @@
       <li>Ran <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code>: the demo prompt mapped Maya Chen to Photon Residency Dinner and saved the context note.</li>
       <li>Ran targeted env-loader tests to confirm <code>.env.local</code> credentials are loaded for the Spectrum agent while shell-provided values still take precedence.</li>
       <li>Added a regression test for natural first-person memory capture and search using the Amaya Photon Residency example.</li>
+      <li>Ran <code>npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/env.test.ts</code>: OpenRouter structured-output request, retry, invalid-output fallback, and missing-key fallback tests passed.</li>
+      <li>Ran <code>npm test -- src/relationship/interpretedAgent.test.ts src/relationship/tools.test.ts src/relationship/openRouterInterpreter.test.ts</code>: interpreted capture/search/clarify/logging behavior passed.</li>
+      <li>Ran <code>npm test -- src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts</code>: Spectrum normalization and interpreted runtime wiring passed.</li>
     </ul>
   </body>
 </html>
