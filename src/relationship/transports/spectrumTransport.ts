@@ -1,6 +1,7 @@
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createRelationshipAgent } from "../agentCore";
+import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
@@ -32,12 +33,8 @@ export function toInboundAgentMessage(input: SpectrumInboundInput): InboundAgent
  * demo-scoped here; the agent core is already separated so those pieces can be swapped later.
  */
 export async function startSpectrumFriendyAgent() {
-  const projectId = process.env.SPECTRUM_PROJECT_ID;
-  const projectSecret = process.env.SPECTRUM_PROJECT_SECRET;
-
-  if (!projectId || !projectSecret) {
-    throw new Error("Missing SPECTRUM_PROJECT_ID or SPECTRUM_PROJECT_SECRET.");
-  }
+  loadFriendyEnv();
+  const { projectId, projectSecret } = readSpectrumCredentials();
 
   const repo = createRelationshipRepository({
     users: [demoUser],

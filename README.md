@@ -77,7 +77,8 @@ npm run agent:terminal -- "yes, recruiting agents, played piano"
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 
 ```bash
-cp .env.example .env
+# .env.local is supported for local credentials and is ignored by git.
+cp .env.example .env.local
 npm run agent:spectrum
 ```
 

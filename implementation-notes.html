@@ -22,6 +22,7 @@
       <li>Changed TypeScript module resolution to <code>Bundler</code> so Vite can resolve Spectrum SDK package export subpaths such as <code>spectrum-ts/providers/imessage</code>.</li>
       <li>The Spectrum adapter is a transport wrapper around the relationship agent core; the agent core remains usable through terminal tests without Spectrum credentials.</li>
       <li>Installing <code>spectrum-ts</code> reported high-severity npm audit warnings in transitive dependencies; no automatic audit fix was run because it could make unrelated dependency changes during the MVP pass.</li>
+      <li>Added explicit <code>.env.local</code>/<code>.env</code> loading for standalone <code>tsx</code> agent scripts because Vite env loading does not apply to <code>npm run agent:spectrum</code>.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -30,6 +31,7 @@
       <li>Ran <code>npm test</code>: 11 test files passed, 24 tests passed after the relationship-agent core, transports, and Spectrum scaffold were added.</li>
       <li>Ran <code>npm run build</code>: TypeScript and Vite production build completed after the Spectrum module-resolution change.</li>
       <li>Ran <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code>: the demo prompt mapped Maya Chen to Photon Residency Dinner and saved the context note.</li>
+      <li>Ran targeted env-loader tests to confirm <code>.env.local</code> credentials are loaded for the Spectrum agent while shell-provided values still take precedence.</li>
     </ul>
   </body>
 </html>
