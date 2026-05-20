@@ -87,8 +87,13 @@ export type AgentInteraction = {
   platform: AgentPlatform;
   spaceId?: string;
   inboundText: string;
+  interpretedIntentJson?: unknown;
   outboundText: string;
   toolCalls: string[];
+  modelUsed?: string;
+  confidence?: number;
+  latencyMs?: number;
+  error?: string;
   createdAt: string;
 };
 

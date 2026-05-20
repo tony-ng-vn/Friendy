@@ -4,6 +4,7 @@ import type {
   ContactCandidate,
   ContactCandidateDetected,
   EventContextMatch,
+  AgentInteraction,
   RelationshipMemory,
   User
 } from "./types";
@@ -14,6 +15,7 @@ type RepositorySeed = {
   candidates?: ContactCandidate[];
   eventMatches?: EventContextMatch[];
   memories?: RelationshipMemory[];
+  interactions?: AgentInteraction[];
 };
 
 /** Minimal repository contract inferred from the in-memory implementation. */
@@ -30,6 +32,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
   const candidates = [...(seed.candidates ?? [])];
   const eventMatches = [...(seed.eventMatches ?? [])];
   const memories = [...(seed.memories ?? [])];
+  const interactions = [...(seed.interactions ?? [])];
 
   return {
     listCalendarEvents(userId: string) {
@@ -105,6 +108,15 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
     addMemory(memory: RelationshipMemory): RelationshipMemory {
       memories.push(memory);
       return memory;
+    },
+
+    addInteraction(interaction: AgentInteraction): AgentInteraction {
+      interactions.push(interaction);
+      return interaction;
+    },
+
+    listInteractions(userId?: string): AgentInteraction[] {
+      return userId ? interactions.filter((interaction) => interaction.userId === userId) : [...interactions];
     }
   };
 }

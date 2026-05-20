@@ -43,4 +43,39 @@ describe("relationship repository", () => {
     expect(repo.getCandidate(candidate.id)?.status).toBe("ignored");
     expect(repo.listMemories()).toHaveLength(0);
   });
+
+  it("stores interpreted agent interaction logs for later backend inspection", () => {
+    const repo = createRelationshipRepository({
+      users: [demoUser],
+      calendarEvents: [demoLongEvent, demoShortEvent]
+    });
+
+    repo.addInteraction({
+      id: "interaction_1",
+      userId: demoUser.id,
+      platform: "imessage",
+      spaceId: "space_123",
+      inboundText: "Who did I meet at the residency?",
+      interpretedIntentJson: {
+        intent: "search_memory",
+        query: "people met at residency"
+      },
+      outboundText: "You met Amaya.",
+      toolCalls: ["search_memories"],
+      modelUsed: "nvidia/nemotron-3-super-120b-a12b:free",
+      confidence: 0.88,
+      latencyMs: 42,
+      error: "",
+      createdAt: "2026-05-20T12:30:00.000Z"
+    });
+
+    expect(repo.listInteractions(demoUser.id)).toEqual([
+      expect.objectContaining({
+        inboundText: "Who did I meet at the residency?",
+        modelUsed: "nvidia/nemotron-3-super-120b-a12b:free",
+        confidence: 0.88,
+        latencyMs: 42
+      })
+    ]);
+  });
 });

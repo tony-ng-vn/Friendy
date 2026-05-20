@@ -4,7 +4,7 @@
 - [x] Inspect current branch and WIP before editing.
 - [x] Read the LLM interpreter spec and Superpowers implementation plan.
 - [x] Complete and commit the message interpretation contract.
-- [ ] Add repository-backed interaction logging.
+- [x] Add repository-backed interaction logging.
 - [ ] Add OpenRouter structured-output interpreter with deterministic fallback.
 - [ ] Add interpreted relationship-agent execution with MVP behavior tests.
 - [ ] Wire Spectrum/iMessage transport through the interpreted agent.
