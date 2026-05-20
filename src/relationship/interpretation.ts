@@ -123,7 +123,9 @@ export const messageInterpretationSchema = z
         endsAt: z.string().optional(),
         timezone: z.string()
       })
-      .optional(),
+      .nullable()
+      .optional()
+      .transform((value) => value ?? undefined),
     contextNote: z.string().default(""),
     query: z.string().default(""),
     tags: z.array(z.string()).default([]),

@@ -79,6 +79,23 @@ describe("message interpretation contract", () => {
     expect(buildSearchQueryFromInterpretation(interpretation)).toBe("people I met at the Residency Residency");
   });
 
+  it("accepts nullable dateContext from strict structured model output", () => {
+    const interpretation = validateMessageInterpretation({
+      intent: "search_memory",
+      confidence: 0.8,
+      people: [],
+      event: { name: "Photon Residency II", dateText: "", location: "" },
+      dateContext: null,
+      contextNote: "",
+      query: "people from Photon Residency II",
+      tags: ["Photon", "Residency"],
+      needsClarification: false,
+      clarificationQuestion: ""
+    });
+
+    expect(interpretation.dateContext).toBeUndefined();
+  });
+
   it("rejects malformed interpretations before tools execute", () => {
     expect(() =>
       validateMessageInterpretation({
