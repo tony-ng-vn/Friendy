@@ -9,5 +9,5 @@
 - [x] Implement the smallest product-flow/runtime changes needed to pass the tests.
 - [x] Add `npm run check:imessage-e2e`.
 - [x] Update docs and implementation notes.
-- [ ] Run required verification commands on feature branch.
+- [x] Run required verification commands on feature branch.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.

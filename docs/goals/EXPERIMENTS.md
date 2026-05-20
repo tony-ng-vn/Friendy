@@ -46,3 +46,16 @@
   - `git diff --check`
   - repo-wide forbidden-term search for the old presentation framing
 - Result: Full tests passed with 23 files and 92 tests. Build passed. Agent evals passed 12/12 required cases. Both product checks printed the expected deterministic flows. Whitespace check passed. The forbidden-term search returned no matches.
+
+## Verification: Main After Fast-Forward
+
+- Date: 2026-05-20
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `npm run check:imessage-e2e`
+  - `npm run ingest:check`
+  - `git diff --check`
+  - repo-wide forbidden-term search for the old presentation framing
+- Result: Main verification passed with 23 test files and 92 tests, successful production build, 12/12 required agent eval cases, both product checks, whitespace check, and no forbidden-term matches.
