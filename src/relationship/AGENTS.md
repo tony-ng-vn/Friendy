@@ -13,6 +13,7 @@ Architecture boundaries:
 - `interpretation.ts` is the contract for LLM-to-JSON interpretation.
 - `interpretedAgent.ts` enriches validated interpretations with recent conversation context before deterministic tools execute.
 - `temporalContext.ts` owns chrono-node date parsing; do not hand-roll relative-date rules in agent code.
+- `evals/` owns trajectory-level agent evaluation. Eval assertions should check state, tool calls, metrics, and semantic substrings, not exact reply prose.
 - `transports/` adapts communication surfaces and should not own product logic.
 
 Rules:
@@ -25,6 +26,7 @@ Rules:
 - Keep memory search deterministic unless a goal explicitly adds a model reranker. Role, project, school/class, alias, and specific context should outrank generic shared event words for narrow searches.
 - Keep queued-contact confirmation deterministic. The LLM may interpret messy capture/search text, but approval, ignore, event correction, and pending queue writes should go through explicit tools.
 - Add tests for realistic messy user messages, not only ideal command syntax.
+- When adding agent behavior that spans multiple turns, add or update an eval case in `evals/agentEvalRunner.ts` so `npm run eval:agent` remains a product-level safety check.
 
 Useful test targets:
 
@@ -36,5 +38,7 @@ npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/tools.test.ts
 npm test -- src/relationship/repository.test.ts
+npm test -- src/relationship/evals/agentEvalRunner.test.ts
+npm run eval:agent
 npm test -- src/relationship/transports/spectrumTransport.test.ts
 ```

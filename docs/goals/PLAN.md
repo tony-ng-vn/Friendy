@@ -9,6 +9,6 @@
 - [x] Implement eval runner under `src/relationship/evals/`.
 - [x] Add at least 12 trajectory eval cases covering every required scenario.
 - [x] Add `npm run eval:agent`.
-- [ ] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
-- [ ] Run required verification commands on feature branch.
+- [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
+- [x] Run required verification commands on feature branch.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.

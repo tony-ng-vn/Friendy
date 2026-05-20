@@ -31,7 +31,7 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current contact-event verification goal: `docs/goals/contact-event-verification-queue-goal.md`
+- Current relationship-agent eval goal: `docs/goals/relationship-agent-evals-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -54,6 +54,7 @@ Transport message
 - `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
 - `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
+- `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
 - `src/relationship/transports/`: communication adapters; product logic should live above this layer.
 
 ## Commands
@@ -62,6 +63,7 @@ Transport message
 npm test
 npm run build
 npm run agent:terminal -- "yes, recruiting agents, played piano"
+npm run eval:agent
 npm run agent:spectrum
 ```
 
@@ -73,6 +75,7 @@ npm test -- src/relationship/interpretedAgent.test.ts
 npm test -- src/relationship/responseComposer.test.ts
 npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
+npm test -- src/relationship/evals/agentEvalRunner.test.ts
 npm test -- src/relationship/transports/spectrumTransport.test.ts
 ```
 

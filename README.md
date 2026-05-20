@@ -29,6 +29,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Natural-language date parsing with stored raw and normalized date context.
 - Field-aware memory search that lets role, project, school, and specific context outrank generic shared event words.
 - Conversational replies that do not expose raw match scoring.
+- Relationship-agent eval harness for messy multi-turn trajectories and safety invariants.
 
 ## Docs
 
@@ -60,6 +61,7 @@ Run checks:
 ```bash
 npm test
 npm run build
+npm run eval:agent
 ```
 
 ## Demo Script
@@ -118,6 +120,14 @@ Date phrases are parsed with `chrono-node` against the inbound message timestamp
 Search and save replies are composed through `src/relationship/responseComposer.ts`. The search tools still choose matches deterministically, but user-facing replies avoid raw phrases such as `matched:`, internal reason strings, and placeholder labels like `manual contact`.
 
 Search ranking is field-aware: narrow queries such as `Find the recruiting agents founder from Photon` prefer role/project/context matches over broad event overlap, while broad event queries such as `Who did I meet at Photon Residency II?` still list everyone from that event.
+
+Run the relationship-agent eval harness:
+
+```bash
+npm run eval:agent
+```
+
+The required eval set is deterministic and runs without OpenRouter credentials. It scores 12 realistic trajectories across contact confirmation, event correction, no-event confirmation, ignore, post-confirmation search, clarification, event-wide recall, context carryover, hallucination guard, unsafe-save guard, Spectrum first-inbound identity, and messy human wording. Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness. Optional repeated model-backed evals are gated behind `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 

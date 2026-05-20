@@ -34,6 +34,8 @@
       <li>Added <code>candidateConfirmation.ts</code> as the deterministic consent boundary for queued contacts. This keeps approval, ignore, and corrected-event handling in explicit tools instead of asking the LLM to directly mutate memory state.</li>
       <li>Added <code>list_candidate_event_matches</code> so the agent can inspect ranked calendar guesses before confirming a candidate. Exact corrected event titles are preferred before substring matches, which prevents <code>Photon Residency</code> from accidentally keeping the more specific <code>Photon Residency Dinner</code> guess.</li>
       <li>Changed the Spectrum runtime so a first inbound space can become the conversation identity when no explicit user ID exists. This removes the normal-onboarding dependency on a hardcoded owner phone while preserving explicit user IDs for tests and future signup flows.</li>
+      <li>Added <code>src/relationship/evals/</code> as the trajectory-level agent evaluation boundary. The required eval suite is deterministic and local; optional repeated model-backed evals require both <code>OPENROUTER_API_KEY</code> and <code>FRIENDY_EVAL_RUN_MODEL=1</code>.</li>
+      <li>Added <code>npm run eval:agent</code> to report pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, clarification correctness, per-case assertions, and optional model-backed eval availability.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -63,6 +65,10 @@
       <li>Ran the focused GREEN suite <code>npm test -- src/relationship/repository.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts</code>: 4 files and 33 tests passed.</li>
       <li>Ran the deterministic contact-event verification demo transcript saved in <code>docs/goals/contact-event-verification-queue-demo.md</code>.</li>
       <li>Ran contact-event verification feature-branch checks: <code>npm test</code> passed with 17 files and 70 tests, <code>npm run build</code> passed, <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code> passed, and <code>git diff --check</code> passed.</li>
+      <li>For the relationship-agent eval harness goal, first ran a RED targeted test where the eval runner was missing, then where the stub had zero cases and no npm script.</li>
+      <li>Ran <code>npm test -- src/relationship/evals/agentEvalRunner.test.ts</code>: eval runner contract tests passed with 5 tests.</li>
+      <li>Ran <code>npm run eval:agent</code>: 12 of 12 required deterministic trajectory evals passed with 100% pass rate, 100% intent accuracy, 100% memory-write correctness, 100% search recall@3, 0 unsafe mutations, 0 hallucinations, and 100% clarification correctness.</li>
+      <li>Ran relationship-agent eval harness feature-branch checks: <code>npm test</code> passed with 18 files and 75 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>
