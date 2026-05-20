@@ -6,6 +6,8 @@ Start by reading `REFERENCE.md` when you need repo context. It is the navigation
 
 Prefer adding or updating scoped `AGENTS.md` files when a subdirectory needs durable local context. Keep those files short, specific, and navigational; do not duplicate full specs or long implementation plans inside them.
 
+When changing agent-navigation structure, follow `docs/agent-navigation.md`. The default pattern is one repo map plus small scoped rules, not a large always-loaded instruction file.
+
 ## Implementation Notes
 
 When implementing a spec, keep a running `implementation-notes.html` file, or a Markdown equivalent if HTML is impractical.

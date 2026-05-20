@@ -20,6 +20,7 @@ Transport message
 ## Start Here By Task
 
 - Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
+- Agent navigation structure: `docs/agent-navigation.md`
 - Current LLM interpreter goal: `docs/goals/llm-message-interpreter-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
@@ -79,11 +80,13 @@ Never commit secrets.
 
 ## Research Basis For Agent Navigation
 
-- OpenAI Codex supports repo instructions through `AGENTS.md`, and scoped files help keep guidance close to the code they govern: https://developers.openai.com/codex/guides/agents-md
-- Anthropic's Claude Code memory guidance uses project memory files as persistent context and recommends keeping them concise and specific: https://docs.anthropic.com/en/docs/claude-code/memory
-- Anthropic's agent engineering guidance emphasizes simple composable workflows, clear tool boundaries, and explicit evaluation loops over overcomplicated agent systems: https://www.anthropic.com/engineering/building-effective-agents
-- The “Lost in the Middle” paper shows long contexts can degrade retrieval of relevant information, which supports short scoped files and index maps instead of one huge instruction file: https://arxiv.org/abs/2307.03172
-- Recent context-engineering work frames context selection/organization as a core system-design problem for LLM agents, which supports `REFERENCE.md` as a routing index rather than dumping everything into prompts: https://arxiv.org/abs/2507.13334
+See `docs/agent-navigation.md` for the full source-backed rationale.
+
+- OpenAI Codex supports repo instructions through `AGENTS.md` and nested instruction files: https://developers.openai.com/codex/guides/agents-md
+- Anthropic recommends concise, specific project memory and local scoping for narrower instructions: https://docs.anthropic.com/en/docs/claude-code/memory
+- Anthropic's context-engineering guidance supports high-signal context plus just-in-time retrieval through lightweight identifiers: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- "Lost in the Middle" supports the caution that longer context is not automatically better for retrieval: https://arxiv.org/abs/2307.03172
+- Recent AGENTS.md studies support using context files carefully and keeping unnecessary requirements out of always-loaded instructions: https://arxiv.org/abs/2510.21413 and https://arxiv.org/abs/2602.11988
 
 ## Current Caution
 
