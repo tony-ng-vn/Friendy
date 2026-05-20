@@ -9,4 +9,4 @@
 - 2026-05-20: Added `relationshipContext` to confirmed memories and included it in deterministic search fields so searches like `high school at Photon` retrieve the confirmed contact.
 - 2026-05-20: Added `npm run check:imessage-e2e`, which uses fixture contact ingestion and the Spectrum runtime boundary without sending live messages.
 - 2026-05-20: Removed project-wide show-oriented wording and renamed fixture identifiers/files/scripts so future agents treat the checks as product verification paths, not throwaway presentation paths.
-- 2026-05-20: Fast-forwarded the feature branch into `main` and reran the full verification set successfully before push.
+- 2026-05-20: Fast-forwarded the feature branch into `main`, reran the full verification set, and pushed `main`.

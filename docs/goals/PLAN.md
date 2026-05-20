@@ -10,4 +10,4 @@
 - [x] Add `npm run check:imessage-e2e`.
 - [x] Update docs and implementation notes.
 - [x] Run required verification commands on feature branch.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
