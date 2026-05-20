@@ -1,15 +1,13 @@
-# Contact Calendar Ingestion Goal Plan
+# iMessage Contact Confirmation Loop Goal Plan
 
 - [x] Read active goal objective from the Codex goal context.
-- [x] Read `docs/goals/goal-writing-guide.md`.
-- [x] Inspect current branch and worktree before editing.
-- [x] Create feature branch for contact/calendar ingestion work.
-- [x] Run baseline tests on the feature branch.
-- [x] Write failing tests for contact snapshot diff, fixture calendar provider, ingestion enqueue, demo CLI, and explicit Contacts smoke safety.
-- [x] Implement fixture-based contact/calendar ingestion modules.
-- [x] Add `npm run ingest:demo`.
-- [x] Add optional explicit `npm run ingest:contacts:smoke` command with safe test-contact behavior.
-- [x] Update evals if ingestion changes the core flow.
-- [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
-- [x] Run required verification commands on feature branch.
-- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Inspect current branch, worktree, and relationship-agent architecture before editing behavior.
+- [x] Create feature branch for iMessage contact confirmation loop work.
+- [ ] Run baseline tests on the feature branch.
+- [ ] Write failing tests for the deterministic iMessage/Spectrum-style E2E demo.
+- [ ] Write failing tests for event context vs relationship backstory memory separation.
+- [ ] Implement the smallest demo/runtime changes needed to pass the tests.
+- [ ] Add `npm run demo:imessage-e2e`.
+- [ ] Update docs and implementation notes.
+- [ ] Run required verification commands on feature branch.
+- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.

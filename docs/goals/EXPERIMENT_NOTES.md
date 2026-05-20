@@ -1,13 +1,6 @@
-# Contact Calendar Ingestion Goal Notes
+# iMessage Contact Confirmation Loop Goal Notes
 
-- 2026-05-20: Started goal execution from clean `main`; created `feature/contact-calendar-ingestion`.
-- 2026-05-20: Baseline `npm test` passed with 18 files and 75 tests before ingestion changes.
-- 2026-05-20: Design decision: keep normal ingestion deterministic and fixture-based. Real Contacts writes are allowed only through the explicit smoke command and never during tests, build, evals, or `ingest:demo`.
-- 2026-05-20: The fixture ingestion should enqueue candidates through the existing relationship repository/tool boundary so the confirmation/search flow remains shared with Spectrum and terminal agents.
-- 2026-05-20: Added fixture snapshots with Maya Chen as an overlapping-event phone detection and Nina Park as a no-event email detection. Name-only edits and duplicate known methods are ignored by the diff.
-- 2026-05-20: Added a fixture calendar event provider and `ingestContactSnapshotDiff`, which syncs fixture events into the repository before creating candidates so event matching still happens through the existing repository/tool boundary.
-- 2026-05-20: Added explicit `ingest:contacts:smoke` behavior for macOS Contacts only. It validates names as `Friendy-<number>`, derives a deterministic test phone number, reuses an exact matching test contact if present, and fails clearly outside macOS without touching Contacts.
-- 2026-05-20: Left the existing relationship-agent eval cases unchanged because ingestion adds a source that creates pending candidates before the existing confirmation/search flow; it does not change the post-ingestion agent behavior that `npm run eval:agent` already covers.
-- 2026-05-20: Documented the fixture ingestion demo, optional Contacts smoke command, manual smoke-contact deletion path, source map, and relationship-agent directory rules.
-- 2026-05-20: Feature-branch verification passed across `npm test`, `npm run build`, `npm run eval:agent`, `npm run ingest:demo`, and `git diff --check`.
-- 2026-05-20: Fast-forwarded `main` and reran the required verification commands successfully before preparing the final goal-completion docs.
+- 2026-05-20: Started goal execution from clean `main`; created `feature/imessage-contact-confirmation-loop`.
+- 2026-05-20: Existing architecture has the needed boundaries: fixture ingestion creates pending candidates, Spectrum normalizes to `InboundAgentMessage`, interpreted agent executes deterministic tools, and search runs through field-aware memory ranking.
+- 2026-05-20: Design decision: the required demo should use a deterministic iMessage/Spectrum-style simulator so it exercises the iMessage runtime boundary without sending live messages. Live Spectrum remains optional.
+- 2026-05-20: The tricky confirmation phrase must keep `Photon Residency II` as the current event and `high school in Minnesota` as relationship backstory.
