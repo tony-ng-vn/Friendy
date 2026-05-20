@@ -30,3 +30,13 @@
 - Command: deterministic `node_modules/.bin/tsx --eval "<field-aware event-goer transcript>"`
 - Result: Maya was the only confident match for recruiting-agents founder, Leo was the only confident devtools match, Rina matched CMU, Photon Residency II event recall listed Maya/Leo/Nina/Rina, and dinner-founder ambiguity asked a narrowing question.
 - Transcript: `docs/goals/field-aware-memory-search-demo.md`.
+
+## Task 3 Verification: Feature Branch
+
+- Date: 2026-05-20
+- Command: `npm test`
+- Result: Passed, 17 files and 60 tests.
+- Command: `npm run build`
+- Result: Passed.
+- Command: `git diff --check`
+- Result: Passed.

@@ -9,5 +9,5 @@
 - [x] Implement deterministic field-aware scoring in the search layer.
 - [x] Run a deterministic local demo transcript covering the measurable queries.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html` if architecture or commands change.
-- [ ] Run required verification commands.
+- [x] Run required verification commands.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
