@@ -10,4 +10,4 @@
 - [x] Wire Spectrum/iMessage transport through the interpreted agent.
 - [x] Update README and `implementation-notes.html`.
 - [x] Run all required verification commands.
-- [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [x] Merge to `main`, re-verify, push, and audit all goal requirements.

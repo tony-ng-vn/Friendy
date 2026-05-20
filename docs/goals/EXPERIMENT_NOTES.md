@@ -8,3 +8,4 @@
 - 2026-05-20: Added interpreted agent execution. The wrapper logs every interpreted turn, executes only deterministic tools, saves natural Amaya/Zhiyuan messages, returns multiple residency matches, and asks clarification instead of saving vague references.
 - 2026-05-20: Wired Spectrum through the interpreted agent via a small runtime helper. The live loop now replies with interpreted-agent output and prints compact `[friendy:agent_interaction]` JSON logs.
 - 2026-05-20: Final feature-branch verification found a TypeScript-only Zod default issue. Fixed the schema default to include explicit empty event fields, then reran tests, build, terminal smoke command, and diff check successfully.
+- 2026-05-20: Fast-forwarded `main`, reran tests and build on `main`, confirmed diff check, and pushed `main` to origin.
