@@ -72,6 +72,7 @@ See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the ful
 
 - [Product spec](docs/product-spec.md)
 - [AI system architecture](docs/ai-system-architecture.md)
+- [Changelog](CHANGELOG.md)
 - [Product Flow plan](docs/product-flow-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
