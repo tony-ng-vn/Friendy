@@ -165,6 +165,47 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).not.toContain("manual contact");
   });
 
+  it("uses field-aware search so specific event-goer queries do not return generic shared-event matches", async () => {
+    const { agent } = createTestAgent();
+
+    await agent.handleMessage(inbound("I met Maya at Photon Residency II dinner, founder working on recruiting agents"));
+    await agent.handleMessage(inbound("I also met Nina Park who was the designer building an AI note-taking tool"));
+    await agent.handleMessage(inbound("I also met Leo at Photon Residency II, making devtools for agents"));
+    await agent.handleMessage(
+      inbound("I also met Rina who goes to CMU, class 2027 and making AI infra dashboard")
+    );
+
+    const recruitingSearch = await agent.handleMessage(inbound("Find the recruiting agents founder from Photon"));
+    expect(recruitingSearch.outbound.text).toContain("I think that was Maya");
+    expect(recruitingSearch.outbound.text).not.toContain("Nina Park");
+
+    const devtoolsSearch = await agent.handleMessage(inbound("Who was making devtools?"));
+    expect(devtoolsSearch.outbound.text).toContain("I think that was Leo");
+    expect(devtoolsSearch.outbound.text).not.toContain("Rina");
+
+    const schoolSearch = await agent.handleMessage(inbound("Who goes to CMU?"));
+    expect(schoolSearch.outbound.text).toContain("I think that was Rina");
+
+    const eventSearch = await agent.handleMessage(inbound("Who did I meet at Photon Residency II?"));
+    expect(eventSearch.outbound.text).toContain("Maya");
+    expect(eventSearch.outbound.text).toContain("Nina Park");
+    expect(eventSearch.outbound.text).toContain("Leo");
+    expect(eventSearch.outbound.text).toContain("Rina");
+  });
+
+  it("keeps ambiguous dinner-founder queries as narrowing questions", async () => {
+    const { agent } = createTestAgent();
+
+    await agent.handleMessage(inbound("I met Maya at dinner, recruiting agents founder"));
+    await agent.handleMessage(inbound("I met Sarah at dinner, hardware founder"));
+
+    const result = await agent.handleMessage(inbound("Who was the founder from dinner?"));
+
+    expect(result.outbound.text).toContain("Maya");
+    expect(result.outbound.text).toContain("Sarah");
+    expect(result.outbound.text).toContain("Which person");
+  });
+
   it("asks clarification for vague references and does not save a fake memory", async () => {
     const { agent, repo } = createTestAgent();
 

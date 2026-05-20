@@ -1,11 +1,22 @@
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
-/** Search hit with explanation text the agent can show directly to the user. */
+/** Search hit with diagnostic explanation text for logs and tests, not direct user-facing copy. */
 export type MemorySearchResult = {
   memory: RelationshipMemory;
   score: number;
   reason: string;
+};
+
+type SearchQueryAnalysis = {
+  terms: string[];
+  isEventWide: boolean;
+};
+
+type InternalMemorySearchResult = MemorySearchResult & {
+  coverage: number;
+  eventScore: number;
+  specificScore: number;
 };
 
 /**
@@ -21,14 +32,15 @@ export function createRelationshipTools(repo: RelationshipRepository) {
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
-      const queryTags = extractTags(query);
+      const queryAnalysis = analyzeSearchQuery(query);
 
-      return repo
+      const scored = repo
         .listMemories(userId)
-        .map((memory) => scoreMemory(memory, queryTags, query))
+        .map((memory) => scoreMemory(memory, queryAnalysis, query))
         .filter((result) => result.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
+        .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
+
+      return selectSearchResults(scored, queryAnalysis).map(stripInternalScores);
     },
 
     list_pending_candidates(userId: string) {
@@ -83,25 +95,202 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 }
 
 /**
- * Scores memories with deterministic lexical matching for the MVP.
+ * Scores memories with deterministic field-aware matching for the MVP.
  *
- * The goal is explainable "why this person" behavior before adding embeddings or an LLM reranker.
+ * Specific person facts such as role, project, school, and context need to outrank generic shared
+ * event words. Event-wide "who did I meet" searches are the exception: those intentionally return
+ * every matching event memory instead of collapsing to one top person.
  */
-function scoreMemory(memory: RelationshipMemory, queryTags: string[], rawQuery: string): MemorySearchResult {
-  const haystack = [memory.displayName, memory.eventTitle ?? "", memory.contextNote, memory.tags.join(" ")]
-    .join(" ")
-    .toLowerCase();
-  const matched = queryTags.filter((tag) => haystack.includes(tag));
-  // Demo-specific event boost keeps vague dinner searches useful until event-term extraction is generalized.
-  const eventBoost = memory.eventTitle && rawQuery.toLowerCase().includes("dinner") ? 2 : 0;
-  const score = matched.length * 3 + eventBoost;
+function scoreMemory(
+  memory: RelationshipMemory,
+  query: SearchQueryAnalysis,
+  rawQuery: string
+): InternalMemorySearchResult {
+  const fields = extractMemorySearchFields(memory);
+  const matched = new Set<string>();
+  let score = 0;
+  let eventScore = 0;
+  let specificScore = 0;
+
+  for (const term of query.terms) {
+    const eventMatch = fieldIncludes(fields.event, term);
+    if (eventMatch) {
+      const weight = query.isEventWide ? 8 : 1;
+      score += weight;
+      eventScore += weight;
+      matched.add(term);
+    }
+
+    const nameScore = scoreSpecificField(fields.name, term, 12);
+    const roleScore = scoreSpecificField(fields.role, term, 10);
+    const projectScore = scoreSpecificField(fields.project, term, 9);
+    const schoolScore = scoreSpecificField(fields.school, term, 10);
+    const aliasScore = scoreSpecificField(fields.alias, term, 7);
+    const tagScore = scoreSpecificField(fields.tags, term, 4);
+    const contextScore = eventMatch ? 0 : scoreSpecificField(fields.context, term, 5);
+    const termSpecificScore = nameScore + roleScore + projectScore + schoolScore + aliasScore + tagScore + contextScore;
+
+    if (termSpecificScore > 0) {
+      score += termSpecificScore;
+      specificScore += termSpecificScore;
+      matched.add(term);
+    }
+  }
+
+  const coverage = query.terms.length === 0 ? 0 : matched.size / query.terms.length;
 
   return {
     memory,
     score,
-    reason:
-      matched.length > 0
-        ? `Your saved note says "${memory.contextNote}" and matched: ${matched.join(", ")}.`
-        : `This matched the event "${memory.eventTitle ?? "unknown"}".`
+    coverage,
+    eventScore,
+    specificScore,
+    reason: matched.size > 0 ? `Matched ${[...matched].join(", ")}.` : `No searchable field matched.`
   };
 }
+
+function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
+  const terms = extractTags(rawQuery)
+    .map((term) => normalizeSearchText(term))
+    .filter((term) => term.length > 0 && !GENERIC_QUERY_TERMS.has(term));
+
+  return {
+    terms,
+    isEventWide: /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery)
+  };
+}
+
+function selectSearchResults(results: InternalMemorySearchResult[], query: SearchQueryAnalysis): InternalMemorySearchResult[] {
+  if (query.isEventWide) {
+    return results.slice(0, 10);
+  }
+
+  const covered = results.filter((result) => result.coverage >= minimumCoverage(query.terms.length));
+
+  if (covered.length <= 1) {
+    return covered;
+  }
+
+  const [top, second] = covered;
+  if (top.specificScore > 0 && top.score - second.score >= 6) {
+    return [top];
+  }
+
+  return covered.slice(0, 3);
+}
+
+function stripInternalScores(result: InternalMemorySearchResult): MemorySearchResult {
+  return {
+    memory: result.memory,
+    score: result.score,
+    reason: result.reason
+  };
+}
+
+function minimumCoverage(termCount: number): number {
+  if (termCount <= 1) {
+    return 1;
+  }
+
+  return 0.5;
+}
+
+function scoreSpecificField(field: string, term: string, weight: number): number {
+  return fieldIncludes(field, term) ? weight : 0;
+}
+
+function fieldIncludes(field: string, term: string): boolean {
+  return searchTokens(field).has(term);
+}
+
+function searchTokens(value: string): Set<string> {
+  return new Set(extractTags(value).map((token) => normalizeSearchText(token)).filter(Boolean));
+}
+
+function normalizeSearchText(value: string): string {
+  const lower = value.toLowerCase();
+  const irregular: Record<string, string> = {
+    slept: "sleep"
+  };
+
+  if (irregular[lower]) {
+    return irregular[lower];
+  }
+
+  return lower.replace(/ing$/, "").replace(/ed$/, "").replace(/s$/, "");
+}
+
+function extractMemorySearchFields(memory: RelationshipMemory) {
+  const labels = extractLabeledContext(memory.contextNote);
+
+  return {
+    name: memory.displayName,
+    event: [memory.eventTitle ?? "", labels.event].join(" "),
+    role: labels.role,
+    project: labels.project,
+    school: [labels.school, labels.classYear].join(" "),
+    alias: labels.alias,
+    context: labels.context,
+    tags: memory.tags.join(" ")
+  };
+}
+
+function extractLabeledContext(contextNote: string) {
+  const fields = {
+    event: "",
+    role: "",
+    project: "",
+    school: "",
+    classYear: "",
+    alias: "",
+    context: ""
+  };
+
+  for (const part of contextNote.split("|")) {
+    const trimmed = part.trim();
+    const match = trimmed.match(/^([a-z /]+):\s*(.+)$/i);
+
+    if (!match) {
+      fields.context = [fields.context, trimmed].filter(Boolean).join(" ");
+      continue;
+    }
+
+    const [, label, value] = match;
+    const normalizedLabel = label.toLowerCase();
+
+    if (normalizedLabel === "event") {
+      fields.event = [fields.event, value].filter(Boolean).join(" ");
+    } else if (normalizedLabel === "role") {
+      fields.role = [fields.role, value].filter(Boolean).join(" ");
+    } else if (normalizedLabel === "project") {
+      fields.project = [fields.project, value].filter(Boolean).join(" ");
+    } else if (normalizedLabel === "school/company") {
+      fields.school = [fields.school, value].filter(Boolean).join(" ");
+    } else if (normalizedLabel === "class year") {
+      fields.classYear = [fields.classYear, value].filter(Boolean).join(" ");
+    } else if (normalizedLabel === "alias") {
+      fields.alias = [fields.alias, value].filter(Boolean).join(" ");
+    } else {
+      fields.context = [fields.context, value].filter(Boolean).join(" ");
+    }
+  }
+
+  return fields;
+}
+
+const GENERIC_QUERY_TERMS = new Set([
+  "build",
+  "building",
+  "find",
+  "go",
+  "goe",
+  "make",
+  "making",
+  "meet",
+  "met",
+  "remember",
+  "search",
+  "show",
+  "work",
+  "working"
+]);

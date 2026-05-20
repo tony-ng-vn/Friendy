@@ -1,6 +1,7 @@
 import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
+import type { RelationshipMemory } from "./types";
 
 describe("relationship tools", () => {
   it("lists and confirms pending candidates through bounded tools", () => {
@@ -38,4 +39,66 @@ describe("relationship tools", () => {
     expect(results[0].memory.displayName).toBe("Maya Chen");
     expect(results[0].reason).toContain("piano");
   });
+
+  it("ranks role and project matches above generic shared event matches", () => {
+    const tools = createToolsWithMemories([
+      memory("Maya", "Photon Residency II", "event: Photon Residency II | I met Maya at Photon Residency II dinner, founder working on recruiting agents | role: founder"),
+      memory("Nina Park", "Photon Residency II", "event: Photon Residency II | I also met Nina Park who was the designer building an AI note-taking tool | role: designer")
+    ]);
+
+    const results = tools.search_memories(demoUser.id, "Find the recruiting agents founder from Photon");
+
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Maya"]);
+  });
+
+  it("ranks specific project searches above memories that only share generic making language", () => {
+    const tools = createToolsWithMemories([
+      memory("Leo", "Photon Residency II", "event: Photon Residency II | I met Leo at Photon Residency II, making devtools for agents | project: devtools for agents"),
+      memory("Rina", "Photon Residency II", "event: Photon Residency II | I also met Rina who goes to CMU, class 2027 and making AI infra dashboard | school/company: CMU | class year: 2027 | project: AI infra dashboard")
+    ]);
+
+    const results = tools.search_memories(demoUser.id, "Who was making devtools?");
+
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Leo"]);
+  });
+
+  it("keeps school and event-wide searches working after field-aware ranking", () => {
+    const tools = createToolsWithMemories([
+      memory("Leo", "Photon Residency II", "event: Photon Residency II | I met Leo at Photon Residency II, making devtools for agents | project: devtools for agents"),
+      memory("Rina", "Photon Residency II", "event: Photon Residency II | I also met Rina who goes to CMU, class 2027 and making AI infra dashboard | school/company: CMU | class year: 2027 | project: AI infra dashboard"),
+      memory("Nina Park", "Photon Residency II", "event: Photon Residency II | I also met Nina Park who was the designer building an AI note-taking tool | role: designer")
+    ]);
+
+    expect(tools.search_memories(demoUser.id, "Who goes to CMU?").map((result) => result.memory.displayName)).toEqual([
+      "Rina"
+    ]);
+
+    expect(
+      tools.search_memories(demoUser.id, "Who did I meet at Photon Residency II?").map((result) => result.memory.displayName)
+    ).toEqual(["Leo", "Rina", "Nina Park"]);
+  });
 });
+
+function createToolsWithMemories(memories: RelationshipMemory[]) {
+  const repo = createRelationshipRepository({
+    users: [demoUser],
+    memories
+  });
+
+  return createRelationshipTools(repo);
+}
+
+function memory(displayName: string, eventTitle: string, contextNote: string): RelationshipMemory {
+  return {
+    id: `memory_${displayName.replace(/\s+/g, "_").toLowerCase()}`,
+    userId: demoUser.id,
+    displayName,
+    primaryContactLabel: "manual contact",
+    eventTitle,
+    contextNote,
+    tags: [],
+    confidence: 0.8,
+    createdAt: "2026-05-20T12:00:00.000Z",
+    updatedAt: "2026-05-20T12:00:00.000Z"
+  };
+}
