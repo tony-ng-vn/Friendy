@@ -9,7 +9,7 @@
 - [x] Implement fixture-based contact/calendar ingestion modules.
 - [x] Add `npm run ingest:demo`.
 - [x] Add optional explicit `npm run ingest:contacts:smoke` command with safe test-contact behavior.
-- [ ] Update evals if ingestion changes the core flow.
-- [ ] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
+- [x] Update evals if ingestion changes the core flow.
+- [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
 - [ ] Run required verification commands on feature branch.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.

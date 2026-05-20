@@ -30,6 +30,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Field-aware memory search that lets role, project, school, and specific context outrank generic shared event words.
 - Conversational replies that do not expose raw match scoring.
 - Relationship-agent eval harness for messy multi-turn trajectories and safety invariants.
+- Fixture-based contact/calendar ingestion that proves a contact snapshot diff can become a pending confirmation candidate without reading real Contacts or calendars.
 
 ## Docs
 
@@ -62,6 +63,7 @@ Run checks:
 npm test
 npm run build
 npm run eval:agent
+npm run ingest:demo
 ```
 
 ## Demo Script
@@ -128,6 +130,37 @@ npm run eval:agent
 ```
 
 The required eval set is deterministic and runs without OpenRouter credentials. It scores 12 realistic trajectories across contact confirmation, event correction, no-event confirmation, ignore, post-confirmation search, clarification, event-wide recall, context carryover, hallucination guard, unsafe-save guard, Spectrum first-inbound identity, and messy human wording. Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness. Optional repeated model-backed evals are gated behind `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
+
+## Contact/Calendar Ingestion Demo
+
+Run the fixture-only ingestion demo:
+
+```bash
+npm run ingest:demo
+```
+
+The demo uses checked-in before/after contact snapshots and fixture calendar events. It prints a deterministic summary with detected contacts, candidate ids, event guesses, and the pending queue. It does not read real Contacts or real calendars.
+
+Expected shape:
+
+```text
+Detected contacts: Maya Chen, Nina Park
+Candidate candidate_maya_chen_1778906520000: Maya Chen
+Event guesses: 1. Photon Residency Dinner | 2. Photon Residency
+Candidate candidate_nina_park_1780340400000: Nina Park
+Event guesses: none
+Pending queue: Maya Chen, Nina Park
+```
+
+Optional macOS Contacts smoke test:
+
+```bash
+npm run ingest:contacts:smoke -- --name Friendy-001
+```
+
+This command is explicit and is never run by `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:demo`. It only accepts names matching `Friendy-<number>`, creates or reuses that exact test contact, and prints the exact name and phone method it created or reused. On non-macOS environments it fails clearly while fixture ingestion continues to work.
+
+To manually delete a smoke-test contact, open the macOS Contacts app, search for the exact test name such as `Friendy-001`, select that contact, and delete it.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 

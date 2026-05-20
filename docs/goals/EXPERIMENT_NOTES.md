@@ -7,3 +7,5 @@
 - 2026-05-20: Added fixture snapshots with Maya Chen as an overlapping-event phone detection and Nina Park as a no-event email detection. Name-only edits and duplicate known methods are ignored by the diff.
 - 2026-05-20: Added a fixture calendar event provider and `ingestContactSnapshotDiff`, which syncs fixture events into the repository before creating candidates so event matching still happens through the existing repository/tool boundary.
 - 2026-05-20: Added explicit `ingest:contacts:smoke` behavior for macOS Contacts only. It validates names as `Friendy-<number>`, derives a deterministic test phone number, reuses an exact matching test contact if present, and fails clearly outside macOS without touching Contacts.
+- 2026-05-20: Left the existing relationship-agent eval cases unchanged because ingestion adds a source that creates pending candidates before the existing confirmation/search flow; it does not change the post-ingestion agent behavior that `npm run eval:agent` already covers.
+- 2026-05-20: Documented the fixture ingestion demo, optional Contacts smoke command, manual smoke-contact deletion path, source map, and relationship-agent directory rules.

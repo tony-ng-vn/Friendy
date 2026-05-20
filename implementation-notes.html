@@ -36,6 +36,10 @@
       <li>Changed the Spectrum runtime so a first inbound space can become the conversation identity when no explicit user ID exists. This removes the normal-onboarding dependency on a hardcoded owner phone while preserving explicit user IDs for tests and future signup flows.</li>
       <li>Added <code>src/relationship/evals/</code> as the trajectory-level agent evaluation boundary. The required eval suite is deterministic and local; optional repeated model-backed evals require both <code>OPENROUTER_API_KEY</code> and <code>FRIENDY_EVAL_RUN_MODEL=1</code>.</li>
       <li>Added <code>npm run eval:agent</code> to report pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, clarification correctness, per-case assertions, and optional model-backed eval availability.</li>
+      <li>Added fixture contact snapshot diffing under <code>src/relationship/ingestion/</code>. The diff is method-centric: new normalized phone/email methods can create detections, while name-only edits and duplicate normalized methods are ignored.</li>
+      <li>Kept contact/calendar ingestion fixture-only for this goal. The calendar provider abstraction exists so real adapters can be added later, but tests, builds, evals, and <code>npm run ingest:demo</code> do not read real calendars or Contacts.</li>
+      <li>Added <code>sync_calendar_events</code> to the relationship tools so ingestion can seed fixture events while event matching remains inside the existing repository/tool boundary.</li>
+      <li>Added an explicit macOS Contacts smoke command for manual integration checks. It only accepts <code>Friendy-&lt;number&gt;</code> names, creates or reuses one exact test contact, derives a deterministic phone number, and fails clearly outside macOS.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -70,6 +74,10 @@
       <li>Ran <code>npm run eval:agent</code>: 12 of 12 required deterministic trajectory evals passed with 100% pass rate, 100% intent accuracy, 100% memory-write correctness, 100% search recall@3, 0 unsafe mutations, 0 hallucinations, and 100% clarification correctness.</li>
       <li>Ran relationship-agent eval harness feature-branch checks: <code>npm test</code> passed with 18 files and 75 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for the relationship-agent eval harness goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, and <code>git diff --check</code> successfully.</li>
+      <li>For the contact/calendar ingestion goal, first ran a RED targeted suite where contact snapshot, ingestion pipeline, and Contacts smoke modules were missing and the required npm scripts did not exist.</li>
+      <li>Ran the focused GREEN suite <code>npm test -- src/relationship/ingestion/contactSnapshot.test.ts src/relationship/ingestion/ingestionPipeline.test.ts src/relationship/contacts/contactsSmoke.test.ts</code>: 3 files and 14 tests passed.</li>
+      <li>Ran <code>npm run ingest:demo</code>: the fixture demo printed Maya Chen and Nina Park detections, candidate ids, ranked event guesses, and the pending queue without real Contacts or calendar access.</li>
+      <li>Ran <code>npm run build</code> after fixing a contact diff type narrowing issue.</li>
     </ul>
   </body>
 </html>

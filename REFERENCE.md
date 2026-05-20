@@ -31,7 +31,7 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current relationship-agent eval goal: `docs/goals/relationship-agent-evals-goal.md`
+- Current contact/calendar ingestion goal: `docs/goals/contact-calendar-ingestion-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -54,6 +54,8 @@ Transport message
 - `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
 - `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
+- `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion demo pipeline.
+- `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
 - `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
 - `src/relationship/transports/`: communication adapters; product logic should live above this layer.
 
@@ -64,8 +66,17 @@ npm test
 npm run build
 npm run agent:terminal -- "yes, recruiting agents, played piano"
 npm run eval:agent
+npm run ingest:demo
 npm run agent:spectrum
 ```
+
+Optional macOS Contacts smoke command:
+
+```bash
+npm run ingest:contacts:smoke -- --name Friendy-001
+```
+
+This command is explicit, accepts only `Friendy-<number>` names, and must not run from tests, build, evals, or `ingest:demo`.
 
 Use targeted tests while developing:
 
@@ -77,6 +88,9 @@ npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/evals/agentEvalRunner.test.ts
 npm test -- src/relationship/transports/spectrumTransport.test.ts
+npm test -- src/relationship/ingestion/contactSnapshot.test.ts
+npm test -- src/relationship/ingestion/ingestionPipeline.test.ts
+npm test -- src/relationship/contacts/contactsSmoke.test.ts
 ```
 
 ## Environment

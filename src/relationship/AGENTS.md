@@ -13,6 +13,8 @@ Architecture boundaries:
 - `interpretation.ts` is the contract for LLM-to-JSON interpretation.
 - `interpretedAgent.ts` enriches validated interpretations with recent conversation context before deterministic tools execute.
 - `temporalContext.ts` owns chrono-node date parsing; do not hand-roll relative-date rules in agent code.
+- `ingestion/` owns fixture-only contact snapshot diffing, event-provider abstractions, and ingestion demos. Keep real provider adapters as future interfaces until a goal explicitly adds them.
+- `contacts/` owns the explicit macOS Contacts smoke command. It may only create or reuse `Friendy-<number>` test contacts.
 - `evals/` owns trajectory-level agent evaluation. Eval assertions should check state, tool calls, metrics, and semantic substrings, not exact reply prose.
 - `transports/` adapts communication surfaces and should not own product logic.
 
@@ -25,6 +27,8 @@ Rules:
 - Do not leak raw search internals such as `matched:`, score details, tool debug text, or placeholder labels like `manual contact` in user-facing replies.
 - Keep memory search deterministic unless a goal explicitly adds a model reranker. Role, project, school/class, alias, and specific context should outrank generic shared event words for narrow searches.
 - Keep queued-contact confirmation deterministic. The LLM may interpret messy capture/search text, but approval, ignore, event correction, and pending queue writes should go through explicit tools.
+- Do not read real Contacts or calendars from normal tests, builds, evals, demos, or agent runs. Real Contacts access is allowed only through the explicit `npm run ingest:contacts:smoke -- --name Friendy-<number>` command.
+- Keep contact ingestion method-centric. A new phone/email can create a candidate; name-only edits and duplicate normalized methods should not.
 - Add tests for realistic messy user messages, not only ideal command syntax.
 - When adding agent behavior that spans multiple turns, add or update an eval case in `evals/agentEvalRunner.ts` so `npm run eval:agent` remains a product-level safety check.
 
@@ -41,4 +45,8 @@ npm test -- src/relationship/repository.test.ts
 npm test -- src/relationship/evals/agentEvalRunner.test.ts
 npm run eval:agent
 npm test -- src/relationship/transports/spectrumTransport.test.ts
+npm test -- src/relationship/ingestion/contactSnapshot.test.ts
+npm test -- src/relationship/ingestion/ingestionPipeline.test.ts
+npm test -- src/relationship/contacts/contactsSmoke.test.ts
+npm run ingest:demo
 ```
