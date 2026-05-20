@@ -16,8 +16,15 @@ type RepositorySeed = {
   memories?: RelationshipMemory[];
 };
 
+/** Minimal repository contract inferred from the in-memory implementation. */
 export type RelationshipRepository = ReturnType<typeof createRelationshipRepository>;
 
+/**
+ * Creates the MVP memory repository.
+ *
+ * It is intentionally in-memory so the agent loop can be tested without Notion, Mem0,
+ * or a production database. The returned API is the boundary those stores can replace later.
+ */
 export function createRelationshipRepository(seed: RepositorySeed = {}) {
   const calendarEvents = [...(seed.calendarEvents ?? [])];
   const candidates = [...(seed.candidates ?? [])];
@@ -37,6 +44,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
       };
 
       candidates.push(candidate);
+      // Persist event guesses at detection time so the later confirmation prompt can explain its assumption.
       eventMatches.push(...mapCandidateToEvents(candidate.id, contact, calendarEvents));
       return candidate;
     },
@@ -101,6 +109,12 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
   };
 }
 
+/**
+ * Extracts low-cost keyword tags for the first search version.
+ *
+ * This is deliberately transparent and deterministic; embeddings can be layered in only after
+ * we know lexical search is the bottleneck.
+ */
 export function extractTags(text: string): string[] {
   const stopWords = new Set(["about", "with", "from", "that", "this", "there", "their", "should", "person"]);
   const tags = text
@@ -117,5 +131,6 @@ function selectEventMatch(matches: EventContextMatch[], candidateId: string, eve
   if (eventId) {
     return candidateMatches.find((match) => match.calendarEventId === eventId);
   }
+  // Default to the highest-ranked event guess when the user confirms without correcting the event.
   return candidateMatches.sort((a, b) => a.rank - b.rank)[0];
 }

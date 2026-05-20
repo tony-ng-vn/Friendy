@@ -1,4 +1,4 @@
-import { createRelationshipAgent } from "../agentCore";
+import { buildCandidateReviewPrompt, createRelationshipAgent } from "../agentCore";
 import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
@@ -6,6 +6,7 @@ import type { AgentCoreResult } from "../types";
 
 type RelationshipAgent = ReturnType<typeof createRelationshipAgent>;
 
+/** Lightweight transport harness used for local demos and tests without Spectrum credentials. */
 export function createTerminalHarness(agent: RelationshipAgent, userId: string) {
   return {
     send(text: string): AgentCoreResult {
@@ -19,6 +20,11 @@ export function createTerminalHarness(agent: RelationshipAgent, userId: string) 
   };
 }
 
+/**
+ * Creates the scripted demo path: detected contact -> proactive prompt -> user reply -> saved memory.
+ *
+ * This mirrors the iMessage flow while keeping the core agent runnable from npm scripts.
+ */
 export function createDemoTerminalHarness() {
   const repo = createRelationshipRepository({
     users: [demoUser],
@@ -33,7 +39,7 @@ export function createDemoTerminalHarness() {
     repo,
     tools,
     candidate,
-    firstPrompt: `I noticed you added ${candidate.displayName} during Photon Residency Dinner. Did you meet ${candidate.displayName} there?`,
+    firstPrompt: buildCandidateReviewPrompt(candidate.displayName, "Photon Residency Dinner"),
     harness
   };
 }

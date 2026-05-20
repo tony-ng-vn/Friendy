@@ -1,5 +1,5 @@
 import { ambiguousDinnerMemory, demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
-import { createRelationshipAgent } from "./agentCore";
+import { buildCandidateReviewPrompt, createRelationshipAgent } from "./agentCore";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
 
@@ -69,5 +69,13 @@ describe("relationship agent core", () => {
 
     expect(result.outbound.text).toContain("I found two");
     expect(result.outbound.text).toContain("Which dinner");
+  });
+});
+
+describe("candidate review prompt", () => {
+  it("builds the proactive candidate review prompt for the top event match", () => {
+    const prompt = buildCandidateReviewPrompt("Maya Chen", "Photon Residency Dinner");
+
+    expect(prompt).toBe("I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?");
   });
 });

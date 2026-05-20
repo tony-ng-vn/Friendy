@@ -3,6 +3,12 @@ import type { MemorySearchResult, createRelationshipTools } from "./tools";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
+/**
+ * Creates the first relationship memory agent.
+ *
+ * This is a deterministic router around explicit tools, not a fully autonomous LLM loop yet.
+ * That keeps the MVP debuggable while we prove the capture-confirm-search workflow.
+ */
 export function createRelationshipAgent(tools: RelationshipTools) {
   return {
     handleMessage(message: InboundAgentMessage): AgentCoreResult {
@@ -76,6 +82,7 @@ export function createRelationshipAgent(tools: RelationshipTools) {
   };
 }
 
+/** Builds the proactive iMessage prompt shown after a new contact is mapped to event context. */
 export function buildCandidateReviewPrompt(name: string, eventTitle?: string): string {
   if (eventTitle) {
     return `I noticed you added ${name} during ${eventTitle}. Did you meet ${name} there?`;
@@ -122,5 +129,6 @@ function isAmbiguous(matches: MemorySearchResult[]): boolean {
   if (matches.length < 2) {
     return false;
   }
+  // Close scores mean the agent should ask a narrowing question instead of pretending certainty.
   return matches[0].score - matches[1].score <= 2;
 }

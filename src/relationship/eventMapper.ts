@@ -1,5 +1,6 @@
 import type { CalendarEvent, ContactCandidateDetected, EventContextMatch } from "./types";
 
+// Short events beat long background events because users usually remember the specific dinner or meetup, not the whole residency.
 const EVENT_KIND_CONFIDENCE = {
   short: 0.92,
   long: 0.62,
@@ -12,10 +13,22 @@ const EVENT_KIND_RANK = {
   all_day: 3
 } as const;
 
+/**
+ * Creates a stable demo candidate id from contact identity and detection time.
+ *
+ * The MVP uses deterministic ids so contact-delta fixtures can be replayed in tests.
+ * A real persistence layer can replace this with database ids without changing agent behavior.
+ */
 export function createCandidateId(contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt">): string {
   return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}`;
 }
 
+/**
+ * Maps a newly detected contact to calendar events whose windows contain the detection time.
+ *
+ * Ranking intentionally favors narrow events over long or all-day events so a specific dinner
+ * is suggested before a week-long residency when both overlap.
+ */
 export function mapCandidateToEvents(
   candidateId: string,
   contact: ContactCandidateDetected,

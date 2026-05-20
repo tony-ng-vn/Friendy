@@ -1,5 +1,6 @@
 import type { CalendarEvent, ContactCandidateDetected, RelationshipMemory, User } from "./types";
 
+/** Stable demo user for the first Photon/Friendy relationship-agent walkthrough. */
 export const demoUser: User = {
   id: "user_demo",
   phoneNumber: "+14156056081",
@@ -7,6 +8,7 @@ export const demoUser: User = {
   createdAt: "2026-05-20T09:00:00.000Z"
 };
 
+/** Simulated contact delta that stands in for "user added someone to Contacts during an event." */
 export const demoDetectedContact: ContactCandidateDetected = {
   userId: demoUser.id,
   displayName: "Maya Chen",
@@ -16,6 +18,7 @@ export const demoDetectedContact: ContactCandidateDetected = {
   source: "simulated"
 };
 
+/** Specific event that should outrank the longer residency when both overlap. */
 export const demoShortEvent: CalendarEvent = {
   id: "event_photon_residency_dinner",
   userId: demoUser.id,
@@ -28,6 +31,7 @@ export const demoShortEvent: CalendarEvent = {
   eventKind: "short"
 };
 
+/** Long background event used to prove overlap ranking does not lose residency context. */
 export const demoLongEvent: CalendarEvent = {
   id: "event_photon_residency",
   userId: demoUser.id,
@@ -40,6 +44,7 @@ export const demoLongEvent: CalendarEvent = {
   eventKind: "long"
 };
 
+/** Second dinner memory used to force a clarification path instead of overconfident search results. */
 export const ambiguousDinnerMemory: RelationshipMemory = {
   id: "memory_sarah_founders_dinner",
   userId: demoUser.id,

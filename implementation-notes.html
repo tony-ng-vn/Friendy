@@ -20,6 +20,7 @@
       <li>Imported the original Superpowers spec and implementation plan into <code>docs/superpowers/</code> so the planning trail is versioned with the repo.</li>
       <li>Iteration 2 adds relationship-agent core modules under <code>src/relationship/</code> so the current UI demo remains stable while the agent architecture is built.</li>
       <li>Changed TypeScript module resolution to <code>Bundler</code> so Vite can resolve Spectrum SDK package export subpaths such as <code>spectrum-ts/providers/imessage</code>.</li>
+      <li>The Spectrum adapter is a transport wrapper around the relationship agent core; the agent core remains usable through terminal tests without Spectrum credentials.</li>
     </ul>
     <h2>Verification</h2>
     <ul>

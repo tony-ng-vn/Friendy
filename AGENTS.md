@@ -21,3 +21,5 @@ Do not run destructive commands without explicit user approval, including `rm -r
 Use comments sparingly and only when they make the code easier to understand.
 
 Prefer simple, useful comments that explain intent, constraints, or non-obvious tradeoffs. Do not add comments that merely restate what the next line of code already says.
+
+For TypeScript modules, add concise JSDoc to exported functions, types, and classes when it helps another agent or engineer understand the purpose, boundary, or design decision behind the API.
