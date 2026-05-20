@@ -1,13 +1,10 @@
-# iMessage Contact Confirmation Loop Goal Plan
+# Local macOS Contact/Calendar Checker Goal Plan
 
-- [x] Read active goal objective from the Codex goal context.
-- [x] Inspect current branch, worktree, and relationship-agent architecture before editing behavior.
-- [x] Create feature branch for iMessage contact confirmation loop work.
+- [x] Create goal and implementation plan docs.
 - [x] Run baseline tests on the feature branch.
-- [x] Write failing tests for the deterministic iMessage/Spectrum-style E2E product flow.
-- [x] Write failing tests for event context vs relationship backstory memory separation.
-- [x] Implement the smallest product-flow/runtime changes needed to pass the tests.
-- [x] Add `npm run check:imessage-e2e`.
-- [x] Update docs and implementation notes.
-- [x] Run required verification commands on feature branch.
-- [x] Merge to `main`, re-verify, push, and audit all goal requirements.
+- [ ] Add RED tests for local macOS providers and checker orchestration.
+- [ ] Implement local provider adapters and checker orchestration.
+- [ ] Add `npm run ingest:local:check`.
+- [ ] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
+- [ ] Run required verification on the feature branch.
+- [ ] Merge to `main`, re-verify, push, and audit requirements.
