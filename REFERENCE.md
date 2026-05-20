@@ -28,6 +28,7 @@ Transport message
 ## Start Here By Task
 
 - Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
+- AI system architecture: `docs/ai-system-architecture.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
