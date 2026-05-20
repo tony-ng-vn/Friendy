@@ -24,3 +24,15 @@
   - `npm run ingest:demo`
   - `npm run build`
 - Result: Targeted tests passed with 3 files and 14 tests. `npm run ingest:demo` printed deterministic detected contacts, candidate ids, event guesses, and pending queue. Build passed after fixing a contact diff type narrowing issue.
+
+## VERIFY: Feature Branch Required Gates
+
+- Date: 2026-05-20
+- Branch: `feature/contact-calendar-ingestion`
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `npm run ingest:demo`
+  - `git diff --check`
+- Result: Passed. Full tests reported 21 files and 89 tests. Eval harness passed 12/12 required cases with 0 unsafe mutations and 0 hallucinations. Ingest demo printed deterministic detected contacts, candidate ids, ranked event guesses, and pending queue.

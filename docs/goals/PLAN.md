@@ -11,5 +11,5 @@
 - [x] Add optional explicit `npm run ingest:contacts:smoke` command with safe test-contact behavior.
 - [x] Update evals if ingestion changes the core flow.
 - [x] Update `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, and `implementation-notes.html`.
-- [ ] Run required verification commands on feature branch.
+- [x] Run required verification commands on feature branch.
 - [ ] Merge to `main`, re-verify, push, and audit all goal requirements.
