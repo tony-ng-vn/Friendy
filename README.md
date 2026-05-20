@@ -19,8 +19,11 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - Chat-first Photon agent interface.
 - Mocked `Photon Residency Dinner` calendar event.
 - Mocked new contact queue.
+- Detected-contact to calendar-event matching with ranked event guesses.
 - User-approved memory session.
 - Candidate confirmation and ignore flow.
+- Corrected-event confirmation when the user says the guessed event was wrong.
+- No-event confirmation when the user supplies event context manually.
 - Natural-language context capture.
 - Multi-turn context carryover for follow-up phrases like `also met Felix Ng`.
 - Natural-language date parsing with stored raw and normalized date context.
@@ -33,6 +36,7 @@ The current version is a local demo prototype. It uses mocked calendar and conta
 - [Demo plan](docs/demo-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
+- [Contact-event verification demo transcript](docs/goals/contact-event-verification-queue-demo.md)
 - [Original Superpowers planning artifacts](docs/superpowers/README.md)
 
 ## Explicit Non-Goals For V1
@@ -87,6 +91,17 @@ Then search with:
 
 ```text
 who did I meet at Photon Residency?
+```
+
+Queued contact confirmations stay deterministic:
+
+```text
+new contact detected during Photon Residency Dinner
+Friendy: I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?
+You: yes, actually at Photon Residency, recruiting agents
+Friendy: Saved Maya Chen. I'll remember: recruiting agents.
+You: who was the recruiting agents person from Photon?
+Friendy: I think that was Maya Chen...
 ```
 
 Friendy also carries recent event context across follow-up messages:

@@ -9,6 +9,12 @@ Friendy is a relationship memory agent for remembering and refinding people met 
 Current architecture direction:
 
 ```text
+Detected contact delta
+-> event-window matching
+-> pending verification queue
+-> user confirmation or ignore
+-> searchable relationship memory
+
 Transport message
 -> normalized InboundAgentMessage
 -> message interpretation
@@ -25,7 +31,7 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current field-aware search goal: `docs/goals/field-aware-memory-search-goal.md`
+- Current contact-event verification goal: `docs/goals/contact-event-verification-queue-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
@@ -39,6 +45,7 @@ Transport message
 - `src/relationship/fixtures.ts`: deterministic demo user, events, detected contacts, and ambiguous memories.
 - `src/relationship/eventMapper.ts`: deterministic contact-to-calendar matching.
 - `src/relationship/repository.ts`: in-memory repository boundary for candidates, memories, events, and future logs.
+- `src/relationship/candidateConfirmation.ts`: deterministic consent-reply parsing for pending contact candidates, including corrected event context.
 - `src/relationship/tools.ts`: bounded tool API used by the agent, including deterministic field-aware memory search.
 - `src/relationship/responseComposer.ts`: deterministic user-facing wording for save/search/no-match/clarify/ignore replies.
 - `src/relationship/agentCore.ts`: current deterministic relationship-agent router.
@@ -66,6 +73,7 @@ npm test -- src/relationship/interpretedAgent.test.ts
 npm test -- src/relationship/responseComposer.test.ts
 npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
+npm test -- src/relationship/transports/spectrumTransport.test.ts
 ```
 
 ## Environment

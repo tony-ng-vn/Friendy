@@ -31,6 +31,9 @@
       <li>Added <code>chrono-node</code> for natural-language date parsing. Friendy now stores both the raw date phrase and a normalized local date/date instant on relationship memories when a message contains temporal context.</li>
       <li>Added a deterministic <code>responseComposer</code> boundary for user-facing save, search, no-match, clarification, and ignore replies. Search tools still select matches, while the composer prevents raw match reasons, score language, and placeholder labels such as <code>manual contact</code> from leaking into iMessage-style responses.</li>
       <li>Updated deterministic memory search to score fields separately. Narrow searches now let role, project, school/class, alias, and specific context outrank generic shared event terms, while event-wide recall queries still return multiple people from the event.</li>
+      <li>Added <code>candidateConfirmation.ts</code> as the deterministic consent boundary for queued contacts. This keeps approval, ignore, and corrected-event handling in explicit tools instead of asking the LLM to directly mutate memory state.</li>
+      <li>Added <code>list_candidate_event_matches</code> so the agent can inspect ranked calendar guesses before confirming a candidate. Exact corrected event titles are preferred before substring matches, which prevents <code>Photon Residency</code> from accidentally keeping the more specific <code>Photon Residency Dinner</code> guess.</li>
+      <li>Changed the Spectrum runtime so a first inbound space can become the conversation identity when no explicit user ID exists. This removes the normal-onboarding dependency on a hardcoded owner phone while preserving explicit user IDs for tests and future signup flows.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -56,6 +59,9 @@
       <li>Ran the deterministic field-aware search demo transcript saved in <code>docs/goals/field-aware-memory-search-demo.md</code>.</li>
       <li>Ran field-aware search feature-branch verification: <code>npm test</code> passed with 17 files and 60 tests, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for the field-aware search goal, reran <code>npm test</code>, <code>npm run build</code>, and <code>git diff --check</code> successfully.</li>
+      <li>For the contact-event verification queue goal, first ran a RED targeted suite where corrected-event, no-event confirmation, and Spectrum first-inbound identity tests failed as expected.</li>
+      <li>Ran the focused GREEN suite <code>npm test -- src/relationship/repository.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts</code>: 4 files and 33 tests passed.</li>
+      <li>Ran the deterministic contact-event verification demo transcript saved in <code>docs/goals/contact-event-verification-queue-demo.md</code>.</li>
     </ul>
   </body>
 </html>
