@@ -9,3 +9,4 @@
 - 2026-05-20: Added `ingest:local:check` with `--mock` deterministic verification. Real-provider mode fails clearly off macOS and `.friendy/` is ignored because it stores local contact snapshot state.
 - 2026-05-20: Updated docs to make the local checker boundary explicit: safe mock mode, real macOS reads only from the command, dry-run default, live-send env guard, and no background watcher.
 - 2026-05-20: Feature-branch verification passed across tests, build, eval, iMessage E2E check, fixture ingestion check, local checker mock, whitespace check, and forbidden-term search.
+- 2026-05-20: Main fast-forward verification passed across the same required command set before the final push.

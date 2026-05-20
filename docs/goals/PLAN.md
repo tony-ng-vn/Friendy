@@ -7,4 +7,5 @@
 - [x] Add `npm run ingest:local:check`.
 - [x] Update README, REFERENCE, architecture docs, changelog, and implementation notes.
 - [x] Run required verification on the feature branch.
-- [ ] Merge to `main`, re-verify, push, and audit requirements.
+- [x] Merge to `main` and re-verify.
+- [ ] Push `main` and audit requirements.

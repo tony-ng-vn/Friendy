@@ -202,7 +202,7 @@ who did I run into from high school at Photon?
 
 ### Verification Snapshot
 
-- Latest full verification on `feature/local-macos-contact-calendar-checker` passed:
+- Latest full verification on `main` passed after the local checker merge:
   - `npm test`: 25 files, 101 tests.
   - `npm run build`: TypeScript and Vite production build passed.
   - `npm run eval:agent`: 12/12 required cases passed.

@@ -54,3 +54,17 @@
   - `git diff --check`
   - repo-wide forbidden-term search for old show-oriented wording
 - Result: Passed. The unit suite reported 25 files and 101 tests. The eval suite passed 12/12 required cases. The local checker mock printed the Friendy confirmation prompt for `Friendy-101` and stayed in dry-run mode.
+
+## Verification: Main After Merge
+
+- Date: 2026-05-20
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `npm run check:imessage-e2e`
+  - `npm run ingest:check`
+  - `npm run ingest:local:check -- --mock`
+  - `git diff --check`
+  - repo-wide forbidden-term search for old show-oriented wording
+- Result: Passed on `main` after the fast-forward merge. The unit suite reported 25 files and 101 tests. The eval suite passed 12/12 required cases. The local checker mock printed the Friendy confirmation prompt for `Friendy-101` and stayed in dry-run mode.

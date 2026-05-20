@@ -94,6 +94,7 @@
       <li>For the local macOS checker goal, first ran RED tests where <code>localMacAdapters.ts</code>, <code>localCheck.ts</code>, and the <code>ingest:local:check</code> script were missing, then added provider adapters, local checker orchestration, CLI state handling, dry-run prompt output, and guarded live-send behavior.</li>
       <li>Ran targeted local checker verification: adapter and checker tests passed, <code>npm run ingest:local:check -- --mock</code> printed the Friendy confirmation prompt for <code>Friendy-101</code>, and real-provider mode failed clearly on non-macOS with the mock-mode hint.</li>
       <li>Ran local checker feature-branch verification: <code>npm test</code> passed with 25 files and 101 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, <code>npm run ingest:local:check -- --mock</code> printed the dry-run Friendy prompt for <code>Friendy-101</code>, <code>git diff --check</code> passed, and the forbidden-term search returned no matches.</li>
+      <li>After fast-forwarding <code>main</code> for the local macOS checker goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, <code>npm run check:imessage-e2e</code>, <code>npm run ingest:check</code>, <code>npm run ingest:local:check -- --mock</code>, <code>git diff --check</code>, and the forbidden-term search successfully.</li>
     </ul>
   </body>
 </html>
