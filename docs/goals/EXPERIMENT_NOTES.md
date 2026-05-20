@@ -1,11 +1,6 @@
-# Contact Event Verification Queue Goal Notes
+# Relationship Agent Eval Harness Goal Notes
 
-- 2026-05-20: Started goal execution from clean `main`; created `feature/contact-event-verification-queue`. Current code already has candidate creation, event-window matching, pending queue listing, and basic confirm/ignore through deterministic tools. Gaps to prove/fix: corrected event confirmation, no-event prompt behavior, search-after-confirmation as a single flow, and Spectrum first-inbound conversation identity without hardcoded demo user.
-- 2026-05-20: Baseline `npm test` passed with 17 files and 60 tests before implementation changes.
-- 2026-05-20: RED tests showed the right missing behavior: confirmations always kept the top event guess, no-event candidates could not save user-supplied event context, and first inbound Spectrum messages still used demo-user identity internally.
-- 2026-05-20: Added `candidateConfirmation.ts` as the shared deterministic boundary for consent replies. This keeps queued-contact approval out of the LLM layer while still letting the user correct the event in natural language.
-- 2026-05-20: Added `list_candidate_event_matches` as an explicit tool instead of letting the agent reach through the repository. The agent can now inspect ranked calendar guesses, choose an exact corrected event title, or store a user-supplied event title when no calendar match exists.
-- 2026-05-20: Updated Spectrum runtime identity so an inbound space ID becomes the user/conversation identity when no signed-up user ID exists. This removes normal onboarding dependence on `FRIENDY_OWNER_PHONE` or the demo user while preserving explicit `userId` for tests and future signup flows.
-- 2026-05-20: Focused GREEN command passed: `npm test -- src/relationship/repository.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts` with 4 files and 33 tests.
-- 2026-05-20: Ran a deterministic local transcript through real repository/tools/agent code and saved it to `docs/goals/contact-event-verification-queue-demo.md`. It proves the visible flow: detected contact -> ranked event guesses -> pending queue -> prompt -> corrected-event confirmation -> saved memory -> later search.
-- 2026-05-20: Feature-branch verification passed before this note was recorded: full `npm test` had 17 files and 70 tests passing, `npm run build` completed, the required terminal smoke saved Maya Chen, and `git diff --check` was clean.
+- 2026-05-20: Started goal execution from clean `main`; created `feature/relationship-agent-evals`.
+- 2026-05-20: Baseline `npm test` passed with 17 files and 70 tests before eval harness changes.
+- 2026-05-20: Design decision: keep the required eval set deterministic and local. Optional OpenRouter/model-backed repeated runs can layer on later or run only when `OPENROUTER_API_KEY` is present, but the required command must work without external credentials.
+- 2026-05-20: Eval assertions should check state and semantic substrings instead of exact reply prose, because the product agent can later change wording without invalidating behavior.
