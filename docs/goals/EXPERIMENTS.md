@@ -24,3 +24,12 @@
 - Fix: Extended `AgentInteraction` with interpretation/model/latency/error fields and added `addInteraction` / `listInteractions` to the in-memory repository.
 - Green command: `npm test -- src/relationship/repository.test.ts`
 - Green result: Passed, 4 tests.
+
+## Task 3 Red/Green: OpenRouter Interpreter
+
+- Date: 2026-05-20
+- Red command: `npm test -- src/relationship/openRouterInterpreter.test.ts`
+- Red result: Failed because `src/relationship/openRouterInterpreter.ts` was missing.
+- Fix: Added OpenRouter structured-output request builder, one invalid-output retry, deterministic fallback interpreter, and OpenRouter env config defaults.
+- Green command: `npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/env.test.ts`
+- Green result: Passed, 2 files and 7 tests.
