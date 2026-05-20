@@ -1,10 +1,10 @@
-import { demoCalendarEvent, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureUser } from "./mockData";
 import { handleAgentMessage, searchMemories } from "./agent";
 import { createInitialState } from "./memoryStore";
 
 describe("Friendy agent", () => {
   it("asks to start a memory session for the calendar event", () => {
-    const state = createInitialState(demoUser, demoCalendarEvent);
+    const state = createInitialState(fixtureUser, fixtureCalendarEvent);
     const result = handleAgentMessage(state, "start");
 
     expect(result.reply).toContain("Photon Residency Dinner");
@@ -12,7 +12,7 @@ describe("Friendy agent", () => {
   });
 
   it("approves the session and loads the contact review queue", () => {
-    const state = createInitialState(demoUser, demoCalendarEvent);
+    const state = createInitialState(fixtureUser, fixtureCalendarEvent);
     const result = handleAgentMessage(state, "yes");
 
     expect(result.state.sessions[0].status).toBe("review_ready");
@@ -21,7 +21,7 @@ describe("Friendy agent", () => {
   });
 
   it("confirms Maya and captures context", () => {
-    const approved = handleAgentMessage(createInitialState(demoUser, demoCalendarEvent), "yes").state;
+    const approved = handleAgentMessage(createInitialState(fixtureUser, fixtureCalendarEvent), "yes").state;
     const result = handleAgentMessage(approved, "save Maya: played piano, AI recruiting founder");
 
     expect(result.state.memories[0].displayName).toBe("Maya Chen");
@@ -29,7 +29,7 @@ describe("Friendy agent", () => {
   });
 
   it("recalls Maya from a vague query", () => {
-    const approved = handleAgentMessage(createInitialState(demoUser, demoCalendarEvent), "yes").state;
+    const approved = handleAgentMessage(createInitialState(fixtureUser, fixtureCalendarEvent), "yes").state;
     const saved = handleAgentMessage(approved, "save Maya: played piano, AI recruiting founder").state;
 
     const matches = searchMemories(saved, "who was the girl playing piano at dinner");

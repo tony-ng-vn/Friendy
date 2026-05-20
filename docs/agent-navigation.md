@@ -59,7 +59,7 @@ Update this navigation layer when:
 
 - a new top-level subsystem appears;
 - a transport, memory backend, or agent boundary changes;
-- a new command becomes the preferred test or demo path;
+- a new command becomes the preferred test or product flow path;
 - an agent repeats the same wrong exploration path;
 - a code review finds that future agents need durable local context.
 

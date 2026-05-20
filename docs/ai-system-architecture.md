@@ -63,7 +63,7 @@ flowchart LR
   K --> L[Composed iMessage response]
 ```
 
-Today, ingestion is fixture-based in the repo. The important architectural boundary is already present: contact detection creates pending candidates, and the agent flow confirms or ignores those candidates before memory is saved.
+Today, ingestion is fixture-based in the repo. The important architectural boundary is already present and covered by `npm run check:imessage-e2e`: contact detection creates pending candidates, and the iMessage/Spectrum-style agent flow confirms or ignores those candidates before memory is saved.
 
 ## Agent Loop
 
@@ -152,13 +152,13 @@ src/relationship/evals/
 - Contact detection is fixture-based except for the explicit macOS Contacts smoke command.
 - Calendar matching is fixture-based.
 - Memory is in-memory, not production durable storage.
-- Spectrum/iMessage is wired as the primary live transport, but the deterministic test path still uses local simulated messages.
+- Spectrum/iMessage is wired as the primary live transport, and `npm run check:imessage-e2e` exercises a deterministic local Spectrum/iMessage-style path without sending live messages.
 - LinkedIn, X, Instagram, and other social connection sources are future detectors, not MVP requirements.
-- The system does not yet run a real background watcher that notices a new phone contact and proactively texts the user.
+- The system does not yet run a real background watcher that notices a new phone contact and proactively sends a live iMessage.
 
 ## Next MVP Milestone
 
-The next milestone is the iMessage-first contact confirmation loop:
+The deterministic iMessage-first contact confirmation loop now runs locally:
 
 ```mermaid
 flowchart TD
@@ -169,4 +169,6 @@ flowchart TD
   E --> F[Later iMessage search retrieves the person]
 ```
 
-The demo should prove this product behavior before adding more connection sources or a richer UI.
+The product flow should prove this product behavior before adding more connection sources or a richer UI.
+
+The next production milestone is replacing the fixture contact detector with a real approved phone-contact watcher while keeping the same pending-candidate and iMessage confirmation boundary.

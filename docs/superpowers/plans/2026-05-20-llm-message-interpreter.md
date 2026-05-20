@@ -4,7 +4,7 @@
 
 **Goal:** Add an LLM-backed interpretation layer that turns arbitrary user text into validated Friendy intents before deterministic tools write/search memory.
 
-**Architecture:** Keep the existing relationship tools and repository as the source of truth. Add a transport-agnostic interpreter contract, OpenRouter structured-output client, deterministic fallback interpreter, async interpreted agent wrapper, and interaction logging. Wire Spectrum to the interpreted agent while preserving the existing terminal demo.
+**Architecture:** Keep the existing relationship tools and repository as the source of truth. Add a transport-agnostic interpreter contract, OpenRouter structured-output client, deterministic fallback interpreter, async interpreted agent wrapper, and interaction logging. Wire Spectrum to the interpreted agent while preserving the existing terminal product flow.
 
 **Tech Stack:** TypeScript, Vitest, `zod` for runtime validation, Fetch API for OpenRouter, existing `spectrum-ts` transport.
 

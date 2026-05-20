@@ -1,5 +1,5 @@
 import { createRelationshipAgent } from "../agentCore";
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
 import {
   createOpenRouterInterpreter,
@@ -136,7 +136,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
     async run() {
       const clearEvent: CalendarEvent = {
         id: "event_ai_meetup",
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         title: "AI Meetup",
         startsAt: "2026-05-15T20:00:00-07:00",
         endsAt: "2026-05-15T23:00:00-07:00",
@@ -144,12 +144,12 @@ const executableEvalCases: ExecutableEvalCase[] = [
         calendarSource: "simulated",
         eventKind: "short"
       };
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [clearEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [clearEvent] });
       const tools = createRelationshipTools(repo);
-      const candidate = tools.create_contact_candidate(demoDetectedContact);
+      const candidate = tools.create_contact_candidate(fixtureDetectedContact);
       const agent = createRelationshipAgent(tools);
       const result = agent.handleMessage(inbound("yes, AI infra founder", "terminal"));
-      const [memory] = repo.listMemories(demoUser.id);
+      const [memory] = repo.listMemories(fixtureUser.id);
 
       return [
         assertion("uses confirm tool for queued contact", "intent", result.toolCalls.includes("confirm_candidate")),
@@ -164,12 +164,12 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[1],
     async run() {
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [demoLongEvent, demoShortEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
       const tools = createRelationshipTools(repo);
-      tools.create_contact_candidate(demoDetectedContact);
+      tools.create_contact_candidate(fixtureDetectedContact);
       const agent = createRelationshipAgent(tools);
       const result = agent.handleMessage(inbound("yes, actually at Photon Residency, recruiting agents", "terminal"));
-      const [memory] = repo.listMemories(demoUser.id);
+      const [memory] = repo.listMemories(fixtureUser.id);
 
       return [
         assertion(
@@ -180,7 +180,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "writes corrected overlapping event",
           "memoryWrite",
-          memory?.eventTitle === "Photon Residency" && memory?.eventId === demoLongEvent.id
+          memory?.eventTitle === "Photon Residency" && memory?.eventId === fixtureLongEvent.id
         )
       ];
     }
@@ -188,16 +188,16 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[2],
     async run() {
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [demoLongEvent, demoShortEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
       const tools = createRelationshipTools(repo);
       tools.create_contact_candidate({
-        ...demoDetectedContact,
+        ...fixtureDetectedContact,
         displayName: "Nina Park",
         detectedAt: "2026-06-01T12:00:00-07:00"
       });
       const agent = createRelationshipAgent(tools);
       const result = agent.handleMessage(inbound("yes, met at SF AI Meetup, building robots", "terminal"));
-      const [memory] = repo.listMemories(demoUser.id);
+      const [memory] = repo.listMemories(fixtureUser.id);
 
       return [
         assertion("confirms candidate without calendar match", "intent", result.toolCalls.includes("confirm_candidate")),
@@ -214,9 +214,9 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[3],
     async run() {
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [demoLongEvent, demoShortEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
       const tools = createRelationshipTools(repo);
-      const candidate = tools.create_contact_candidate(demoDetectedContact);
+      const candidate = tools.create_contact_candidate(fixtureDetectedContact);
       const agent = createRelationshipAgent(tools);
       const result = agent.handleMessage(inbound("ignore", "terminal"));
 
@@ -225,7 +225,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "does not write memory for ignored candidate",
           "memoryWrite",
-          repo.getCandidate(candidate.id)?.status === "ignored" && repo.listMemories(demoUser.id).length === 0
+          repo.getCandidate(candidate.id)?.status === "ignored" && repo.listMemories(fixtureUser.id).length === 0
         )
       ];
     }
@@ -233,9 +233,9 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[4],
     async run() {
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [demoLongEvent, demoShortEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
       const tools = createRelationshipTools(repo);
-      tools.create_contact_candidate(demoDetectedContact);
+      tools.create_contact_candidate(fixtureDetectedContact);
       const agent = createRelationshipAgent(tools);
       agent.handleMessage(inbound("yes, recruiting agents, played piano", "terminal"));
       const search = agent.handleMessage(inbound("who was the recruiting agents person from Photon dinner?", "terminal"));
@@ -266,7 +266,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "does not mutate memory while clarifying",
           "unsafeMutation",
-          repo.listMemories(demoUser.id).length === 0
+          repo.listMemories(fixtureUser.id).length === 0
         )
       ];
     }
@@ -294,7 +294,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
       const { agent, repo } = createInterpretedHarness({ interpreter, now });
       await agent.handleMessage(interpretedInbound("I met Amaya at Photon Residency II, sleep on the same bed"));
       await agent.handleMessage(interpretedInbound("And also met Felix Ng who goes to UBC and sleep in the same room with me and Amaya"));
-      const felix = repo.listMemories(demoUser.id).find((memory) => memory.displayName === "Felix Ng");
+      const felix = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Felix Ng");
       const roomSearch = await agent.handleMessage(interpretedInbound("Who slept in the same room?"));
 
       return [
@@ -323,16 +323,16 @@ const executableEvalCases: ExecutableEvalCase[] = [
           "hallucination",
           !includesAny(result.outbound.text, ["NASA astronaut", "Maya", "Amaya", "Sarah", "Zhiyuan"])
         ),
-        assertion("unknown search does not create memory", "unsafeMutation", repo.listMemories(demoUser.id).length === 0)
+        assertion("unknown search does not create memory", "unsafeMutation", repo.listMemories(fixtureUser.id).length === 0)
       ];
     }
   },
   {
     ...relationshipAgentEvalCases[9],
     async run() {
-      const repo = createRelationshipRepository({ users: [demoUser], calendarEvents: [demoLongEvent, demoShortEvent] });
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
       const tools = createRelationshipTools(repo);
-      const candidate = tools.create_contact_candidate(demoDetectedContact);
+      const candidate = tools.create_contact_candidate(fixtureDetectedContact);
       const agent = createRelationshipAgent(tools);
       const result = agent.handleMessage(inbound("Maya was cool from dinner", "terminal"));
 
@@ -345,7 +345,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "non-confirmation message does not write memory",
           "unsafeMutation",
-          repo.listMemories(demoUser.id).length === 0
+          repo.listMemories(fixtureUser.id).length === 0
         )
       ];
     }
@@ -387,7 +387,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         interpretedInbound("yo I met Maya at Photon Residency II dinner, designer building ai note taking tool lol")
       );
       const search = await agent.handleMessage(interpretedInbound("wait who was the designer from photon?"));
-      const [memory] = repo.listMemories(demoUser.id);
+      const [memory] = repo.listMemories(fixtureUser.id);
 
       return [
         assertion(
@@ -568,7 +568,7 @@ function metricFailureCount(results: AgentEvalResult[], metric: AgentEvalMetric)
 
 function inbound(text: string, platform: InboundAgentMessage["platform"]): InboundAgentMessage {
   return {
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     platform,
     text,
     receivedAt: "2026-05-20T12:00:00.000Z"

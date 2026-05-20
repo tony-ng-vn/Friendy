@@ -63,7 +63,7 @@ export function runContactsSmoke({
   if (platform !== "darwin") {
     return {
       ok: false,
-      message: "macOS Contacts smoke test is only available on darwin. Fixture ingestion still works with npm run ingest:demo.",
+      message: "macOS Contacts smoke test is only available on darwin. Fixture ingestion still works with npm run ingest:check.",
       name: input.name,
       phoneNumber: input.phoneNumber
     };

@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { App } from "./App";
 
 describe("App", () => {
-  it("runs the core Friendy demo path through chat", () => {
+  it("runs the core Friendy product path through chat", () => {
     render(<App />);
 
     expect(screen.getAllByText(/Photon Residency Dinner/i).length).toBeGreaterThan(0);

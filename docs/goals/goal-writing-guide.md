@@ -59,7 +59,7 @@ Weak:
 Strong:
 
 ```text
-/goal Improve Friendy memory search until the demo query "Find the recruiting agents founder from Photon" returns Maya as the only confident top match, "Who was making devtools?" returns Leo without also returning Rina, and all existing tests still pass.
+/goal Improve Friendy memory search until the product flow query "Find the recruiting agents founder from Photon" returns Maya as the only confident top match, "Who was making devtools?" returns Leo without also returning Rina, and all existing tests still pass.
 ```
 
 Strong goals name exact examples, expected output, and verification commands.

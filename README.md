@@ -2,7 +2,7 @@
 
 Friendy is an iMessage-first relationship memory agent, built on Photon/Spectrum, that helps you remember and refind people you met during approved event windows.
 
-The current version is a local demo prototype. It uses mocked calendar and contact signals to prove the core agent loop before building native mobile Contacts/Calendar integrations.
+The current version is a local prototype. It uses mocked calendar and contact signals to prove the core agent loop before building native mobile Contacts/Calendar integrations.
 
 ## MVP Loop
 
@@ -72,10 +72,10 @@ See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the ful
 
 - [Product spec](docs/product-spec.md)
 - [AI system architecture](docs/ai-system-architecture.md)
-- [Demo plan](docs/demo-plan.md)
+- [Product Flow plan](docs/product-flow-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
-- [Contact-event verification demo transcript](docs/goals/contact-event-verification-queue-demo.md)
+- [Contact-event verification product flow transcript](docs/goals/contact-event-verification-queue.md)
 - [Original Superpowers planning artifacts](docs/superpowers/README.md)
 
 ## Explicit Non-Goals For V1
@@ -100,10 +100,11 @@ Run checks:
 npm test
 npm run build
 npm run eval:agent
-npm run ingest:demo
+npm run check:imessage-e2e
+npm run ingest:check
 ```
 
-## Demo Script
+## Product Flow Script
 
 In the chat UI:
 
@@ -116,7 +117,7 @@ In the chat UI:
 
 ## Relationship Agent Core
 
-Run the local terminal agent demo:
+Run the local terminal agent product flow:
 
 ```bash
 npm run agent:terminal -- "yes, recruiting agents, played piano"
@@ -168,15 +169,39 @@ npm run eval:agent
 
 The required eval set is deterministic and runs without OpenRouter credentials. It scores 12 realistic trajectories across contact confirmation, event correction, no-event confirmation, ignore, post-confirmation search, clarification, event-wide recall, context carryover, hallucination guard, unsafe-save guard, Spectrum first-inbound identity, and messy human wording. Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness. Optional repeated model-backed evals are gated behind `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
 
-## Contact/Calendar Ingestion Demo
+## iMessage Contact Confirmation Product Flow
 
-Run the fixture-only ingestion demo:
+Run the deterministic iMessage/Spectrum-style E2E product flow:
 
 ```bash
-npm run ingest:demo
+npm run check:imessage-e2e
 ```
 
-The demo uses checked-in before/after contact snapshots and fixture calendar events. It prints a deterministic summary with detected contacts, candidate ids, event guesses, and the pending queue. It does not read real Contacts or real calendars.
+The product flow uses fixture contact/calendar ingestion, then routes the user's confirmation and later search through the same Spectrum/iMessage runtime boundary used by the live agent. It does not send real iMessages.
+
+Expected shape:
+
+```text
+Detected contact: Abc
+Best event guess: Photon Residency II
+Friendy -> User: I noticed you added Abc around Photon Residency II. Did you meet them there?
+User -> Friendy: yes, met abc at Photon Residency II after havent met him since high school in minnesota
+Saved memory: Abc
+Event context: Photon Residency II
+Relationship backstory: had not seen him since high school in Minnesota
+User -> Friendy: who did I run into from high school at Photon?
+Friendy -> User: I think that was Abc
+```
+
+## Contact/Calendar Ingestion Product Flow
+
+Run the fixture-only ingestion product flow:
+
+```bash
+npm run ingest:check
+```
+
+The product flow uses checked-in before/after contact snapshots and fixture calendar events. It prints a deterministic summary with detected contacts, candidate ids, event guesses, and the pending queue. It does not read real Contacts or real calendars.
 
 Expected shape:
 
@@ -195,7 +220,7 @@ Optional macOS Contacts smoke test:
 npm run ingest:contacts:smoke -- --name Friendy-001
 ```
 
-This command is explicit and is never run by `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:demo`. It only accepts names matching `Friendy-<number>`, creates or reuses that exact test contact, and prints the exact name and phone method it created or reused. On non-macOS environments it fails clearly while fixture ingestion continues to work.
+This command is explicit and is never run by `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:check`. It only accepts names matching `Friendy-<number>`, creates or reuses that exact test contact, and prints the exact name and phone method it created or reused. On non-macOS environments it fails clearly while fixture ingestion continues to work.
 
 To manually delete a smoke-test contact, open the macOS Contacts app, search for the exact test name such as `Friendy-001`, select that contact, and delete it.
 

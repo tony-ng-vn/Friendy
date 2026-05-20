@@ -18,7 +18,7 @@ Friendy's product wedge depends on noticing new connections from approved contac
 - Do not add UI.
 - Do not read real calendars in this goal.
 - Do not read real user contacts except through the explicit Contacts smoke command.
-- Keep normal tests, build, evals, and fixture demo free of real Contacts access.
+- Keep normal tests, build, evals, and fixture product flow free of real Contacts access.
 - Keep real provider adapters as future interfaces only.
 - Push `main` only after verification passes on `main`.
 
@@ -32,10 +32,10 @@ Friendy's product wedge depends on noticing new connections from approved contac
 - Assign `detectedAt` deterministically from fixture data in tests.
 - Map newly detected contacts to calendar event context.
 - Enqueue pending candidates through the existing repository/tool boundary.
-- Add `npm run ingest:demo`.
-- `npm run ingest:demo` must print a deterministic summary showing detected contact, event guesses, pending queue, and candidate id.
+- Add `npm run ingest:check`.
+- `npm run ingest:check` must print a deterministic summary showing detected contact, event guesses, pending queue, and candidate id.
 - Add optional real Contacts smoke command if the local environment supports it, for example `npm run ingest:contacts:smoke -- --name Friendy-001`.
-- The real Contacts smoke command must be explicit and must never run during `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:demo`.
+- The real Contacts smoke command must be explicit and must never run during `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:check`.
 - The smoke command may create only test contacts named `Friendy-<number>`.
 - It must print the exact contact name and contact method it created.
 - It must be safe to run repeatedly without creating uncontrolled duplicates.
@@ -63,14 +63,14 @@ Run before completion:
 npm test
 npm run build
 npm run eval:agent
-npm run ingest:demo
+npm run ingest:check
 git diff --check
 ```
 
 ## Completion Criteria
 
 - The fixture-based ingestion modules exist and are covered by automated tests.
-- `npm run ingest:demo` proves snapshot diff -> event match -> pending queue without real Contacts or real calendars.
+- `npm run ingest:check` proves snapshot diff -> event match -> pending queue without real Contacts or real calendars.
 - The optional Contacts smoke command exists and is explicit, safe, and documented.
 - Existing evals still pass, or are updated if ingestion changes the core flow.
 - `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, goal tracking docs, and `implementation-notes.html` are updated.

@@ -69,7 +69,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       candidateId: string,
       contextNote: string,
       eventId?: string,
-      options: { eventTitle?: string } = {}
+      options: { eventTitle?: string; relationshipContext?: string } = {}
     ) {
       const candidate = repo.getCandidate(candidateId);
       if (!candidate || candidate.userId !== userId) {
@@ -245,7 +245,7 @@ function extractMemorySearchFields(memory: RelationshipMemory) {
     project: labels.project,
     school: [labels.school, labels.classYear].join(" "),
     alias: labels.alias,
-    context: labels.context,
+    context: [labels.context, memory.relationshipContext ?? ""].join(" "),
     tags: memory.tags.join(" ")
   };
 }

@@ -85,7 +85,7 @@ describe("relationship response composer", () => {
 function memory(overrides: Partial<RelationshipMemory>): RelationshipMemory {
   return {
     id: `memory_${overrides.displayName ?? "person"}`,
-    userId: "user_demo",
+    userId: "user_fixture",
     displayName: "Person",
     primaryContactLabel: "manual contact",
     contextNote: "met at an event",

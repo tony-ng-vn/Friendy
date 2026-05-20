@@ -179,7 +179,8 @@ function confirmPendingCandidate(
 
   toolCalls.push("confirm_candidate");
   const memory = tools.confirm_candidate(message.userId, candidate.id, confirmation.contextNote, confirmation.eventId, {
-    eventTitle: confirmation.eventTitle
+    eventTitle: confirmation.eventTitle,
+    relationshipContext: confirmation.relationshipContext
   });
 
   return composeSaveConfirmation({ memories: [memory] });

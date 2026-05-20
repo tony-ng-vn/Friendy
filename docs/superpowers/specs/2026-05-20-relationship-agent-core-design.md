@@ -305,9 +305,9 @@ type OutboundAgentMessage = {
 
 Spectrum/iMessage should be the first real transport. Terminal should remain as a fallback adapter for local tests.
 
-## Demo Path
+## Product Flow Path
 
-The Iteration 2 demo should prove the agent-core loop:
+The Iteration 2 product flow should prove the agent-core loop:
 
 1. Simulate a new contact:
    - Maya Chen

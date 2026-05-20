@@ -4,7 +4,7 @@
 
 **Goal:** Build the Friendy relationship agent core: simulated newly-added contact detection, deterministic calendar context mapping, bounded memory tools, agent review/search behavior, and Spectrum/iMessage transport scaffolding.
 
-**Architecture:** Add a new `src/relationship/` module set instead of rewriting the current demo UI. The new modules expose domain types, fixtures, event mapping, an in-memory repository with a future database-shaped interface, bounded tools, one relationship agent core, and transport adapters. Spectrum is treated as a communication adapter; the agent core stays transport-agnostic.
+**Architecture:** Add a new `src/relationship/` module set instead of rewriting the current product flow UI. The new modules expose domain types, fixtures, event mapping, an in-memory repository with a future database-shaped interface, bounded tools, one relationship agent core, and transport adapters. Spectrum is treated as a communication adapter; the agent core stays transport-agnostic.
 
 **Tech Stack:** TypeScript, Vitest, existing Vite/React project, `spectrum-ts` for the first real messaging transport, `tsx` for a local terminal runner.
 
@@ -29,7 +29,7 @@
 - Modify `package.json`: add scripts and dependencies.
 - Modify `tsconfig.json`: include Node types for terminal/Spectrum runtime files.
 - Modify `implementation-notes.html`: record Iteration 2 implementation decisions and verification.
-- Modify `README.md`: add relationship agent core commands and demo path.
+- Modify `README.md`: add relationship agent core commands and product flow path.
 
 ## Task 1: Add Relationship Domain Types And Fixtures
 
@@ -55,21 +55,21 @@ Create `src/relationship/types.test.ts`:
 
 ```ts
 import {
-  demoDetectedContact,
-  demoLongEvent,
-  demoShortEvent,
-  demoUser
+  fixtureDetectedContact,
+  fixtureLongEvent,
+  fixtureShortEvent,
+  fixtureUser
 } from "./fixtures";
 
 describe("relationship fixtures", () => {
-  it("models the Iteration 2 demo contact and overlapping calendar context", () => {
-    expect(demoUser.phoneNumber).toBe("+14156056081");
-    expect(demoDetectedContact.displayName).toBe("Maya Chen");
-    expect(demoDetectedContact.source).toBe("simulated");
-    expect(demoShortEvent.title).toBe("Photon Residency Dinner");
-    expect(demoShortEvent.eventKind).toBe("short");
-    expect(demoLongEvent.title).toBe("Photon Residency");
-    expect(demoLongEvent.eventKind).toBe("long");
+  it("models the Iteration 2 product flow contact and overlapping calendar context", () => {
+    expect(fixtureUser.phoneNumber).toBe("+14156056081");
+    expect(fixtureDetectedContact.displayName).toBe("Maya Chen");
+    expect(fixtureDetectedContact.source).toBe("simulated");
+    expect(fixtureShortEvent.title).toBe("Photon Residency Dinner");
+    expect(fixtureShortEvent.eventKind).toBe("short");
+    expect(fixtureLongEvent.title).toBe("Photon Residency");
+    expect(fixtureLongEvent.eventKind).toBe("long");
   });
 });
 ```
@@ -200,15 +200,15 @@ Create `src/relationship/fixtures.ts`:
 ```ts
 import type { CalendarEvent, ContactCandidateDetected, RelationshipMemory, User } from "./types";
 
-export const demoUser: User = {
-  id: "user_demo",
+export const fixtureUser: User = {
+  id: "user_product flow",
   phoneNumber: "+14156056081",
-  displayName: "Friendy Demo User",
+  displayName: "Friendy Product Flow User",
   createdAt: "2026-05-20T09:00:00.000Z"
 };
 
-export const demoDetectedContact: ContactCandidateDetected = {
-  userId: demoUser.id,
+export const fixtureDetectedContact: ContactCandidateDetected = {
+  userId: fixtureUser.id,
   displayName: "Maya Chen",
   phoneNumbers: ["+15550101020"],
   emails: [],
@@ -216,9 +216,9 @@ export const demoDetectedContact: ContactCandidateDetected = {
   source: "simulated"
 };
 
-export const demoShortEvent: CalendarEvent = {
+export const fixtureShortEvent: CalendarEvent = {
   id: "event_photon_residency_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency Dinner",
   startsAt: "2026-05-15T19:00:00-07:00",
   endsAt: "2026-05-15T22:00:00-07:00",
@@ -228,9 +228,9 @@ export const demoShortEvent: CalendarEvent = {
   eventKind: "short"
 };
 
-export const demoLongEvent: CalendarEvent = {
+export const fixtureLongEvent: CalendarEvent = {
   id: "event_photon_residency",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency",
   startsAt: "2026-05-11T16:00:00-07:00",
   endsAt: "2026-05-18T10:00:00-07:00",
@@ -242,7 +242,7 @@ export const demoLongEvent: CalendarEvent = {
 
 export const ambiguousDinnerMemory: RelationshipMemory = {
   id: "memory_sarah_founders_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   displayName: "Sarah Lee",
   primaryContactLabel: "+15550101030",
   eventId: "event_founders_dinner",
@@ -270,7 +270,7 @@ Expected: PASS.
 Add this list item under `Implementation Decisions` in `implementation-notes.html`:
 
 ```html
-<li>Iteration 2 adds relationship-agent core modules under <code>src/relationship/</code> so the current UI demo remains stable while the agent architecture is built.</li>
+<li>Iteration 2 adds relationship-agent core modules under <code>src/relationship/</code> so the current UI product flow remains stable while the agent architecture is built.</li>
 ```
 
 - [ ] **Step 8: Commit**
@@ -295,23 +295,23 @@ Expected: commit succeeds.
 Create `src/relationship/eventMapper.test.ts`:
 
 ```ts
-import { demoDetectedContact, demoLongEvent, demoShortEvent } from "./fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent } from "./fixtures";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 
 describe("event mapper", () => {
   it("ranks a short overlapping event above a long background event", () => {
-    const candidateId = createCandidateId(demoDetectedContact);
-    const matches = mapCandidateToEvents(candidateId, demoDetectedContact, [demoLongEvent, demoShortEvent]);
+    const candidateId = createCandidateId(fixtureDetectedContact);
+    const matches = mapCandidateToEvents(candidateId, fixtureDetectedContact, [fixtureLongEvent, fixtureShortEvent]);
 
     expect(matches).toHaveLength(2);
     expect(matches[0]).toMatchObject({
-      calendarEventId: demoShortEvent.id,
+      calendarEventId: fixtureShortEvent.id,
       eventTitle: "Photon Residency Dinner",
       rank: 1
     });
     expect(matches[0].confidence).toBeGreaterThan(matches[1].confidence);
     expect(matches[1]).toMatchObject({
-      calendarEventId: demoLongEvent.id,
+      calendarEventId: fixtureLongEvent.id,
       eventTitle: "Photon Residency",
       rank: 2
     });
@@ -319,14 +319,14 @@ describe("event mapper", () => {
 
   it("returns no matches when no event window contains the detection time", () => {
     const candidateId = createCandidateId({
-      ...demoDetectedContact,
+      ...fixtureDetectedContact,
       detectedAt: "2026-06-01T12:00:00-07:00"
     });
 
     const matches = mapCandidateToEvents(
       candidateId,
-      { ...demoDetectedContact, detectedAt: "2026-06-01T12:00:00-07:00" },
-      [demoLongEvent, demoShortEvent]
+      { ...fixtureDetectedContact, detectedAt: "2026-06-01T12:00:00-07:00" },
+      [fixtureLongEvent, fixtureShortEvent]
     );
 
     expect(matches).toEqual([]);
@@ -445,17 +445,17 @@ Expected: commit succeeds.
 Create `src/relationship/repository.test.ts`:
 
 ```ts
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 
 describe("relationship repository", () => {
   it("creates a pending contact candidate with event matches", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
 
-    const candidate = repo.createCandidateFromDetectedContact(demoDetectedContact);
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
     const matches = repo.listEventMatches(candidate.id);
 
     expect(candidate.status).toBe("pending");
@@ -465,12 +465,12 @@ describe("relationship repository", () => {
 
   it("confirms a candidate into a relationship memory", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
 
-    const candidate = repo.createCandidateFromDetectedContact(demoDetectedContact);
-    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", demoShortEvent.id);
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
 
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
     expect(memory.displayName).toBe("Maya Chen");
@@ -480,11 +480,11 @@ describe("relationship repository", () => {
 
   it("ignores a candidate without creating a memory", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
 
-    const candidate = repo.createCandidateFromDetectedContact(demoDetectedContact);
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
     repo.ignoreCandidate(candidate.id);
 
     expect(repo.getCandidate(candidate.id)?.status).toBe("ignored");
@@ -664,42 +664,42 @@ Expected: commit succeeds.
 Create `src/relationship/tools.test.ts`:
 
 ```ts
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
 
 describe("relationship tools", () => {
   it("lists and confirms pending candidates through bounded tools", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
 
-    expect(tools.list_pending_candidates(demoUser.id)).toHaveLength(1);
+    expect(tools.list_pending_candidates(fixtureUser.id)).toHaveLength(1);
 
     const memory = tools.confirm_candidate(
-      demoUser.id,
+      fixtureUser.id,
       candidate.id,
       "recruiting agents, played piano",
-      demoShortEvent.id
+      fixtureShortEvent.id
     );
 
     expect(memory.eventTitle).toBe("Photon Residency Dinner");
-    expect(tools.list_pending_candidates(demoUser.id)).toHaveLength(0);
+    expect(tools.list_pending_candidates(fixtureUser.id)).toHaveLength(0);
   });
 
   it("searches memories by vague context", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
-    tools.confirm_candidate(demoUser.id, candidate.id, "recruiting agents, played piano", demoShortEvent.id);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    tools.confirm_candidate(fixtureUser.id, candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
 
-    const results = tools.search_memories(demoUser.id, "who was the piano person from dinner");
+    const results = tools.search_memories(fixtureUser.id, "who was the piano person from dinner");
 
     expect(results[0].memory.displayName).toBe("Maya Chen");
     expect(results[0].reason).toContain("piano");
@@ -842,7 +842,7 @@ Expected: commit succeeds.
 Create `src/relationship/agentCore.test.ts`:
 
 ```ts
-import { ambiguousDinnerMemory, demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
+import { ambiguousDinnerMemory, fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipAgent } from "./agentCore";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
@@ -850,15 +850,15 @@ import { createRelationshipTools } from "./tools";
 describe("relationship agent core", () => {
   it("confirms a pending candidate from a natural yes reply", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, recruiting agents, played piano",
       receivedAt: "2026-05-20T12:00:00.000Z"
@@ -873,16 +873,16 @@ describe("relationship agent core", () => {
 
   it("searches saved memories and returns a confident match", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
-    tools.confirm_candidate(demoUser.id, candidate.id, "recruiting agents, played piano", demoShortEvent.id);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    tools.confirm_candidate(fixtureUser.id, candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the piano person from dinner",
       receivedAt: "2026-05-20T12:05:00.000Z"
@@ -895,17 +895,17 @@ describe("relationship agent core", () => {
 
   it("asks a clarification question when search confidence is close", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent],
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent],
       memories: [ambiguousDinnerMemory]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
-    tools.confirm_candidate(demoUser.id, candidate.id, "recruiting agents, dinner table", demoShortEvent.id);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    tools.confirm_candidate(fixtureUser.id, candidate.id, "recruiting agents, dinner table", fixtureShortEvent.id);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the person from dinner",
       receivedAt: "2026-05-20T12:10:00.000Z"
@@ -1081,7 +1081,7 @@ git commit -m "feat:add relationship agent core"
 
 Expected: commit succeeds.
 
-## Task 6: Add Terminal Transport And Demo Runner
+## Task 6: Add Terminal Transport And Product Flow Runner
 
 **Files:**
 - Create: `src/relationship/transports/terminalTransport.ts`
@@ -1112,7 +1112,7 @@ Modify `tsconfig.json` so `compilerOptions.types` includes both Vitest globals a
 Create `src/relationship/transports/terminalTransport.test.ts`:
 
 ```ts
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipAgent } from "../agentCore";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
@@ -1121,13 +1121,13 @@ import { createTerminalHarness } from "./terminalTransport";
 describe("terminal transport harness", () => {
   it("normalizes terminal text into agent messages", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    tools.create_contact_candidate(demoDetectedContact);
+    tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
-    const harness = createTerminalHarness(agent, demoUser.id);
+    const harness = createTerminalHarness(agent, fixtureUser.id);
 
     const result = harness.send("yes, recruiting agents, played piano");
 
@@ -1153,7 +1153,7 @@ Create `src/relationship/transports/terminalTransport.ts`:
 
 ```ts
 import { createRelationshipAgent } from "../agentCore";
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { AgentCoreResult } from "../types";
@@ -1173,15 +1173,15 @@ export function createTerminalHarness(agent: RelationshipAgent, userId: string) 
   };
 }
 
-export function createDemoTerminalHarness() {
+export function createFixtureTerminalHarness() {
   const repo = createRelationshipRepository({
-    users: [demoUser],
-    calendarEvents: [demoLongEvent, demoShortEvent]
+    users: [fixtureUser],
+    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
   });
   const tools = createRelationshipTools(repo);
-  const candidate = tools.create_contact_candidate(demoDetectedContact);
+  const candidate = tools.create_contact_candidate(fixtureDetectedContact);
   const agent = createRelationshipAgent(tools);
-  const harness = createTerminalHarness(agent, demoUser.id);
+  const harness = createTerminalHarness(agent, fixtureUser.id);
 
   return {
     repo,
@@ -1193,10 +1193,10 @@ export function createDemoTerminalHarness() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const demo = createDemoTerminalHarness();
-  console.log(demo.firstPrompt);
+  const product flow = createFixtureTerminalHarness();
+  console.log(product flow.firstPrompt);
   const input = process.argv.slice(2).join(" ") || "yes, recruiting agents, played piano";
-  const result = demo.harness.send(input);
+  const result = product flow.harness.send(input);
   console.log(result.outbound.text);
 }
 ```
@@ -1221,7 +1221,7 @@ npm test -- src/relationship/transports/terminalTransport.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 8: Run terminal demo**
+- [ ] **Step 8: Run terminal product flow**
 
 Run:
 
@@ -1286,14 +1286,14 @@ import { toInboundAgentMessage } from "./spectrumTransport";
 describe("spectrum transport", () => {
   it("normalizes Spectrum message text into an inbound agent message", () => {
     const inbound = toInboundAgentMessage({
-      userId: "user_demo",
+      userId: "user_product flow",
       text: "who was the piano person",
       spaceId: "space_123",
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
 
     expect(inbound).toEqual({
-      userId: "user_demo",
+      userId: "user_product flow",
       platform: "imessage",
       spaceId: "space_123",
       text: "who was the piano person",
@@ -1321,7 +1321,7 @@ Create `src/relationship/transports/spectrumTransport.ts`:
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createRelationshipAgent } from "../agentCore";
-import { demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { InboundAgentMessage } from "../types";
@@ -1352,8 +1352,8 @@ export async function startSpectrumFriendyAgent() {
   }
 
   const repo = createRelationshipRepository({
-    users: [demoUser],
-    calendarEvents: [demoLongEvent, demoShortEvent]
+    users: [fixtureUser],
+    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
   });
   const tools = createRelationshipTools(repo);
   const agent = createRelationshipAgent(tools);
@@ -1367,7 +1367,7 @@ export async function startSpectrumFriendyAgent() {
   for await (const [space, message] of app.messages) {
     await space.responding(async () => {
       const inbound = toInboundAgentMessage({
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         text: message.text,
         spaceId: space.id,
         receivedAt: new Date().toISOString()
@@ -1421,7 +1421,7 @@ Add:
 ````md
 ## Relationship Agent Core
 
-Run the local terminal agent demo:
+Run the local terminal agent product flow:
 
 ```bash
 npm run agent:terminal -- "yes, recruiting agents, played piano"
@@ -1448,7 +1448,7 @@ git commit -m "feat:add spectrum relationship agent transport"
 
 Expected: commit succeeds.
 
-## Task 8: Add Candidate Review Prompt And Search Demo Coverage
+## Task 8: Add Candidate Review Prompt And Search Product Flow Coverage
 
 **Files:**
 - Modify: `src/relationship/agentCore.ts`
@@ -1482,7 +1482,7 @@ npm test -- src/relationship/agentCore.test.ts
 
 Expected: PASS if Task 5 already exported `buildCandidateReviewPrompt`; otherwise FAIL and update `agentCore.ts` with the exported function from Task 5.
 
-- [ ] **Step 3: Update terminal demo to use prompt builder**
+- [ ] **Step 3: Update terminal product flow to use prompt builder**
 
 Modify `src/relationship/transports/terminalTransport.ts` import:
 
@@ -1490,7 +1490,7 @@ Modify `src/relationship/transports/terminalTransport.ts` import:
 import { buildCandidateReviewPrompt, createRelationshipAgent } from "../agentCore";
 ```
 
-Modify `firstPrompt` in `createDemoTerminalHarness`:
+Modify `firstPrompt` in `createFixtureTerminalHarness`:
 
 ```ts
 firstPrompt: buildCandidateReviewPrompt(candidate.displayName, "Photon Residency Dinner"),
@@ -1520,7 +1520,7 @@ Run:
 
 ```bash
 git add src/relationship/agentCore.ts src/relationship/agentCore.test.ts src/relationship/transports/terminalTransport.ts implementation-notes.html
-git commit -m "test:add relationship agent demo coverage"
+git commit -m "test:add relationship agent product flow coverage"
 ```
 
 Expected: commit succeeds.
@@ -1551,7 +1551,7 @@ npm run build
 
 Expected: TypeScript and Vite production build pass.
 
-- [ ] **Step 3: Run terminal agent demo**
+- [ ] **Step 3: Run terminal agent product flow**
 
 Run:
 

@@ -1,4 +1,4 @@
-import { ambiguousDinnerMemory, demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
+import { ambiguousDinnerMemory, fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { buildCandidateReviewPrompt, createRelationshipAgent } from "./agentCore";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
@@ -6,15 +6,15 @@ import { createRelationshipTools } from "./tools";
 describe("relationship agent core", () => {
   it("confirms a pending candidate from a natural yes reply", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, recruiting agents, played piano",
       receivedAt: "2026-05-20T12:00:00.000Z"
@@ -29,49 +29,49 @@ describe("relationship agent core", () => {
 
   it("saves a corrected event when the confirmation names a different overlapping event", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, actually at Photon Residency, recruiting agents",
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
 
-    const [memory] = repo.listMemories(demoUser.id);
+    const [memory] = repo.listMemories(fixtureUser.id);
     expect(result.toolCalls).toContain("confirm_candidate");
     expect(memory.eventTitle).toBe("Photon Residency");
-    expect(memory.eventId).toBe(demoLongEvent.id);
+    expect(memory.eventId).toBe(fixtureLongEvent.id);
     expect(memory.contextNote).toContain("recruiting agents");
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
 
   it("saves a no-event candidate with event context supplied during confirmation", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
     tools.create_contact_candidate({
-      ...demoDetectedContact,
+      ...fixtureDetectedContact,
       displayName: "Nina Park",
       detectedAt: "2026-06-01T12:00:00-07:00"
     });
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, met at SF AI Meetup, building robots",
       receivedAt: "2026-06-01T12:05:00.000Z"
     });
 
-    const [memory] = repo.listMemories(demoUser.id);
+    const [memory] = repo.listMemories(fixtureUser.id);
     expect(result.toolCalls).toContain("confirm_candidate");
     expect(memory.displayName).toBe("Nina Park");
     expect(memory.eventTitle).toBe("SF AI Meetup");
@@ -80,15 +80,15 @@ describe("relationship agent core", () => {
 
   it("ignores a pending candidate without saving memory", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "ignore",
       receivedAt: "2026-05-20T12:00:00.000Z"
@@ -97,27 +97,27 @@ describe("relationship agent core", () => {
     expect(result.toolCalls).toEqual(["list_pending_candidates", "ignore_candidate"]);
     expect(result.outbound.text).toContain("Ignored Maya Chen");
     expect(repo.getCandidate(candidate.id)?.status).toBe("ignored");
-    expect(repo.listMemories(demoUser.id)).toEqual([]);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
   it("retrieves a verified contact after confirmation by event and context search", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    tools.create_contact_candidate(demoDetectedContact);
+    tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createRelationshipAgent(tools);
 
     agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, recruiting agents, played piano",
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
 
     const searchResult = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the recruiting agents person from Photon dinner?",
       receivedAt: "2026-05-20T12:05:00.000Z"
@@ -130,16 +130,16 @@ describe("relationship agent core", () => {
 
   it("searches saved memories and returns a conversational confident match", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
-    tools.confirm_candidate(demoUser.id, candidate.id, "recruiting agents, played piano", demoShortEvent.id);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    tools.confirm_candidate(fixtureUser.id, candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the piano person from dinner",
       receivedAt: "2026-05-20T12:05:00.000Z"
@@ -154,27 +154,27 @@ describe("relationship agent core", () => {
 
   it("saves a natural first-person meeting sentence as searchable memory", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
     const agent = createRelationshipAgent(tools);
 
     const saveResult = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(",
       receivedAt: "2026-05-20T12:03:00.000Z"
     });
 
     expect(saveResult.outbound.text).toContain("Saved");
-    expect(repo.listMemories(demoUser.id)[0]).toMatchObject({
+    expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({
       displayName: "Amaya"
     });
-    expect(repo.listMemories(demoUser.id)[0].contextNote).toContain("Photon Residency II");
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toContain("Photon Residency II");
 
     const searchResult = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who slept in the same bed at Photon?",
       receivedAt: "2026-05-20T12:04:00.000Z"
@@ -187,17 +187,17 @@ describe("relationship agent core", () => {
 
   it("asks a clarification question when search confidence is close", () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent],
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent],
       memories: [ambiguousDinnerMemory]
     });
     const tools = createRelationshipTools(repo);
-    const candidate = tools.create_contact_candidate(demoDetectedContact);
-    tools.confirm_candidate(demoUser.id, candidate.id, "recruiting agents, dinner table", demoShortEvent.id);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    tools.confirm_candidate(fixtureUser.id, candidate.id, "recruiting agents, dinner table", fixtureShortEvent.id);
     const agent = createRelationshipAgent(tools);
 
     const result = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the person from dinner",
       receivedAt: "2026-05-20T12:10:00.000Z"

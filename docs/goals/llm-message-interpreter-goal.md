@@ -23,7 +23,7 @@ Spectrum/iMessage/terminal
 - The LLM only interprets the user message into structured JSON.
 - Deterministic backend tools execute capture/search/ignore/clarify.
 - Every interpreted turn must be logged.
-- Keep the existing terminal demo working.
+- Keep the existing terminal product flow working.
 - Keep Spectrum/iMessage as a communication adapter, not the product identity.
 - Use TDD and incremental commits in format `<scope>:<message>`.
 - Keep `implementation-notes.html` updated.

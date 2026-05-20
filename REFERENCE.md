@@ -27,23 +27,23 @@ Transport message
 
 ## Start Here By Task
 
-- Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
+- Product understanding: `docs/product-spec.md`, `docs/product-flow-plan.md`, `docs/handoff.md`
 - AI system architecture: `docs/ai-system-architecture.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current contact/calendar ingestion goal: `docs/goals/contact-calendar-ingestion-goal.md`
+- Current iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
-- Existing UI/demo shell: `src/App.tsx`, `src/agent.ts`, `src/memoryStore.ts`, `src/mockData.ts`
+- Existing UI/product flow shell: `src/App.tsx`, `src/agent.ts`, `src/memoryStore.ts`, `src/mockData.ts`
 - Spectrum/iMessage adapter: `src/relationship/transports/spectrumTransport.ts`
-- Terminal smoke demo: `src/relationship/transports/terminalTransport.ts`
+- Terminal smoke product flow: `src/relationship/transports/terminalTransport.ts`
 
 ## Source Map
 
 - `src/relationship/types.ts`: shared domain and agent message types.
-- `src/relationship/fixtures.ts`: deterministic demo user, events, detected contacts, and ambiguous memories.
+- `src/relationship/fixtures.ts`: deterministic product flow user, events, detected contacts, and ambiguous memories.
 - `src/relationship/eventMapper.ts`: deterministic contact-to-calendar matching.
 - `src/relationship/repository.ts`: in-memory repository boundary for candidates, memories, events, and future logs.
 - `src/relationship/candidateConfirmation.ts`: deterministic consent-reply parsing for pending contact candidates, including corrected event context.
@@ -55,10 +55,10 @@ Transport message
 - `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
 - `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
-- `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion demo pipeline.
+- `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion product flow pipeline.
 - `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
 - `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
-- `src/relationship/transports/`: communication adapters; product logic should live above this layer.
+- `src/relationship/transports/`: communication adapters and deterministic iMessage E2E product flow; product logic should live above this layer.
 
 ## Commands
 
@@ -67,7 +67,8 @@ npm test
 npm run build
 npm run agent:terminal -- "yes, recruiting agents, played piano"
 npm run eval:agent
-npm run ingest:demo
+npm run check:imessage-e2e
+npm run ingest:check
 npm run agent:spectrum
 ```
 
@@ -77,7 +78,7 @@ Optional macOS Contacts smoke command:
 npm run ingest:contacts:smoke -- --name Friendy-001
 ```
 
-This command is explicit, accepts only `Friendy-<number>` names, and must not run from tests, build, evals, or `ingest:demo`.
+This command is explicit, accepts only `Friendy-<number>` names, and must not run from tests, build, evals, or `ingest:check`.
 
 Use targeted tests while developing:
 
@@ -89,6 +90,8 @@ npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/evals/agentEvalRunner.test.ts
 npm test -- src/relationship/transports/spectrumTransport.test.ts
+npm test -- src/relationship/transports/imessageE2eFlow.test.ts
+npm test -- src/relationship/candidateConfirmation.test.ts
 npm test -- src/relationship/ingestion/contactSnapshot.test.ts
 npm test -- src/relationship/ingestion/ingestionPipeline.test.ts
 npm test -- src/relationship/contacts/contactsSmoke.test.ts

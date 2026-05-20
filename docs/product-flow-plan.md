@@ -1,19 +1,19 @@
-# Friendy Demo Plan
+# Friendy Product Flow Plan
 
 ## Goal
 
 Show the magic in under 60 seconds: Friendy helps the user recover someone by context, not by name.
 
-## Current Demo Setup
+## Current Product Flow Setup
 
-The repo contains a local Vite/React demo with mocked data:
+The repo contains a local Vite/React product flow with mocked data:
 
 - User: Thien
 - Event: Photon Residency Dinner
 - Candidates: Maya Chen, Alex Rivera, Priya Shah
 - Signal source: mocked calendar and mocked contact delta
 
-## Run The Demo
+## Run The Product Flow
 
 ```bash
 npm install
@@ -51,9 +51,9 @@ The user did not search by name. They searched by a fuzzy human memory fragment,
 
 Ending:
 
-> "The demo uses mocked Contacts and Calendar signals. The product bet is that a native companion app can supply those signals later, while Photon remains the user-facing relationship memory agent."
+> "The product flow uses mocked Contacts and Calendar signals. The product bet is that a native companion app can supply those signals later, while Photon remains the user-facing relationship memory agent."
 
-## What The Demo Proves
+## What The Product Flow Proves
 
 - The agent asks before tracking.
 - Contacts are candidates, not automatically saved memories.
@@ -61,7 +61,7 @@ Ending:
 - Vague recall search returns the right person.
 - The result includes why it matched and how to contact them.
 
-## What The Demo Does Not Prove Yet
+## What The Product Flow Does Not Prove Yet
 
 - Real iOS Contacts permission behavior.
 - Real Calendar event detection.

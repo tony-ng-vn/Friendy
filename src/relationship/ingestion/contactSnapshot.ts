@@ -1,4 +1,4 @@
-import { demoUser } from "../fixtures";
+import { fixtureUser } from "../fixtures";
 import type { ContactCandidateDetected } from "../types";
 
 export type ContactSnapshotContact = {
@@ -23,7 +23,7 @@ type ContactMethodRecord = {
 };
 
 export const fixtureBeforeContactSnapshot: ContactSnapshot = {
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   capturedAt: "2026-05-15T19:00:00-07:00",
   contacts: [
     {
@@ -37,7 +37,7 @@ export const fixtureBeforeContactSnapshot: ContactSnapshot = {
 };
 
 export const fixtureAfterContactSnapshot: ContactSnapshot = {
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   capturedAt: "2026-06-01T12:00:00-07:00",
   contacts: [
     {

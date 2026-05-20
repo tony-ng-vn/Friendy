@@ -1,16 +1,16 @@
 import type { CalendarEvent, ContactCandidateDetected, RelationshipMemory, User } from "./types";
 
-/** Stable demo user for the first Photon/Friendy relationship-agent walkthrough. */
-export const demoUser: User = {
-  id: "user_demo",
+/** Stable fixture user for the first Photon/Friendy relationship-agent walkthrough. */
+export const fixtureUser: User = {
+  id: "user_fixture",
   phoneNumber: "+14156056081",
-  displayName: "Friendy Demo User",
+  displayName: "Friendy Fixture User",
   createdAt: "2026-05-20T09:00:00.000Z"
 };
 
 /** Simulated contact delta that stands in for "user added someone to Contacts during an event." */
-export const demoDetectedContact: ContactCandidateDetected = {
-  userId: demoUser.id,
+export const fixtureDetectedContact: ContactCandidateDetected = {
+  userId: fixtureUser.id,
   displayName: "Maya Chen",
   phoneNumbers: ["+15550101020"],
   emails: [],
@@ -19,9 +19,9 @@ export const demoDetectedContact: ContactCandidateDetected = {
 };
 
 /** Specific event that should outrank the longer residency when both overlap. */
-export const demoShortEvent: CalendarEvent = {
+export const fixtureShortEvent: CalendarEvent = {
   id: "event_photon_residency_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency Dinner",
   startsAt: "2026-05-15T19:00:00-07:00",
   endsAt: "2026-05-15T22:00:00-07:00",
@@ -32,9 +32,9 @@ export const demoShortEvent: CalendarEvent = {
 };
 
 /** Long background event used to prove overlap ranking does not lose residency context. */
-export const demoLongEvent: CalendarEvent = {
+export const fixtureLongEvent: CalendarEvent = {
   id: "event_photon_residency",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency",
   startsAt: "2026-05-11T16:00:00-07:00",
   endsAt: "2026-05-18T10:00:00-07:00",
@@ -47,7 +47,7 @@ export const demoLongEvent: CalendarEvent = {
 /** Second dinner memory used to force a clarification path instead of overconfident search results. */
 export const ambiguousDinnerMemory: RelationshipMemory = {
   id: "memory_sarah_founders_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   displayName: "Sarah Lee",
   primaryContactLabel: "+15550101030",
   eventId: "event_founders_dinner",

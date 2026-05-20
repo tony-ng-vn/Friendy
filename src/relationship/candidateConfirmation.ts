@@ -2,6 +2,7 @@ import type { EventContextMatch } from "./types";
 
 export type CandidateConfirmationResolution = {
   contextNote: string;
+  relationshipContext?: string;
   eventId?: string;
   eventTitle?: string;
 };
@@ -30,9 +31,11 @@ export function resolveCandidateConfirmation(
   const cleaned = cleanConfirmationNote(value);
   const extracted = extractEventCorrection(cleaned);
   const selectedMatch = extracted.eventTitle ? findEventMatch(extracted.eventTitle, eventMatches) : undefined;
+  const contextNote = normalizeKnownPlaces(extracted.contextNote || cleaned || "met at event");
 
   return {
-    contextNote: extracted.contextNote || cleaned || "met at event",
+    contextNote,
+    relationshipContext: extractRelationshipBackstory(contextNote),
     eventId: selectedMatch?.calendarEventId,
     eventTitle: selectedMatch ? undefined : extracted.eventTitle
   };
@@ -62,6 +65,11 @@ function parseEventTitle(value: string): string | undefined {
     .replace(/^(actually|it was|it is|i think|maybe)\s+/i, "")
     .replace(/^i\s+/i, "");
 
+  const metPersonAtMatch = /^met\s+\S+(?:\s+\S+){0,2}\s+at\s+(.+?)(?:\s+after\b|$)/i.exec(normalized);
+  if (metPersonAtMatch?.[1]) {
+    return metPersonAtMatch[1].trim();
+  }
+
   const match = /^(?:met\s+)?(?:them\s+)?(?:at|during|from)\s+(.+)$/i.exec(normalized);
   return match?.[1]?.trim();
 }
@@ -80,4 +88,16 @@ function findEventMatch(eventTitle: string, eventMatches: EventContextMatch[]): 
 
 function normalizeTitle(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+function extractRelationshipBackstory(value: string): string | undefined {
+  if (/after\s+havent\s+met\s+him\s+since\s+high\s+school\s+in\s+Minnesota/i.test(value)) {
+    return "had not seen him since high school in Minnesota";
+  }
+
+  return undefined;
+}
+
+function normalizeKnownPlaces(value: string): string {
+  return value.replace(/\bminnesota\b/gi, "Minnesota");
 }

@@ -84,6 +84,7 @@ export type RelationshipMemory = {
   eventTitle?: string;
   dateContext?: RelationshipDateContext;
   contextNote: string;
+  relationshipContext?: string;
   tags: string[];
   confidence: number;
   createdAt: string;

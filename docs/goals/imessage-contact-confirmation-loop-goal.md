@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build Friendy's iMessage-first contact confirmation loop until a deterministic Spectrum/iMessage-style demo proves: fixture new phone contact detection -> event guess -> Friendy confirmation message -> user messy confirmation reply -> structured memory save -> later iMessage search retrieves the person.
+Build Friendy's iMessage-first contact confirmation loop until a deterministic Spectrum/iMessage-style product flow proves: fixture new phone contact detection -> event guess -> Friendy confirmation message -> user messy confirmation reply -> structured memory save -> later iMessage search retrieves the person.
 
 ## Why This Matters
 
@@ -11,9 +11,9 @@ Friendy's MVP is not just contact ingestion and not just chat search. The core p
 ## Non-Negotiables
 
 - Use TDD.
-- Use iMessage/Spectrum transport boundaries or a deterministic Spectrum/iMessage simulator for the required demo.
-- Keep live Spectrum sending optional; the required demo must run locally without sending real messages.
-- Do not use the terminal transport as the required demo path.
+- Use iMessage/Spectrum transport boundaries or a deterministic Spectrum/iMessage simulator for the required product-flow check.
+- Keep live Spectrum sending optional; the required product-flow check must run locally without sending real messages.
+- Do not use the terminal transport as the required product-flow path.
 - Do not add UI.
 - Do not add LinkedIn, X, Instagram, or social detection.
 - Keep phone contacts as the only MVP detection source.
@@ -25,10 +25,10 @@ Friendy's MVP is not just contact ingestion and not just chat search. The core p
 
 ## Required Behavior
 
-- Add a deterministic iMessage/Spectrum-style E2E demo command, expected name: `npm run demo:imessage-e2e`.
-- The demo must start with fixture contact/calendar ingestion, not manually seeded memory.
-- The demo must print the event guess and a Friendy confirmation message.
-- The demo must route the messy user reply through the iMessage/Spectrum runtime boundary or deterministic simulator.
+- Add a deterministic iMessage/Spectrum-style E2E product-flow command, expected name: `npm run check:imessage-e2e`.
+- The product-flow check must start with fixture contact/calendar ingestion, not manually seeded memory.
+- The product-flow check must print the event guess and a Friendy confirmation message.
+- The product-flow check must route the messy user reply through the iMessage/Spectrum runtime boundary or deterministic simulator.
 - The messy confirmation reply must include:
 
 ```text
@@ -57,8 +57,8 @@ Run before completion:
 npm test
 npm run build
 npm run eval:agent
-npm run demo:imessage-e2e
-npm run ingest:demo
+npm run check:imessage-e2e
+npm run ingest:check
 git diff --check
 ```
 
@@ -66,7 +66,7 @@ git diff --check
 
 - Tests cover the new iMessage/Spectrum-style E2E path.
 - Tests prove event context and relationship backstory are separated for the required messy reply.
-- `npm run demo:imessage-e2e` prints the deterministic product loop from detection to later search.
+- `npm run check:imessage-e2e` prints the deterministic product loop from detection to later search.
 - Existing evals still pass.
 - `README.md`, `REFERENCE.md`, `docs/ai-system-architecture.md` if needed, goal tracking docs, and `implementation-notes.html` are updated.
 - All verification commands pass on the feature branch and again on `main`.

@@ -14,7 +14,7 @@ const EVENT_KIND_RANK = {
 } as const;
 
 /**
- * Creates a stable demo candidate id from contact identity and detection time.
+ * Creates a stable fixture candidate id from contact identity and detection time.
  *
  * The MVP uses deterministic ids so contact-delta fixtures can be replayed in tests.
  * A real persistence layer can replace this with database ids without changing agent behavior.

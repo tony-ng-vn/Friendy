@@ -5,7 +5,7 @@ import {
   fixtureBeforeContactSnapshot,
   normalizeContactMethod
 } from "./contactSnapshot";
-import { demoUser } from "../fixtures";
+import { fixtureUser } from "../fixtures";
 
 describe("contact snapshot diff", () => {
   it("detects newly added phone and email methods with deterministic detectedAt", () => {
@@ -13,7 +13,7 @@ describe("contact snapshot diff", () => {
 
     expect(detections.map((item) => item.displayName)).toEqual(["Maya Chen", "Nina Park"]);
     expect(detections[0]).toMatchObject({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       displayName: "Maya Chen",
       phoneNumbers: ["+15550101020"],
       emails: [],
@@ -31,7 +31,7 @@ describe("contact snapshot diff", () => {
   it("does not create detections for name-only edits", () => {
     const detections = detectNewContactMethods(
       {
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         capturedAt: "2026-05-15T20:00:00-07:00",
         contacts: [
           {
@@ -44,7 +44,7 @@ describe("contact snapshot diff", () => {
         ]
       },
       {
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         capturedAt: "2026-05-15T21:00:00-07:00",
         contacts: [
           {
@@ -64,7 +64,7 @@ describe("contact snapshot diff", () => {
   it("does not create detections for duplicate contact methods", () => {
     const detections = detectNewContactMethods(
       {
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         capturedAt: "2026-05-15T20:00:00-07:00",
         contacts: [
           {
@@ -77,7 +77,7 @@ describe("contact snapshot diff", () => {
         ]
       },
       {
-        userId: demoUser.id,
+        userId: fixtureUser.id,
         capturedAt: "2026-05-15T21:00:00-07:00",
         contacts: [
           {

@@ -7,7 +7,7 @@
   <body>
     <h1>Implementation Notes</h1>
     <ul>
-      <li>Initial build target is a local web demo with mocked contact and calendar signals.</li>
+      <li>Initial build target is a local web product flow with mocked contact and calendar signals.</li>
       <li>Native Contacts and Calendar integrations are intentionally deferred.</li>
       <li>The app is implemented at the repository root because the Friendy repo was empty except for README.md.</li>
     </ul>
@@ -15,10 +15,10 @@
     <ul>
       <li>Added a repo-level AGENTS.md after the user asked for incremental commit and message-format instructions.</li>
       <li>Used mocked contact deltas and a mocked Photon Residency Dinner calendar event to prove the agent loop before native iOS work.</li>
-      <li>Kept the UI chat-first, with side panels exposing event state, candidates, and saved memories for demo clarity.</li>
-      <li>Added repo-owned docs for the product spec, demo plan, handoff context, and Codex access setup so future sessions do not depend on external planning files.</li>
+      <li>Kept the UI chat-first, with side panels exposing event state, candidates, and saved memories for product flow clarity.</li>
+      <li>Added repo-owned docs for the product spec, product flow plan, handoff context, and Codex access setup so future sessions do not depend on external planning files.</li>
       <li>Imported the original Superpowers spec and implementation plan into <code>docs/superpowers/</code> so the planning trail is versioned with the repo.</li>
-      <li>Iteration 2 adds relationship-agent core modules under <code>src/relationship/</code> so the current UI demo remains stable while the agent architecture is built.</li>
+      <li>Iteration 2 adds relationship-agent core modules under <code>src/relationship/</code> so the current UI product flow remains stable while the agent architecture is built.</li>
       <li>Changed TypeScript module resolution to <code>Bundler</code> so Vite can resolve Spectrum SDK package export subpaths such as <code>spectrum-ts/providers/imessage</code>.</li>
       <li>The Spectrum adapter is a transport wrapper around the relationship agent core; the agent core remains usable through terminal tests without Spectrum credentials.</li>
       <li>Installing <code>spectrum-ts</code> reported high-severity npm audit warnings in transitive dependencies; no automatic audit fix was run because it could make unrelated dependency changes during the MVP pass.</li>
@@ -37,9 +37,10 @@
       <li>Added <code>src/relationship/evals/</code> as the trajectory-level agent evaluation boundary. The required eval suite is deterministic and local; optional repeated model-backed evals require both <code>OPENROUTER_API_KEY</code> and <code>FRIENDY_EVAL_RUN_MODEL=1</code>.</li>
       <li>Added <code>npm run eval:agent</code> to report pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, clarification correctness, per-case assertions, and optional model-backed eval availability.</li>
       <li>Added fixture contact snapshot diffing under <code>src/relationship/ingestion/</code>. The diff is method-centric: new normalized phone/email methods can create detections, while name-only edits and duplicate normalized methods are ignored.</li>
-      <li>Kept contact/calendar ingestion fixture-only for this goal. The calendar provider abstraction exists so real adapters can be added later, but tests, builds, evals, and <code>npm run ingest:demo</code> do not read real calendars or Contacts.</li>
+      <li>Kept contact/calendar ingestion fixture-only for this goal. The calendar provider abstraction exists so real adapters can be added later, but tests, builds, evals, and <code>npm run ingest:check</code> do not read real calendars or Contacts.</li>
       <li>Added <code>sync_calendar_events</code> to the relationship tools so ingestion can seed fixture events while event matching remains inside the existing repository/tool boundary.</li>
       <li>Added an explicit macOS Contacts smoke command for manual integration checks. It only accepts <code>Friendy-&lt;number&gt;</code> names, creates or reuses one exact test contact, derives a deterministic phone number, and fails clearly outside macOS.</li>
+      <li>Removed product-flow wording that framed Friendy as something built for showing off instead of as the actual project. Renamed fixture commands and files to <code>check:imessage-e2e</code>, <code>ingest:check</code>, and <code>*Flow</code>/<code>*Check</code> names so future work treats them as product verification paths.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -47,7 +48,7 @@
       <li>Ran <code>npm run build</code>: TypeScript and Vite production build completed.</li>
       <li>Ran <code>npm test</code>: 11 test files passed, 24 tests passed after the relationship-agent core, transports, and Spectrum scaffold were added.</li>
       <li>Ran <code>npm run build</code>: TypeScript and Vite production build completed after the Spectrum module-resolution change.</li>
-      <li>Ran <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code>: the demo prompt mapped Maya Chen to Photon Residency Dinner and saved the context note.</li>
+      <li>Ran <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code>: the product flow prompt mapped Maya Chen to Photon Residency Dinner and saved the context note.</li>
       <li>Ran targeted env-loader tests to confirm <code>.env.local</code> credentials are loaded for the Spectrum agent while shell-provided values still take precedence.</li>
       <li>Added a regression test for natural first-person memory capture and search using the Amaya Photon Residency example.</li>
       <li>Ran <code>npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/env.test.ts</code>: OpenRouter structured-output request, retry, invalid-output fallback, and missing-key fallback tests passed.</li>
@@ -62,12 +63,12 @@
       <li>Ran response-composer feature-branch verification: <code>npm test</code> passed with 17 files and 55 tests, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for the response-composer goal, reran <code>npm test</code>, <code>npm run build</code>, and <code>git diff --check</code> successfully.</li>
       <li>For the field-aware search goal, ran <code>npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts</code>: Maya/Nina recruiting founder, Leo/Rina devtools, CMU, event-wide Photon Residency II recall, and dinner-founder ambiguity tests passed.</li>
-      <li>Ran the deterministic field-aware search demo transcript saved in <code>docs/goals/field-aware-memory-search-demo.md</code>.</li>
+      <li>Ran the deterministic field-aware search product flow transcript saved in <code>docs/goals/field-aware-memory-search-transcript.md</code>.</li>
       <li>Ran field-aware search feature-branch verification: <code>npm test</code> passed with 17 files and 60 tests, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>After fast-forwarding <code>main</code> for the field-aware search goal, reran <code>npm test</code>, <code>npm run build</code>, and <code>git diff --check</code> successfully.</li>
       <li>For the contact-event verification queue goal, first ran a RED targeted suite where corrected-event, no-event confirmation, and Spectrum first-inbound identity tests failed as expected.</li>
       <li>Ran the focused GREEN suite <code>npm test -- src/relationship/repository.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts</code>: 4 files and 33 tests passed.</li>
-      <li>Ran the deterministic contact-event verification demo transcript saved in <code>docs/goals/contact-event-verification-queue-demo.md</code>.</li>
+      <li>Ran the deterministic contact-event verification product flow transcript saved in <code>docs/goals/contact-event-verification-queue.md</code>.</li>
       <li>Ran contact-event verification feature-branch checks: <code>npm test</code> passed with 17 files and 70 tests, <code>npm run build</code> passed, <code>npm run agent:terminal -- "yes, recruiting agents, played piano"</code> passed, and <code>git diff --check</code> passed.</li>
       <li>For the relationship-agent eval harness goal, first ran a RED targeted test where the eval runner was missing, then where the stub had zero cases and no npm script.</li>
       <li>Ran <code>npm test -- src/relationship/evals/agentEvalRunner.test.ts</code>: eval runner contract tests passed with 5 tests.</li>
@@ -76,10 +77,14 @@
       <li>After fast-forwarding <code>main</code> for the relationship-agent eval harness goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, and <code>git diff --check</code> successfully.</li>
       <li>For the contact/calendar ingestion goal, first ran a RED targeted suite where contact snapshot, ingestion pipeline, and Contacts smoke modules were missing and the required npm scripts did not exist.</li>
       <li>Ran the focused GREEN suite <code>npm test -- src/relationship/ingestion/contactSnapshot.test.ts src/relationship/ingestion/ingestionPipeline.test.ts src/relationship/contacts/contactsSmoke.test.ts</code>: 3 files and 14 tests passed.</li>
-      <li>Ran <code>npm run ingest:demo</code>: the fixture demo printed Maya Chen and Nina Park detections, candidate ids, ranked event guesses, and the pending queue without real Contacts or calendar access.</li>
+      <li>Ran <code>npm run ingest:check</code>: the fixture product flow printed Maya Chen and Nina Park detections, candidate ids, ranked event guesses, and the pending queue without real Contacts or calendar access.</li>
       <li>Ran <code>npm run build</code> after fixing a contact diff type narrowing issue.</li>
-      <li>Ran contact/calendar ingestion feature-branch checks: <code>npm test</code> passed with 21 files and 89 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run ingest:demo</code> printed the deterministic ingestion summary, and <code>git diff --check</code> passed.</li>
-      <li>After fast-forwarding <code>main</code> for the contact/calendar ingestion goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, <code>npm run ingest:demo</code>, and <code>git diff --check</code> successfully.</li>
+      <li>Ran contact/calendar ingestion feature-branch checks: <code>npm test</code> passed with 21 files and 89 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run ingest:check</code> printed the deterministic ingestion summary, and <code>git diff --check</code> passed.</li>
+      <li>After fast-forwarding <code>main</code> for the contact/calendar ingestion goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, <code>npm run ingest:check</code>, and <code>git diff --check</code> successfully.</li>
+      <li>After removing the project-wide show-oriented wording, ran <code>npm test -- src/relationship/candidateConfirmation.test.ts src/relationship/transports/imessageE2eFlow.test.ts src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts src/relationship/tools.test.ts src/relationship/ingestion/ingestionPipeline.test.ts src/App.test.tsx</code>: 7 files and 30 tests passed.</li>
+      <li>Ran <code>npm run check:imessage-e2e</code>: the flow detected Abc, mapped Photon Residency II, saved the high-school backstory, and retrieved Abc from a later high-school/Photon search.</li>
+      <li>Ran <code>npm run ingest:check</code>: fixture ingestion printed Maya Chen and Nina Park detections, ranked event guesses, and the pending queue.</li>
+      <li>Ran current feature-branch verification after the terminology cleanup: <code>npm test</code> passed with 23 files and 92 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, <code>git diff --check</code> passed, and the forbidden-term search returned no matches.</li>
     </ul>
   </body>
 </html>

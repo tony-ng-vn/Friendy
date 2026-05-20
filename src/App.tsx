@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { handleAgentMessage } from "./agent";
-import { demoCalendarEvent, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureUser } from "./mockData";
 import { createInitialState, type MemoryState } from "./memoryStore";
 import "./styles.css";
 
@@ -10,7 +10,7 @@ type ChatMessage = {
 };
 
 export function App() {
-  const initialState = useMemo(() => createInitialState(demoUser, demoCalendarEvent), []);
+  const initialState = useMemo(() => createInitialState(fixtureUser, fixtureCalendarEvent), []);
   const [state, setState] = useState<MemoryState>(initialState);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -39,7 +39,7 @@ export function App() {
   return (
     <main className="shell">
       <section className="hero">
-        <p className="eyebrow">Friendy demo</p>
+        <p className="eyebrow">Friendy</p>
         <h1>Relationship Memory Agent</h1>
         <p>
           Friendy watches approved event windows, asks before saving new people,
@@ -85,7 +85,7 @@ export function App() {
         <aside className="side-stack">
           <section className="panel">
             <h2>Event Window</h2>
-            <p className="strong">{demoCalendarEvent.title}</p>
+            <p className="strong">{fixtureCalendarEvent.title}</p>
             <p className="muted">7-11 PM, San Francisco</p>
             <p className="muted">Source: mocked calendar</p>
           </section>

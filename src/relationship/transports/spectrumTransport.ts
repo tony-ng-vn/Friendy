@@ -7,10 +7,12 @@ import {
   readOpenRouterConfig
 } from "../openRouterInterpreter";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
-import { demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
-import { createRelationshipRepository } from "../repository";
+import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
+import { createRelationshipRepository, type RelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { AgentInteraction, InboundAgentMessage } from "../types";
+
+type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
 /** Small transport input shape so Spectrum specifics do not leak into the agent core. */
 export type SpectrumInboundInput = {
@@ -23,6 +25,8 @@ export type SpectrumInboundInput = {
 export type SpectrumRuntimeOptions = {
   interpreter: MessageInterpreter;
   now?: () => string;
+  repo?: RelationshipRepository;
+  tools?: RelationshipTools;
 };
 
 export type CompactInteractionLog = {
@@ -55,12 +59,12 @@ export function toInboundAgentMessage(input: SpectrumInboundInput): InboundAgent
  * Spectrum remains only the communication source. This runtime normalizes text, delegates all
  * relationship behavior to the interpreted agent, and returns the compact log the live loop prints.
  */
-export function createSpectrumFriendyRuntime({ interpreter, now }: SpectrumRuntimeOptions) {
-  const repo = createRelationshipRepository({
-    users: [demoUser],
-    calendarEvents: [demoLongEvent, demoShortEvent]
+export function createSpectrumFriendyRuntime({ interpreter, now, repo: providedRepo, tools: providedTools }: SpectrumRuntimeOptions) {
+  const repo = providedRepo ?? createRelationshipRepository({
+    users: [fixtureUser],
+    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
   });
-  const tools = createRelationshipTools(repo);
+  const tools = providedTools ?? createRelationshipTools(repo);
   const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now });
 
   return {
@@ -79,8 +83,8 @@ export function createSpectrumFriendyRuntime({ interpreter, now }: SpectrumRunti
 /**
  * Starts the Spectrum-backed relationship agent.
  *
- * This is a transport scaffold for the demo number. User identity and durable memory are still
- * demo-scoped here; the agent core is already separated so those pieces can be swapped later.
+ * This is a transport scaffold for the fixture number. User identity and durable memory are still
+ * fixture-scoped here; the agent core is already separated so those pieces can be swapped later.
  */
 export async function startSpectrumFriendyAgent() {
   loadFriendyEnv();
@@ -111,7 +115,7 @@ export async function startSpectrumFriendyAgent() {
 }
 
 function resolveSpectrumUserId(input: SpectrumInboundInput): string {
-  return input.userId?.trim() || input.spaceId?.trim() || demoUser.id;
+  return input.userId?.trim() || input.spaceId?.trim() || fixtureUser.id;
 }
 
 function toCompactInteractionLog(interaction: AgentInteraction): CompactInteractionLog {

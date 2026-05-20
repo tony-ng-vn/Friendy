@@ -1,18 +1,18 @@
 import {
-  demoDetectedContact,
-  demoLongEvent,
-  demoShortEvent,
-  demoUser
+  fixtureDetectedContact,
+  fixtureLongEvent,
+  fixtureShortEvent,
+  fixtureUser
 } from "./fixtures";
 
 describe("relationship fixtures", () => {
-  it("models the Iteration 2 demo contact and overlapping calendar context", () => {
-    expect(demoUser.phoneNumber).toBe("+14156056081");
-    expect(demoDetectedContact.displayName).toBe("Maya Chen");
-    expect(demoDetectedContact.source).toBe("simulated");
-    expect(demoShortEvent.title).toBe("Photon Residency Dinner");
-    expect(demoShortEvent.eventKind).toBe("short");
-    expect(demoLongEvent.title).toBe("Photon Residency");
-    expect(demoLongEvent.eventKind).toBe("long");
+  it("models the Iteration 2 fixture contact and overlapping calendar context", () => {
+    expect(fixtureUser.phoneNumber).toBe("+14156056081");
+    expect(fixtureDetectedContact.displayName).toBe("Maya Chen");
+    expect(fixtureDetectedContact.source).toBe("simulated");
+    expect(fixtureShortEvent.title).toBe("Photon Residency Dinner");
+    expect(fixtureShortEvent.eventKind).toBe("short");
+    expect(fixtureLongEvent.title).toBe("Photon Residency");
+    expect(fixtureLongEvent.eventKind).toBe("long");
   });
 });

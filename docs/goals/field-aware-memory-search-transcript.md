@@ -1,4 +1,4 @@
-# Field-Aware Memory Search Demo Transcript
+# Field-Aware Memory Search Product Flow Transcript
 
 Command: deterministic `tsx --eval` harness using `createInterpretedRelationshipAgent`, `createRuleBasedInterpreter`, in-memory repository, and deterministic tools.
 

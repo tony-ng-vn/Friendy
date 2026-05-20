@@ -54,7 +54,7 @@ npm run build
 git diff --check
 ```
 
-Also run a deterministic local demo transcript that covers:
+Also run a deterministic local product flow transcript that covers:
 
 - recruiting-agents founder query,
 - devtools query,
@@ -68,7 +68,7 @@ Also run a deterministic local demo transcript that covers:
 - Field-aware ranking lives in the deterministic search layer, not response wording.
 - Event-wide searches still return multiple relevant memories.
 - Ambiguous close matches still ask a narrowing question.
-- Demo transcript shows the exact measurable end-state queries working.
+- Product Flow transcript shows the exact measurable end-state queries working.
 - `README.md`, `REFERENCE.md`, and `implementation-notes.html` are updated if architecture or behavior changes.
 - All verification commands pass on the feature branch and again on `main`.
 - Changes are committed incrementally.

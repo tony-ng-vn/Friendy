@@ -4,7 +4,7 @@
 
 Photon is a relationship memory agent that helps users remember and refind people they met by watching for new contacts during approved event windows and asking them to add context.
 
-The first build should be a demo prototype, not the full native mobile product. It should simulate contact/calendar signals so the Photon agent loop can be tested quickly: calendar prompt, approved memory window, contact delta review, context capture, and later fuzzy recall.
+The first build should be a product flow prototype, not the full native mobile product. It should simulate contact/calendar signals so the Photon agent loop can be tested quickly: calendar prompt, approved memory window, contact delta review, context capture, and later fuzzy recall.
 
 ## MVP Definition
 
@@ -18,7 +18,7 @@ The MVP is an agent-run event memory session:
 6. Photon asks for context about confirmed people.
 7. The user can later ask vague memory queries and Photon returns likely matches with reasoning.
 
-The demo should prove the product loop, not iOS background behavior. Native Contacts and Calendar access are a later sensor layer that can replace the mocked signal source without changing the agent behavior.
+The product flow should prove the product loop, not iOS background behavior. Native Contacts and Calendar access are a later sensor layer that can replace the mocked signal source without changing the agent behavior.
 
 ## Target User And Job
 
@@ -38,7 +38,7 @@ Photon should answer with the likely person, explain why, and show the available
 
 - Photon displays or sends a prompt for an upcoming calendar event: “You have Photon Residency Dinner tonight from 7-11 PM. Want me to remember new people you meet there?”
 - If approved, the system creates a `MemorySession` for that event.
-- In production, the companion app would snapshot contacts at this point. In the demo, this is represented by a mocked baseline.
+- In production, the companion app would snapshot contacts at this point. In the product flow, this is represented by a mocked baseline.
 
 ### During And After The Event
 
@@ -50,7 +50,7 @@ Photon should answer with the likely person, explain why, and show the available
 
 - The user can confirm, ignore, or assign a candidate to a different event.
 - For confirmed candidates, Photon asks: “What should I remember about this person?”
-- The user can add natural language context such as “played piano, AI recruiting founder, follow up about demo.”
+- The user can add natural language context such as “played piano, AI recruiting founder, follow up about product flow.”
 
 ### Later Recall
 
@@ -58,14 +58,14 @@ Photon should answer with the likely person, explain why, and show the available
 - Photon searches confirmed relationship memories using name, event, time, context notes, contact metadata, and tags extracted from notes.
 - Photon returns 1-3 likely matches with reasons and contact actions.
 
-## Required Demo Behaviors
+## Required Product Flow Behaviors
 
 - Start a memory session for “Photon Residency Dinner.”
 - Show at least one pending new contact candidate after the event.
 - Confirm a candidate and add context through chat.
 - Search with a vague natural language query and return the correct person.
 - Show a clear “why this matched” explanation.
-- Include a follow-up draft action as a visible post-MVP or optional demo action.
+- Include a follow-up draft action as a visible post-MVP or optional product flow action.
 
 ## Data Model
 
@@ -146,22 +146,22 @@ Photon should behave like the product, not like a database UI.
 
 Example search response:
 
-> Likely Maya Chen. You confirmed her after Photon Residency Dinner, and your note says “played piano, AI recruiting founder, follow up about demo.” Contact: phone.
+> Likely Maya Chen. You confirmed her after Photon Residency Dinner, and your note says “played piano, AI recruiting founder, follow up about product flow.” Contact: phone.
 
 ## Search Strategy
 
-V1 should use simple local matching for the demo:
+V1 should use simple local matching for the product flow:
 
 - Normalize query, names, event titles, notes, and tags to lowercase tokens.
 - Score matches by overlap across context note, tags, event title, display name, and approximate time words.
 - Weight user-added context highest, event title second, then name/contact metadata.
 - Return up to three matches with explanation strings.
 
-Embeddings can be added later, but the first demo should not require vector infrastructure.
+Embeddings can be added later, but the first product flow should not require vector infrastructure.
 
 ## Technical Architecture
 
-The demo should be a local web prototype with mocked data:
+The product flow should be a local web prototype with mocked data:
 
 - A chat-style Photon agent interface.
 - A small in-memory or browser-local data store.
@@ -191,11 +191,11 @@ Production architecture later:
 - Image input: user can send a photo of a place, badge, table, or whiteboard for context; this must not start as face recognition.
 - Shared profile links: user forwards an Instagram, LinkedIn, X, or website link to Photon.
 - Follow-up drafting: Photon drafts a message using the saved event context.
-- Native Contacts and Calendar companion: replaces mocked signal capture after the demo loop is proven.
+- Native Contacts and Calendar companion: replaces mocked signal capture after the product flow loop is proven.
 
 ## Assumptions
 
-- The first implementation is a demo prototype, not production mobile software.
+- The first implementation is a product flow prototype, not production mobile software.
 - Contact and calendar data are mocked in V1 to avoid being blocked by native app permissions and background execution.
 - The agent conversation is the product surface; the companion app is only a later sensor layer.
 - The MVP succeeds if a user can approve an event window, confirm a new contact, add context, and later recover that person from a vague query.

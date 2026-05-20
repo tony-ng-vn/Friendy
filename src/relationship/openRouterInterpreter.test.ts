@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { demoUser } from "./fixtures";
+import { fixtureUser } from "./fixtures";
 import {
   DEFAULT_OPENROUTER_MODEL,
   createOpenRouterInterpreter,
@@ -9,7 +9,7 @@ import {
 import type { InboundAgentMessage } from "./types";
 
 const inbound: InboundAgentMessage = {
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   platform: "terminal",
   text: "Who I have met at the Residency?",
   receivedAt: "2026-05-20T12:00:00.000Z"

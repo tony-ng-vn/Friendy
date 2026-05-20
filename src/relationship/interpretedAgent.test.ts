@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "./fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
@@ -14,7 +14,7 @@ describe("interpreted relationship agent", () => {
       inbound("I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(")
     );
 
-    const memories = repo.listMemories(demoUser.id);
+    const memories = repo.listMemories(fixtureUser.id);
     expect(result.outbound.text).toContain("Saved");
     expect(memories[0]).toMatchObject({
       displayName: "Amaya",
@@ -23,7 +23,7 @@ describe("interpreted relationship agent", () => {
     expect(memories[0].contextNote).toContain("Photon Residency II");
     expect(memories[0].contextNote.toLowerCase()).toContain("sleep");
 
-    const logs = repo.listInteractions(demoUser.id);
+    const logs = repo.listInteractions(fixtureUser.id);
     expect(logs).toHaveLength(1);
     expect(logs[0]).toMatchObject({
       inboundText: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(",
@@ -43,7 +43,7 @@ describe("interpreted relationship agent", () => {
       )
     );
 
-    const [memory] = repo.listMemories(demoUser.id);
+    const [memory] = repo.listMemories(fixtureUser.id);
     expect(memory.displayName).toBe("Zhiyuan");
     expect(memory.contextNote).toContain("Zed");
     expect(memory.contextNote).toContain("CMU");
@@ -59,7 +59,7 @@ describe("interpreted relationship agent", () => {
       inbound("I met Maya yesterday at Photon Residency II dinner", "2026-05-20T20:00:00.000-07:00")
     );
 
-    const [memory] = repo.listMemories(demoUser.id);
+    const [memory] = repo.listMemories(fixtureUser.id);
     expect(memory.dateContext).toMatchObject({
       rawText: "yesterday",
       localDate: "2026-05-19",
@@ -79,7 +79,7 @@ describe("interpreted relationship agent", () => {
       inbound("And also met Felix Ng who goes to UBC and sleep in the same room with me and Amaya")
     );
 
-    const memories = repo.listMemories(demoUser.id);
+    const memories = repo.listMemories(fixtureUser.id);
     expect(memories.map((memory) => memory.displayName)).toEqual(["Amaya", "Sarah Fah", "Felix Ng"]);
 
     const sarah = memories.find((memory) => memory.displayName === "Sarah Fah");
@@ -157,11 +157,11 @@ describe("interpreted relationship agent", () => {
 
   it("confirms a pending contact through the interpreted path used by Spectrum", async () => {
     const repo = createRelationshipRepository({
-      users: [demoUser],
-      calendarEvents: [demoLongEvent, demoShortEvent]
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
     });
     const tools = createRelationshipTools(repo);
-    tools.create_contact_candidate(demoDetectedContact);
+    tools.create_contact_candidate(fixtureDetectedContact);
     const agent = createInterpretedRelationshipAgent({
       repo,
       tools,
@@ -172,7 +172,7 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("yes, actually at Photon Residency, recruiting agents"));
 
-    const [memory] = repo.listMemories(demoUser.id);
+    const [memory] = repo.listMemories(fixtureUser.id);
     expect(result.toolCalls).toEqual([
       "list_pending_candidates",
       "list_candidate_event_matches",
@@ -241,8 +241,8 @@ describe("interpreted relationship agent", () => {
 
     expect(result.outbound.text.toLowerCase()).toContain("what do you remember");
     expect(result.toolCalls).toEqual([]);
-    expect(repo.listMemories(demoUser.id)).toHaveLength(0);
-    expect(repo.listInteractions(demoUser.id)[0].interpretedIntentJson).toMatchObject({
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
+    expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
       intent: "clarify",
       needsClarification: true
     });
@@ -276,7 +276,7 @@ async function saveAmayaAndZhiyuan(agent: ReturnType<typeof createTestAgent>["ag
 
 function inbound(text: string, receivedAt = "2026-05-20T12:00:00.000Z"): InboundAgentMessage {
   return {
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     platform: "terminal",
     text,
     receivedAt

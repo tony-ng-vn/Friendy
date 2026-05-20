@@ -52,7 +52,7 @@ new contact detected
 -> later search retrieves the person
 ```
 
-This is the highest product-value goal, but it should come after the response composer if the live iMessage demo is still awkward.
+This is the highest product-value goal, but it should come after the response composer if the live iMessage product flow is still awkward.
 
 Run with:
 

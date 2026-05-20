@@ -37,7 +37,7 @@ type OpenRouterInterpreterOptions = {
 /**
  * Reads OpenRouter config with a stable free default model.
  *
- * The API key is optional because local demos should still run through the
+ * The API key is optional because local fixtures should still run through the
  * deterministic fallback when a developer has not configured OpenRouter yet.
  */
 export function readOpenRouterConfig(
@@ -82,7 +82,7 @@ export function createOpenRouterInterpreter({
   };
 }
 
-/** Deterministic local fallback for tests and demos when model calls fail or are not configured. */
+/** Deterministic local fallback for tests and fixtures when model calls fail or are not configured. */
 export function createRuleBasedInterpreter(): MessageInterpreter {
   return {
     async interpret(message) {

@@ -9,7 +9,7 @@
 
 ## Current State
 
-Friendy is implemented as a local Vite, React, and TypeScript demo for the Photon relationship memory agent MVP.
+Friendy is implemented as a local Vite, React, and TypeScript product flow for the Photon relationship memory agent MVP.
 
 The current branch includes:
 
@@ -48,23 +48,23 @@ npm run build
 
 ## Important Files
 
-- `README.md`: repo overview, setup, and demo script.
+- `README.md`: repo overview, setup, and product flow script.
 - `docs/product-spec.md`: product definition, MVP loop, guardrails, and future features.
-- `docs/demo-plan.md`: 60-second demo script.
+- `docs/product-flow-plan.md`: 60-second product flow script.
 - `docs/codex-access.md`: recommended Codex command access setup.
 - `docs/superpowers/`: original Superpowers spec and implementation plan artifacts.
 - `implementation-notes.html`: running implementation decisions and verification notes.
-- `src/App.tsx`: demo UI.
+- `src/App.tsx`: product flow UI.
 - `src/agent.ts`: agent message handling and search.
 - `src/memoryStore.ts`: deterministic memory state transitions.
-- `src/mockData.ts`: seeded demo event and contact candidates.
+- `src/mockData.ts`: seeded product flow event and contact candidates.
 - `src/types.ts`: V1 domain model.
 
 ## Existing Commits
 
 - `docs:add agent workflow instructions`
-- `chore:scaffold friendy demo app`
-- `feat:add relationship memory agent demo`
+- `chore:scaffold friendy product flow app`
+- `feat:add relationship memory agent product flow`
 - `docs:record verification notes`
 
 ## Next Product Work

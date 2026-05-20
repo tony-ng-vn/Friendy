@@ -1,10 +1,10 @@
-import { demoCalendarEvent, demoContactDelta, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureContactDelta, fixtureUser } from "./mockData";
 
 describe("mock data", () => {
   it("contains a Photon dinner and at least one new contact candidate", () => {
-    expect(demoUser.name).toBe("Thien");
-    expect(demoCalendarEvent.title).toBe("Photon Residency Dinner");
-    expect(demoContactDelta).toHaveLength(3);
-    expect(demoContactDelta[0].displayName).toBe("Maya Chen");
+    expect(fixtureUser.name).toBe("Thien");
+    expect(fixtureCalendarEvent.title).toBe("Photon Residency Dinner");
+    expect(fixtureContactDelta).toHaveLength(3);
+    expect(fixtureContactDelta[0].displayName).toBe("Maya Chen");
   });
 });

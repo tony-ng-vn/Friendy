@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the deterministic iMessage/Spectrum-style contact confirmation demo that proves a fixture new phone contact can become a confirmed searchable relationship memory through messy iMessage context.
+**Goal:** Build the deterministic iMessage/Spectrum-style contact confirmation flow that proves a fixture new phone contact can become a confirmed searchable relationship memory through messy iMessage context.
 
-**Architecture:** Reuse the existing ingestion pipeline and Spectrum runtime boundary. Add a small deterministic iMessage E2E demo module that seeds fixture contact/calendar ingestion into the same repository/tools used by the interpreted agent, then simulates iMessage inbound replies through the Spectrum runtime shape. Extend relationship memory with relationship backstory so `Photon Residency II` is saved as event context while `high school in Minnesota` is saved as prior relationship context.
+**Architecture:** Reuse the existing ingestion pipeline and Spectrum runtime boundary. Add a small deterministic iMessage E2E flow module that seeds fixture contact/calendar ingestion into the same repository/tools used by the interpreted agent, then simulates iMessage inbound replies through the Spectrum runtime shape. Extend relationship memory with relationship backstory so `Photon Residency II` is saved as event context while `high school in Minnesota` is saved as prior relationship context.
 
 **Tech Stack:** TypeScript, Vitest, tsx npm scripts, in-memory relationship repository, Spectrum transport adapter, deterministic rule-based interpreter.
 
@@ -12,33 +12,33 @@
 
 ## File Structure
 
-- Create `src/relationship/transports/imessageE2eDemo.ts`: deterministic E2E demo runner and CLI output for the iMessage-first contact confirmation loop.
-- Create `src/relationship/transports/imessageE2eDemo.test.ts`: RED/GREEN coverage for the demo transcript and saved memory state.
+- Create `src/relationship/transports/imessageE2eFlow.ts`: deterministic E2E flow runner and CLI output for the iMessage-first contact confirmation loop.
+- Create `src/relationship/transports/imessageE2eFlow.test.ts`: RED/GREEN coverage for the flow transcript and saved memory state.
 - Modify `src/relationship/types.ts`: add optional `relationshipContext` to `RelationshipMemory`.
 - Modify `src/relationship/repository.ts`: persist `relationshipContext` during candidate confirmation.
 - Modify `src/relationship/tools.ts`: pass `relationshipContext` through `confirm_candidate` and include it in search fields.
 - Modify `src/relationship/candidateConfirmation.ts`: parse messy confirmation text into event correction/current event and relationship backstory.
-- Modify `src/relationship/transports/spectrumTransport.ts`: allow tests/demos to inject an existing repository/tools into the deterministic Spectrum runtime.
-- Modify `package.json`: add `demo:imessage-e2e`.
+- Modify `src/relationship/transports/spectrumTransport.ts`: allow tests/flows to inject an existing repository/tools into the deterministic Spectrum runtime.
+- Modify `package.json`: add `check:imessage-e2e`.
 - Modify docs after behavior passes: `README.md`, `REFERENCE.md`, `docs/ai-system-architecture.md`, `implementation-notes.html`, and goal tracking docs.
 
-## Task 1: RED Tests For iMessage E2E Demo
+## Task 1: RED Tests For iMessage E2E Flow
 
 **Files:**
-- Create: `src/relationship/transports/imessageE2eDemo.test.ts`
+- Create: `src/relationship/transports/imessageE2eFlow.test.ts`
 - Modify: none
 
-- [ ] **Step 1: Write failing demo tests**
+- [ ] **Step 1: Write failing flow tests**
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { runImessageContactConfirmationDemo } from "./imessageE2eDemo";
+import { runImessageContactConfirmationFlow } from "./imessageE2eFlow";
 
-describe("iMessage contact confirmation E2E demo", () => {
+describe("iMessage contact confirmation E2E flow", () => {
   it("prints the deterministic iMessage-first contact confirmation loop", async () => {
-    const demo = await runImessageContactConfirmationDemo();
+    const flow = await runImessageContactConfirmationFlow();
 
-    expect(demo.lines).toEqual([
+    expect(flow.lines).toEqual([
       "Detected contact: Abc",
       "Best event guess: Photon Residency II",
       "Friendy -> User: I noticed you added Abc around Photon Residency II. Did you meet them there?",
@@ -52,8 +52,8 @@ describe("iMessage contact confirmation E2E demo", () => {
   });
 
   it("saves the confirmed candidate with event context, backstory, note, and detected contact method", async () => {
-    const demo = await runImessageContactConfirmationDemo();
-    const [memory] = demo.memories;
+    const flow = await runImessageContactConfirmationFlow();
+    const [memory] = flow.memories;
 
     expect(memory).toMatchObject({
       displayName: "Abc",
@@ -64,7 +64,7 @@ describe("iMessage contact confirmation E2E demo", () => {
     });
     expect(memory.contextNote).toContain("Photon Residency II");
     expect(memory.contextNote).toContain("high school in Minnesota");
-    expect(demo.searchReply).toContain("Abc");
+    expect(flow.searchReply).toContain("Abc");
   });
 });
 ```
@@ -74,10 +74,10 @@ describe("iMessage contact confirmation E2E demo", () => {
 Run:
 
 ```bash
-npm test -- src/relationship/transports/imessageE2eDemo.test.ts
+npm test -- src/relationship/transports/imessageE2eFlow.test.ts
 ```
 
-Expected: fail because `imessageE2eDemo.ts` does not exist.
+Expected: fail because `imessageE2eFlow.ts` does not exist.
 
 ## Task 2: RED Tests For Confirmation Parsing
 
@@ -173,22 +173,22 @@ npm test -- src/relationship/candidateConfirmation.test.ts src/relationship/tool
 
 Expected: all focused tests pass.
 
-## Task 4: Implement iMessage/Spectrum-Style Demo
+## Task 4: Implement iMessage/Spectrum-Style Flow
 
 **Files:**
-- Create: `src/relationship/transports/imessageE2eDemo.ts`
+- Create: `src/relationship/transports/imessageE2eFlow.ts`
 - Modify: `src/relationship/transports/spectrumTransport.ts`
 - Modify: `package.json`
 
 - [ ] **Step 1: Add runtime injection seam**
 
-Extend `createSpectrumFriendyRuntime` options with optional `repo` and `tools`. If provided, use them instead of creating a fresh demo repository. This keeps the demo on the Spectrum/iMessage boundary while allowing ingestion to seed candidates before messages are handled.
+Extend `createSpectrumFriendyRuntime` options with optional `repo` and `tools`. If provided, use them instead of creating a fresh fixture repository. This keeps the flow on the Spectrum/iMessage boundary while allowing ingestion to seed candidates before messages are handled.
 
-- [ ] **Step 2: Build demo runner**
+- [ ] **Step 2: Build flow runner**
 
-Create `runImessageContactConfirmationDemo()` that:
+Create `runImessageContactConfirmationFlow()` that:
 
-1. Creates a repository with demo user.
+1. Creates a repository with fixture user.
 2. Creates a fixture event titled `Photon Residency II`.
 3. Creates before/after contact snapshots with a new phone contact `Abc` at `2026-05-15T21:42:00-07:00`.
 4. Runs `ingestContactSnapshotDiff`.
@@ -207,16 +207,16 @@ When the file is run directly, print `lines.join("\n")`.
 In `package.json`:
 
 ```json
-"demo:imessage-e2e": "tsx src/relationship/transports/imessageE2eDemo.ts"
+"check:imessage-e2e": "tsx src/relationship/transports/imessageE2eFlow.ts"
 ```
 
-- [ ] **Step 5: Run demo tests and command**
+- [ ] **Step 5: Run flow tests and command**
 
 Run:
 
 ```bash
-npm test -- src/relationship/transports/imessageE2eDemo.test.ts
-npm run demo:imessage-e2e
+npm test -- src/relationship/transports/imessageE2eFlow.test.ts
+npm run check:imessage-e2e
 ```
 
 Expected: tests pass and command prints the deterministic product loop.
@@ -234,11 +234,11 @@ Expected: tests pass and command prints the deterministic product loop.
 
 - [ ] **Step 1: Update command docs**
 
-Document `npm run demo:imessage-e2e` in README and REFERENCE.
+Document `npm run check:imessage-e2e` in README and REFERENCE.
 
 - [ ] **Step 2: Update architecture docs**
 
-Record that the current deterministic demo now proves iMessage/Spectrum-style confirmation from contact detection to later search.
+Record that the current deterministic flow check now proves iMessage/Spectrum-style confirmation from contact detection to later search.
 
 - [ ] **Step 3: Record verification and decisions**
 
@@ -265,8 +265,8 @@ Run:
 npm test
 npm run build
 npm run eval:agent
-npm run demo:imessage-e2e
-npm run ingest:demo
+npm run check:imessage-e2e
+npm run ingest:check
 git diff --check
 ```
 

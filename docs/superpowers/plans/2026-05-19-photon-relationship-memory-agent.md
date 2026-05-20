@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a local Photon Relationship Memory Agent demo that shows the approved event-window memory loop with mocked calendar/contact data, confirmation, context capture, and vague recall search.
+**Goal:** Build a local Photon Relationship Memory Agent product flow that shows the approved event-window memory loop with mocked calendar/contact data, confirmation, context capture, and vague recall search.
 
-**Architecture:** Create a greenfield Vite + React + TypeScript app in `photon-memory-demo`. Keep product behavior in small pure modules: typed domain objects, seeded demo data, an in-memory store, and a deterministic agent/search engine. The UI is a chat-style Photon surface plus compact panels for the event session, candidate queue, and saved memories.
+**Architecture:** Create a greenfield Vite + React + TypeScript app in `Friendy`. Keep product behavior in small pure modules: typed domain objects, seeded product flow data, an in-memory store, and a deterministic agent/search engine. The UI is a chat-style Photon surface plus compact panels for the event session, candidate queue, and saved memories.
 
 **Tech Stack:** Vite, React, TypeScript, Vitest, Testing Library, local browser state.
 
@@ -12,38 +12,38 @@
 
 ## File Structure
 
-- Create `photon-memory-demo/package.json`: scripts and dependencies.
-- Create `photon-memory-demo/index.html`: Vite entry document.
-- Create `photon-memory-demo/tsconfig.json`, `photon-memory-demo/tsconfig.node.json`, `photon-memory-demo/vite.config.ts`: TypeScript and Vite configuration.
-- Create `photon-memory-demo/src/types.ts`: shared domain types from the spec.
-- Create `photon-memory-demo/src/mockData.ts`: fixed demo user, calendar event, baseline contacts, and contact delta.
-- Create `photon-memory-demo/src/memoryStore.ts`: deterministic state transitions for sessions, candidates, memories, and interactions.
-- Create `photon-memory-demo/src/agent.ts`: Photon-style message handling, confirmation flow, context capture, and search.
-- Create `photon-memory-demo/src/App.tsx`: chat UI and demo panels.
-- Create `photon-memory-demo/src/main.tsx`: React app entry.
-- Create `photon-memory-demo/src/styles.css`: responsive app styling.
-- Create `photon-memory-demo/src/*.test.ts`: focused unit tests for store and agent behavior.
-- Create `photon-memory-demo/implementation-notes.html`: running implementation notes required by `/home/thien/AGENTS.md`.
+- Create `Friendy/package.json`: scripts and dependencies.
+- Create `Friendy/index.html`: Vite entry document.
+- Create `Friendy/tsconfig.json`, `Friendy/tsconfig.node.json`, `Friendy/vite.config.ts`: TypeScript and Vite configuration.
+- Create `Friendy/src/types.ts`: shared domain types from the spec.
+- Create `Friendy/src/mockData.ts`: fixed product flow user, calendar event, baseline contacts, and contact delta.
+- Create `Friendy/src/memoryStore.ts`: deterministic state transitions for sessions, candidates, memories, and interactions.
+- Create `Friendy/src/agent.ts`: Photon-style message handling, confirmation flow, context capture, and search.
+- Create `Friendy/src/App.tsx`: chat UI and product flow panels.
+- Create `Friendy/src/main.tsx`: React app entry.
+- Create `Friendy/src/styles.css`: responsive app styling.
+- Create `Friendy/src/*.test.ts`: focused unit tests for store and agent behavior.
+- Create `Friendy/implementation-notes.html`: running implementation notes required by `/home/thien/AGENTS.md`.
 
-## Task 1: Scaffold Demo App
+## Task 1: Scaffold Product Flow App
 
 **Files:**
-- Create: `photon-memory-demo/package.json`
-- Create: `photon-memory-demo/index.html`
-- Create: `photon-memory-demo/tsconfig.json`
-- Create: `photon-memory-demo/tsconfig.node.json`
-- Create: `photon-memory-demo/vite.config.ts`
-- Create: `photon-memory-demo/src/main.tsx`
-- Create: `photon-memory-demo/src/App.tsx`
-- Create: `photon-memory-demo/src/styles.css`
-- Create: `photon-memory-demo/implementation-notes.html`
+- Create: `Friendy/package.json`
+- Create: `Friendy/index.html`
+- Create: `Friendy/tsconfig.json`
+- Create: `Friendy/tsconfig.node.json`
+- Create: `Friendy/vite.config.ts`
+- Create: `Friendy/src/main.tsx`
+- Create: `Friendy/src/App.tsx`
+- Create: `Friendy/src/styles.css`
+- Create: `Friendy/implementation-notes.html`
 
 - [ ] **Step 1: Create the project directory**
 
 Run:
 
 ```bash
-mkdir -p /home/thien/photon-memory-demo/src
+mkdir -p /home/thien/Friendy/src
 ```
 
 Expected: command exits with status `0`.
@@ -54,7 +54,7 @@ Add:
 
 ```json
 {
-  "name": "photon-memory-demo",
+  "name": "Friendy",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -172,7 +172,7 @@ export function App() {
   return (
     <main className="shell">
       <section className="hero">
-        <p className="eyebrow">Photon demo</p>
+        <p className="eyebrow">Photon product flow</p>
         <h1>Relationship Memory Agent</h1>
         <p>
           Photon helps you remember and refind people you met during approved
@@ -249,12 +249,12 @@ Add `implementation-notes.html`:
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Photon Memory Demo Implementation Notes</title>
+    <title>Photon Memory Product Flow Implementation Notes</title>
   </head>
   <body>
     <h1>Implementation Notes</h1>
     <ul>
-      <li>Initial build target is a local web demo with mocked contact and calendar signals.</li>
+      <li>Initial build target is a local web product flow with mocked contact and calendar signals.</li>
       <li>Native Contacts and Calendar integrations are intentionally deferred.</li>
     </ul>
   </body>
@@ -266,7 +266,7 @@ Add `implementation-notes.html`:
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm install
 ```
 
@@ -277,7 +277,7 @@ Expected: dependencies install successfully and `package-lock.json` is created.
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm run build
 ```
 
@@ -289,8 +289,8 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo docs/superpowers
-git commit -m "chore: scaffold photon memory demo"
+git add Friendy docs/superpowers
+git commit -m "chore: scaffold photon memory product flow"
 ```
 
 Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git repo, record that in `implementation-notes.html` and continue without committing.
@@ -298,24 +298,24 @@ Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git rep
 ## Task 2: Add Domain Types And Mock Data
 
 **Files:**
-- Create: `photon-memory-demo/src/types.ts`
-- Create: `photon-memory-demo/src/mockData.ts`
-- Create: `photon-memory-demo/src/mockData.test.ts`
-- Modify: `photon-memory-demo/implementation-notes.html`
+- Create: `Friendy/src/types.ts`
+- Create: `Friendy/src/mockData.ts`
+- Create: `Friendy/src/mockData.test.ts`
+- Modify: `Friendy/implementation-notes.html`
 
 - [ ] **Step 1: Write failing mock data test**
 
 Add `src/mockData.test.ts`:
 
 ```ts
-import { demoCalendarEvent, demoContactDelta, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureContactDelta, fixtureUser } from "./mockData";
 
 describe("mock data", () => {
   it("contains a Photon dinner and at least one new contact candidate", () => {
-    expect(demoUser.name).toBe("Thien");
-    expect(demoCalendarEvent.title).toBe("Photon Residency Dinner");
-    expect(demoContactDelta).toHaveLength(3);
-    expect(demoContactDelta[0].displayName).toBe("Maya Chen");
+    expect(fixtureUser.name).toBe("Thien");
+    expect(fixtureCalendarEvent.title).toBe("Photon Residency Dinner");
+    expect(fixtureContactDelta).toHaveLength(3);
+    expect(fixtureContactDelta[0].displayName).toBe("Maya Chen");
   });
 });
 ```
@@ -325,7 +325,7 @@ describe("mock data", () => {
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/mockData.test.ts
 ```
 
@@ -413,16 +413,16 @@ Add `src/mockData.ts`:
 ```ts
 import type { CalendarEvent, CandidateConnection, User } from "./types";
 
-export const demoUser: User = {
+export const fixtureUser: User = {
   id: "user_thien",
   name: "Thien",
   phoneNumber: "+15550101010",
   createdAt: "2026-05-19T09:00:00.000Z"
 };
 
-export const demoCalendarEvent: CalendarEvent = {
+export const fixtureCalendarEvent: CalendarEvent = {
   id: "event_photon_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency Dinner",
   startsAt: "2026-05-15T19:00:00.000Z",
   endsAt: "2026-05-15T23:00:00.000Z",
@@ -430,10 +430,10 @@ export const demoCalendarEvent: CalendarEvent = {
   source: "mock_calendar"
 };
 
-export const demoContactDelta: CandidateConnection[] = [
+export const fixtureContactDelta: CandidateConnection[] = [
   {
     id: "candidate_maya",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Maya Chen",
     phoneNumber: "+15550101020",
     source: "mock_contact_delta",
@@ -442,7 +442,7 @@ export const demoContactDelta: CandidateConnection[] = [
   },
   {
     id: "candidate_alex",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Alex Rivera",
     phoneNumber: "+15550101021",
     source: "mock_contact_delta",
@@ -451,7 +451,7 @@ export const demoContactDelta: CandidateConnection[] = [
   },
   {
     id: "candidate_priya",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Priya Shah",
     email: "priya@example.com",
     source: "mock_contact_delta",
@@ -466,7 +466,7 @@ export const demoContactDelta: CandidateConnection[] = [
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/mockData.test.ts
 ```
 
@@ -479,7 +479,7 @@ Append to `implementation-notes.html`:
 ```html
 <h2>Mock Data Decision</h2>
 <p>
-  The demo uses a fixed Photon Residency Dinner calendar event and three mocked
+  The product flow uses a fixed Photon Residency Dinner calendar event and three mocked
   contact deltas. This keeps the agent loop testable before native iOS signal
   capture exists.
 </p>
@@ -491,8 +491,8 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo docs/superpowers
-git commit -m "feat: add photon memory demo domain data"
+git add Friendy docs/superpowers
+git commit -m "feat: add photon memory product flow domain data"
 ```
 
 Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git repo, record that in `implementation-notes.html` and continue.
@@ -500,30 +500,30 @@ Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git rep
 ## Task 3: Implement Memory Store
 
 **Files:**
-- Create: `photon-memory-demo/src/memoryStore.ts`
-- Create: `photon-memory-demo/src/memoryStore.test.ts`
-- Modify: `photon-memory-demo/implementation-notes.html`
+- Create: `Friendy/src/memoryStore.ts`
+- Create: `Friendy/src/memoryStore.test.ts`
+- Modify: `Friendy/implementation-notes.html`
 
 - [ ] **Step 1: Write failing store tests**
 
 Add `src/memoryStore.test.ts`:
 
 ```ts
-import { demoCalendarEvent, demoContactDelta, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureContactDelta, fixtureUser } from "./mockData";
 import { createInitialState, approveSession, loadContactDelta, confirmCandidate, ignoreCandidate } from "./memoryStore";
 
 describe("memory store", () => {
   it("approves a calendar-backed memory session", () => {
-    const state = createInitialState(demoUser, demoCalendarEvent);
-    const next = approveSession(state, demoCalendarEvent.id);
+    const state = createInitialState(fixtureUser, fixtureCalendarEvent);
+    const next = approveSession(state, fixtureCalendarEvent.id);
 
     expect(next.sessions[0].status).toBe("active");
     expect(next.sessions[0].title).toBe("Photon Residency Dinner");
   });
 
   it("loads contact deltas into the approved session", () => {
-    const state = approveSession(createInitialState(demoUser, demoCalendarEvent), demoCalendarEvent.id);
-    const next = loadContactDelta(state, demoContactDelta);
+    const state = approveSession(createInitialState(fixtureUser, fixtureCalendarEvent), fixtureCalendarEvent.id);
+    const next = loadContactDelta(state, fixtureContactDelta);
 
     expect(next.candidates).toHaveLength(3);
     expect(next.candidates.every((candidate) => candidate.memorySessionId === "session_event_photon_dinner")).toBe(true);
@@ -531,22 +531,22 @@ describe("memory store", () => {
 
   it("confirms a candidate into a relationship memory with extracted tags", () => {
     const state = loadContactDelta(
-      approveSession(createInitialState(demoUser, demoCalendarEvent), demoCalendarEvent.id),
-      demoContactDelta
+      approveSession(createInitialState(fixtureUser, fixtureCalendarEvent), fixtureCalendarEvent.id),
+      fixtureContactDelta
     );
 
-    const next = confirmCandidate(state, "candidate_maya", "played piano, AI recruiting founder, follow up about demo");
+    const next = confirmCandidate(state, "candidate_maya", "played piano, AI recruiting founder, follow up about product flow");
 
     expect(next.candidates.find((candidate) => candidate.id === "candidate_maya")?.status).toBe("confirmed");
     expect(next.memories).toHaveLength(1);
     expect(next.memories[0].displayName).toBe("Maya Chen");
-    expect(next.memories[0].tags).toEqual(["played", "piano", "ai", "recruiting", "founder", "follow", "demo"]);
+    expect(next.memories[0].tags).toEqual(["played", "piano", "ai", "recruiting", "founder", "follow", "product flow"]);
   });
 
   it("ignores a candidate without creating a memory", () => {
     const state = loadContactDelta(
-      approveSession(createInitialState(demoUser, demoCalendarEvent), demoCalendarEvent.id),
-      demoContactDelta
+      approveSession(createInitialState(fixtureUser, fixtureCalendarEvent), fixtureCalendarEvent.id),
+      fixtureContactDelta
     );
 
     const next = ignoreCandidate(state, "candidate_alex");
@@ -562,7 +562,7 @@ describe("memory store", () => {
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/memoryStore.test.ts
 ```
 
@@ -689,7 +689,7 @@ export function extractTags(text: string): string[] {
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/memoryStore.test.ts
 ```
 
@@ -701,7 +701,7 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo
+git add Friendy
 git commit -m "feat: add relationship memory store"
 ```
 
@@ -710,22 +710,22 @@ Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git rep
 ## Task 4: Implement Photon Agent Logic
 
 **Files:**
-- Create: `photon-memory-demo/src/agent.ts`
-- Create: `photon-memory-demo/src/agent.test.ts`
-- Modify: `photon-memory-demo/implementation-notes.html`
+- Create: `Friendy/src/agent.ts`
+- Create: `Friendy/src/agent.test.ts`
+- Modify: `Friendy/implementation-notes.html`
 
 - [ ] **Step 1: Write failing agent tests**
 
 Add `src/agent.test.ts`:
 
 ```ts
-import { demoCalendarEvent, demoContactDelta, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureContactDelta, fixtureUser } from "./mockData";
 import { createInitialState } from "./memoryStore";
 import { handleAgentMessage, searchMemories } from "./agent";
 
 describe("Photon agent", () => {
   it("asks to start a memory session for the calendar event", () => {
-    const state = createInitialState(demoUser, demoCalendarEvent);
+    const state = createInitialState(fixtureUser, fixtureCalendarEvent);
     const result = handleAgentMessage(state, "start");
 
     expect(result.reply).toContain("Photon Residency Dinner");
@@ -733,7 +733,7 @@ describe("Photon agent", () => {
   });
 
   it("approves the session and loads the contact review queue", () => {
-    const state = createInitialState(demoUser, demoCalendarEvent);
+    const state = createInitialState(fixtureUser, fixtureCalendarEvent);
     const result = handleAgentMessage(state, "yes");
 
     expect(result.state.sessions[0].status).toBe("review_ready");
@@ -742,7 +742,7 @@ describe("Photon agent", () => {
   });
 
   it("confirms Maya and captures context", () => {
-    const approved = handleAgentMessage(createInitialState(demoUser, demoCalendarEvent), "yes").state;
+    const approved = handleAgentMessage(createInitialState(fixtureUser, fixtureCalendarEvent), "yes").state;
     const result = handleAgentMessage(approved, "save Maya: played piano, AI recruiting founder");
 
     expect(result.state.memories[0].displayName).toBe("Maya Chen");
@@ -750,7 +750,7 @@ describe("Photon agent", () => {
   });
 
   it("recalls Maya from a vague query", () => {
-    const approved = handleAgentMessage(createInitialState(demoUser, demoCalendarEvent), "yes").state;
+    const approved = handleAgentMessage(createInitialState(fixtureUser, fixtureCalendarEvent), "yes").state;
     const saved = handleAgentMessage(approved, "save Maya: played piano, AI recruiting founder").state;
 
     const matches = searchMemories(saved, "who was the girl playing piano at dinner");
@@ -766,7 +766,7 @@ describe("Photon agent", () => {
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/agent.test.ts
 ```
 
@@ -777,7 +777,7 @@ Expected: fail because `agent.ts` does not exist.
 Add `src/agent.ts`:
 
 ```ts
-import { demoContactDelta } from "./mockData";
+import { fixtureContactDelta } from "./mockData";
 import { approveSession, confirmCandidate, extractTags, loadContactDelta, type MemoryState } from "./memoryStore";
 import type { RelationshipMemory } from "./types";
 
@@ -806,7 +806,7 @@ export function handleAgentMessage(state: MemoryState, rawInput: string): AgentR
 
   if ((lower === "yes" || lower.includes("start tracking")) && suggestedSession) {
     const approved = approveSession(state, suggestedSession.calendarEventId ?? "");
-    const withDelta = loadContactDelta(approved, demoContactDelta);
+    const withDelta = loadContactDelta(approved, fixtureContactDelta);
     return {
       state: withDelta,
       reply: `I found ${withDelta.candidates.length} new contacts since ${suggestedSession.title} started: ${withDelta.candidates
@@ -916,7 +916,7 @@ export function searchMemories(state: MemoryState, query: string): MemoryMatch[]
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test -- src/agent.test.ts
 ```
 
@@ -928,27 +928,27 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo
+git add Friendy
 git commit -m "feat: add photon memory agent logic"
 ```
 
 Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git repo, record that in `implementation-notes.html` and continue.
 
-## Task 5: Build Demo UI
+## Task 5: Build Product Flow UI
 
 **Files:**
-- Modify: `photon-memory-demo/src/App.tsx`
-- Modify: `photon-memory-demo/src/styles.css`
-- Modify: `photon-memory-demo/implementation-notes.html`
+- Modify: `Friendy/src/App.tsx`
+- Modify: `Friendy/src/styles.css`
+- Modify: `Friendy/implementation-notes.html`
 
-- [ ] **Step 1: Replace `App.tsx` with the working demo UI**
+- [ ] **Step 1: Replace `App.tsx` with the working product flow UI**
 
 Use:
 
 ```tsx
 import { useMemo, useState } from "react";
 import { handleAgentMessage } from "./agent";
-import { demoCalendarEvent, demoUser } from "./mockData";
+import { fixtureCalendarEvent, fixtureUser } from "./mockData";
 import { createInitialState, type MemoryState } from "./memoryStore";
 import "./styles.css";
 
@@ -958,7 +958,7 @@ type ChatMessage = {
 };
 
 export function App() {
-  const initialState = useMemo(() => createInitialState(demoUser, demoCalendarEvent), []);
+  const initialState = useMemo(() => createInitialState(fixtureUser, fixtureCalendarEvent), []);
   const [state, setState] = useState<MemoryState>(initialState);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -987,7 +987,7 @@ export function App() {
   return (
     <main className="shell">
       <section className="hero">
-        <p className="eyebrow">Photon demo</p>
+        <p className="eyebrow">Photon product flow</p>
         <h1>Relationship Memory Agent</h1>
         <p>
           Photon watches approved event windows, asks before saving new people,
@@ -1029,7 +1029,7 @@ export function App() {
         <aside className="side-stack">
           <section className="panel">
             <h2>Event Window</h2>
-            <p className="strong">{demoCalendarEvent.title}</p>
+            <p className="strong">{fixtureCalendarEvent.title}</p>
             <p className="muted">7-11 PM, San Francisco</p>
             <p className="muted">Source: mocked calendar</p>
           </section>
@@ -1287,18 +1287,18 @@ p {
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm run build
 ```
 
 Expected: build passes.
 
-- [ ] **Step 4: Manually test core demo path**
+- [ ] **Step 4: Manually test core product flow path**
 
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm run dev
 ```
 
@@ -1318,11 +1318,11 @@ In the browser:
 Append:
 
 ```html
-<h2>Demo UI Decision</h2>
+<h2>Product Flow UI Decision</h2>
 <p>
-  The demo uses a chat-first UI with side panels for event state, candidate
+  The product flow uses a chat-first UI with side panels for event state, candidate
   queue, and saved memories. This makes Photon the primary product surface while
-  still exposing enough state to understand the demo.
+  still exposing enough state to understand the product flow.
 </p>
 ```
 
@@ -1332,23 +1332,23 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo
-git commit -m "feat: build photon memory demo UI"
+git add Friendy
+git commit -m "feat: build photon memory product flow UI"
 ```
 
 Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git repo, record that in `implementation-notes.html` and continue.
 
-## Task 6: Final Verification And Demo Polish
+## Task 6: Final Verification And Product Flow Polish
 
 **Files:**
-- Modify: `photon-memory-demo/implementation-notes.html`
+- Modify: `Friendy/implementation-notes.html`
 
 - [ ] **Step 1: Run all tests**
 
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm test
 ```
 
@@ -1359,18 +1359,18 @@ Expected: all tests pass.
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm run build
 ```
 
 Expected: build passes.
 
-- [ ] **Step 3: Run dev server for user demo**
+- [ ] **Step 3: Run dev server for user product flow**
 
 Run:
 
 ```bash
-cd /home/thien/photon-memory-demo
+cd /home/thien/Friendy
 npm run dev
 ```
 
@@ -1385,7 +1385,7 @@ Append to `implementation-notes.html`:
 <ul>
   <li>Ran unit tests for mock data, memory store, and agent logic.</li>
   <li>Ran production build.</li>
-  <li>Manually verified the demo path: approve event, save Maya, search by piano/dinner context.</li>
+  <li>Manually verified the product flow path: approve event, save Maya, search by piano/dinner context.</li>
 </ul>
 ```
 
@@ -1395,8 +1395,8 @@ Run:
 
 ```bash
 cd /home/thien
-git add photon-memory-demo
-git commit -m "test: verify photon memory demo"
+git add Friendy
+git commit -m "test: verify photon memory product flow"
 ```
 
 Expected: commit succeeds if `/home/thien` is a Git repo. If it is not a Git repo, record that in `implementation-notes.html` and continue.

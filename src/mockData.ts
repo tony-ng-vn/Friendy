@@ -1,15 +1,15 @@
 import type { CalendarEvent, CandidateConnection, User } from "./types";
 
-export const demoUser: User = {
+export const fixtureUser: User = {
   id: "user_thien",
   name: "Thien",
   phoneNumber: "+15550101010",
   createdAt: "2026-05-19T09:00:00.000Z"
 };
 
-export const demoCalendarEvent: CalendarEvent = {
+export const fixtureCalendarEvent: CalendarEvent = {
   id: "event_photon_dinner",
-  userId: demoUser.id,
+  userId: fixtureUser.id,
   title: "Photon Residency Dinner",
   startsAt: "2026-05-15T19:00:00.000Z",
   endsAt: "2026-05-15T23:00:00.000Z",
@@ -17,10 +17,10 @@ export const demoCalendarEvent: CalendarEvent = {
   source: "mock_calendar"
 };
 
-export const demoContactDelta: CandidateConnection[] = [
+export const fixtureContactDelta: CandidateConnection[] = [
   {
     id: "candidate_maya",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Maya Chen",
     phoneNumber: "+15550101020",
     source: "mock_contact_delta",
@@ -29,7 +29,7 @@ export const demoContactDelta: CandidateConnection[] = [
   },
   {
     id: "candidate_alex",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Alex Rivera",
     phoneNumber: "+15550101021",
     source: "mock_contact_delta",
@@ -38,7 +38,7 @@ export const demoContactDelta: CandidateConnection[] = [
   },
   {
     id: "candidate_priya",
-    userId: demoUser.id,
+    userId: fixtureUser.id,
     displayName: "Priya Shah",
     email: "priya@example.com",
     source: "mock_contact_delta",

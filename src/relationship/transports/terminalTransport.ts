@@ -1,12 +1,12 @@
 import { buildCandidateReviewPrompt, createRelationshipAgent } from "../agentCore";
-import { demoDetectedContact, demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { AgentCoreResult } from "../types";
 
 type RelationshipAgent = ReturnType<typeof createRelationshipAgent>;
 
-/** Lightweight transport harness used for local demos and tests without Spectrum credentials. */
+/** Lightweight transport harness used for local fixtures and tests without Spectrum credentials. */
 export function createTerminalHarness(agent: RelationshipAgent, userId: string) {
   return {
     send(text: string): AgentCoreResult {
@@ -21,19 +21,19 @@ export function createTerminalHarness(agent: RelationshipAgent, userId: string) 
 }
 
 /**
- * Creates the scripted demo path: detected contact -> proactive prompt -> user reply -> saved memory.
+ * Creates the scripted fixture path: detected contact -> proactive prompt -> user reply -> saved memory.
  *
  * This mirrors the iMessage flow while keeping the core agent runnable from npm scripts.
  */
-export function createDemoTerminalHarness() {
+export function createFixtureTerminalHarness() {
   const repo = createRelationshipRepository({
-    users: [demoUser],
-    calendarEvents: [demoLongEvent, demoShortEvent]
+    users: [fixtureUser],
+    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
   });
   const tools = createRelationshipTools(repo);
-  const candidate = tools.create_contact_candidate(demoDetectedContact);
+  const candidate = tools.create_contact_candidate(fixtureDetectedContact);
   const agent = createRelationshipAgent(tools);
-  const harness = createTerminalHarness(agent, demoUser.id);
+  const harness = createTerminalHarness(agent, fixtureUser.id);
 
   return {
     repo,
@@ -45,9 +45,9 @@ export function createDemoTerminalHarness() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const demo = createDemoTerminalHarness();
-  console.log(demo.firstPrompt);
+  const fixture = createFixtureTerminalHarness();
+  console.log(fixture.firstPrompt);
   const input = process.argv.slice(2).join(" ") || "yes, recruiting agents, played piano";
-  const result = demo.harness.send(input);
+  const result = fixture.harness.send(input);
   console.log(result.outbound.text);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
 import { createRelationshipAgent } from "../agentCore";
-import { demoLongEvent, demoShortEvent, demoUser } from "../fixtures";
+import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import { createFixtureCalendarEventProvider, ingestContactSnapshotDiff } from "./ingestionPipeline";
@@ -9,19 +9,19 @@ import { fixtureAfterContactSnapshot, fixtureBeforeContactSnapshot } from "./con
 
 describe("fixture contact/calendar ingestion pipeline", () => {
   it("provides fixture calendar events without reading a real calendar", () => {
-    const provider = createFixtureCalendarEventProvider([demoLongEvent, demoShortEvent]);
+    const provider = createFixtureCalendarEventProvider([fixtureLongEvent, fixtureShortEvent]);
 
     expect(provider.source).toBe("fixture");
-    expect(provider.listEvents(demoUser.id).map((event) => event.title)).toEqual([
+    expect(provider.listEvents(fixtureUser.id).map((event) => event.title)).toEqual([
       "Photon Residency",
       "Photon Residency Dinner"
     ]);
   });
 
   it("enqueues detected contacts and stores event matches through the repository/tool boundary", () => {
-    const repo = createRelationshipRepository({ users: [demoUser] });
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
-    const provider = createFixtureCalendarEventProvider([demoLongEvent, demoShortEvent]);
+    const provider = createFixtureCalendarEventProvider([fixtureLongEvent, fixtureShortEvent]);
 
     const result = ingestContactSnapshotDiff({
       before: fixtureBeforeContactSnapshot,
@@ -37,16 +37,16 @@ describe("fixture contact/calendar ingestion pipeline", () => {
       "Photon Residency"
     ]);
     expect(result.eventMatchesByCandidate[result.candidates[1].id]).toEqual([]);
-    expect(tools.list_pending_candidates(demoUser.id).map((candidate) => candidate.displayName)).toEqual([
+    expect(tools.list_pending_candidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
       "Maya Chen",
       "Nina Park"
     ]);
   });
 
   it("keeps queued candidates compatible with confirmation and search", () => {
-    const repo = createRelationshipRepository({ users: [demoUser] });
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
-    const provider = createFixtureCalendarEventProvider([demoLongEvent, demoShortEvent]);
+    const provider = createFixtureCalendarEventProvider([fixtureLongEvent, fixtureShortEvent]);
     ingestContactSnapshotDiff({
       before: fixtureBeforeContactSnapshot,
       after: fixtureAfterContactSnapshot,
@@ -56,13 +56,13 @@ describe("fixture contact/calendar ingestion pipeline", () => {
     const agent = createRelationshipAgent(tools);
 
     agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "yes, recruiting agents, played piano",
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
     const search = agent.handleMessage({
-      userId: demoUser.id,
+      userId: fixtureUser.id,
       platform: "terminal",
       text: "who was the recruiting agents person from Photon dinner?",
       receivedAt: "2026-05-20T12:05:00.000Z"
@@ -72,10 +72,10 @@ describe("fixture contact/calendar ingestion pipeline", () => {
     expect(search.outbound.text).toContain("recruiting agents");
   });
 
-  it("prints a deterministic ingest demo summary", () => {
-    const repo = createRelationshipRepository({ users: [demoUser] });
+  it("prints a deterministic ingest fixture summary", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
-    const provider = createFixtureCalendarEventProvider([demoLongEvent, demoShortEvent]);
+    const provider = createFixtureCalendarEventProvider([fixtureLongEvent, fixtureShortEvent]);
 
     const result = ingestContactSnapshotDiff({
       before: fixtureBeforeContactSnapshot,
@@ -94,7 +94,7 @@ describe("fixture contact/calendar ingestion pipeline", () => {
     ]);
   });
 
-  it("exposes the fixture ingest demo as an npm script", () => {
-    expect(packageJson.scripts["ingest:demo"]).toBe("tsx src/relationship/ingestion/ingestDemo.ts");
+  it("exposes the fixture ingest check as an npm script", () => {
+    expect(packageJson.scripts["ingest:check"]).toBe("tsx src/relationship/ingestion/ingestCheck.ts");
   });
 });

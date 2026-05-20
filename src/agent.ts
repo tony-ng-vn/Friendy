@@ -1,4 +1,4 @@
-import { demoContactDelta } from "./mockData";
+import { fixtureContactDelta } from "./mockData";
 import {
   approveSession,
   confirmCandidate,
@@ -34,7 +34,7 @@ export function handleAgentMessage(state: MemoryState, rawInput: string): AgentR
 
   if ((lower === "yes" || lower.includes("start tracking")) && suggestedSession) {
     const approved = approveSession(state, suggestedSession.calendarEventId ?? "");
-    const withDelta = loadContactDelta(approved, demoContactDelta);
+    const withDelta = loadContactDelta(approved, fixtureContactDelta);
     return {
       state: withDelta,
       reply: `I found ${withDelta.candidates.length} new contacts since ${suggestedSession.title} started: ${withDelta.candidates

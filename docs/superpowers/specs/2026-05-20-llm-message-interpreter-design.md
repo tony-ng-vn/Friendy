@@ -26,7 +26,7 @@ The product boundary stays the same: Spectrum/iMessage is a communication transp
 - Do not add Notion, Mem0, Membase, or a production database.
 - Do not build multi-agent orchestration.
 - Do not make the UI a priority.
-- Do not remove the existing deterministic terminal demo; keep it as a fallback and smoke test.
+- Do not remove the existing deterministic terminal product flow; keep it as a fallback and smoke test.
 
 ## Architecture
 
