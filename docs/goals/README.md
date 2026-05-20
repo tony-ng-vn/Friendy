@@ -2,6 +2,8 @@
 
 Use these long-form goal files one at a time. In Codex, start a new goal by pointing `/goal` at the file instead of pasting the whole prompt.
 
+Before writing or editing goals, read `goal-writing-guide.md`.
+
 Recommended order:
 
 1. `contextual-memory-capture-v2-goal.md`

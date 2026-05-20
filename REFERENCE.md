@@ -24,6 +24,7 @@ Transport message
 - Product understanding: `docs/product-spec.md`, `docs/demo-plan.md`, `docs/handoff.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
+- Goal-writing rules: `docs/goals/goal-writing-guide.md`
 - Current response-composer goal: `docs/goals/relationship-agent-response-composer-goal.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`

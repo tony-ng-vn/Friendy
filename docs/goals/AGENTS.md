@@ -2,6 +2,7 @@
 
 Goal files should be optimized for long-running agents that need a measurable finish line.
 
+- Read `docs/goals/goal-writing-guide.md` before creating or editing any goal file.
 - Put long `/goal` prompts in markdown files here and use the slash command only to point at the file.
 - Keep completion criteria explicit and checkable.
 - Keep active goal tracking in:
