@@ -9,6 +9,8 @@
     "agent:terminal": "tsx src/relationship/transports/terminalTransport.ts",
     "agent:spectrum": "tsx src/relationship/transports/spectrumTransport.ts",
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
+    "ingest:demo": "tsx src/relationship/ingestion/ingestDemo.ts",
+    "ingest:contacts:smoke": "tsx src/relationship/contacts/contactsSmokeCli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

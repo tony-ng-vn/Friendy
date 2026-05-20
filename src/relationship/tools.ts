@@ -1,5 +1,5 @@
 import { extractTags, type RelationshipRepository } from "./repository";
-import type { ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
+import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
 /** Search hit with diagnostic explanation text for logs and tests, not direct user-facing copy. */
 export type MemorySearchResult = {
@@ -29,6 +29,11 @@ export function createRelationshipTools(repo: RelationshipRepository) {
   return {
     create_contact_candidate(contact: ContactCandidateDetected) {
       return repo.createCandidateFromDetectedContact(contact);
+    },
+
+    sync_calendar_events(userId: string, events: CalendarEvent[]) {
+      const scopedEvents = events.filter((event) => event.userId === userId);
+      return repo.addCalendarEvents(scopedEvents);
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {

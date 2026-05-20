@@ -43,6 +43,19 @@ export function createRelationshipRepository(seed: RepositorySeed = {}) {
       return calendarEvents.filter((event) => event.userId === userId);
     },
 
+    addCalendarEvents(events: CalendarEvent[]): CalendarEvent[] {
+      for (const event of events) {
+        const existingIndex = calendarEvents.findIndex((item) => item.id === event.id);
+        if (existingIndex >= 0) {
+          calendarEvents[existingIndex] = event;
+        } else {
+          calendarEvents.push(event);
+        }
+      }
+
+      return events;
+    },
+
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
       const candidate: ContactCandidate = {
         ...contact,
