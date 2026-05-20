@@ -8,3 +8,4 @@
 - 2026-05-20: `npm run eval:agent` now reports pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, clarification correctness, per-case assertion results, and model-backed eval availability.
 - 2026-05-20: Updated README, REFERENCE, relationship AGENTS instructions, and implementation notes so future work treats evals as the product-level safety check for multi-turn agent behavior.
 - 2026-05-20: Feature-branch verification passed before this note was recorded: `npm test` had 18 files and 75 tests passing, `npm run build` completed, `npm run eval:agent` passed 12/12 required cases, and `git diff --check` was clean.
+- 2026-05-20: Fast-forwarded `main` and re-ran the required checks before this note was recorded. `npm test`, `npm run build`, `npm run eval:agent`, and `git diff --check` all passed on `main`.

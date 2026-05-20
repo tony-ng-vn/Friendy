@@ -34,3 +34,13 @@
   - `npm run eval:agent`
   - `git diff --check`
 - Result: Passed before this verification note was recorded. `npm test` passed with 18 files and 75 tests. `npm run build` completed TypeScript and Vite production build. `npm run eval:agent` passed 12/12 deterministic required cases with all tracked metrics at target. `git diff --check` reported no whitespace errors.
+
+## Main Verification
+
+- Date: 2026-05-20
+- Commands:
+  - `npm test`
+  - `npm run build`
+  - `npm run eval:agent`
+  - `git diff --check`
+- Result: Passed on `main` before this note was recorded. `npm test` passed with 18 files and 75 tests. `npm run build` completed. `npm run eval:agent` passed 12/12 deterministic required cases with all tracked metrics at target. `git diff --check` reported no whitespace errors.
