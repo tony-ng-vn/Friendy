@@ -131,6 +131,10 @@ src/relationship/tools.ts
 src/relationship/repository.ts
   deterministic tool and memory boundary
 
+src/relationship/sqliteRepository.ts
+src/relationship/runtimeRepository.ts
+  optional local durable runtime store behind the repository boundary
+
 src/relationship/responseComposer.ts
   user-facing response wording
 
@@ -155,7 +159,7 @@ src/relationship/evals/
 - Real Contacts access exists only in explicit local commands: the Contacts smoke command and the local macOS contact/calendar checker.
 - The real local checker is explicit command-line tooling, not a background watcher or mobile production detector.
 - Calendar matching can use fixture events or the explicit local Apple Calendar adapter, but durable production calendar sync is not implemented.
-- Memory is in-memory, not production durable storage.
+- Runtime state can use the in-memory repository for deterministic checks or the optional SQLite repository for local cross-process persistence. SQLite is still local development storage, not production cloud sync.
 - Spectrum/iMessage is wired as the primary live transport, and `npm run check:imessage-e2e` exercises a deterministic local Spectrum/iMessage-style path without sending live messages.
 - LinkedIn, X, Instagram, and other social connection sources are future detectors, not MVP requirements.
 - The system does not yet run a real background watcher that notices a new phone contact and proactively sends a live iMessage.

@@ -10,8 +10,11 @@
     <ul>
       <li>Friendy is currently an iMessage-first relationship memory system. The canonical architecture source is <code>docs/ai-system-architecture.md</code>.</li>
       <li>The active MVP detector scope is phone contacts plus calendar context. Fixture checks are deterministic, and real macOS Contacts/Calendar reads happen only through explicit local commands.</li>
-      <li>The main unresolved system gap is shared durable state between the local checker and the live iMessage/Spectrum runtime.</li>
+      <li>Added an optional SQLite runtime repository behind the existing relationship repository interface so the local checker and Spectrum/iMessage runtime can share pending candidates and memories across process lifetimes.</li>
+      <li>Kept in-memory repositories as the default for deterministic tests and fixture checks. SQLite is selected explicitly with <code>FRIENDY_RUNTIME_STORE=sqlite</code> and <code>FRIENDY_SQLITE_PATH</code>.</li>
+      <li>Used Node's built-in <code>node:sqlite</code> instead of adding a native dependency because the project already runs on Node 24.</li>
       <li>Candidate Intake now owns queued contact candidate confirmation and ignore decisions for both deterministic and interpreted agents.</li>
+      <li>Durable runtime store Task 3 adds a SQLite relationship repository using Node's built-in <code>node:sqlite</code> <code>DatabaseSync</code>, with indexed columns for query paths and raw JSON snapshots for evolving relationship objects.</li>
     </ul>
     <h2>Historical Starting Point</h2>
     <ul>
@@ -57,7 +60,8 @@
       <li>Added <code>candidateIntake.ts</code> as the structured decision module for queued contact candidates. It selects, confirms, ignores, or reports ambiguity without composing final user-facing text.</li>
       <li>Kept Candidate Intake behind relationship tools instead of direct repository writes. This preserves the tool boundary for future agent traces and keeps mutation behavior testable through the same interface the agents use.</li>
       <li>Preserved ingestion compatibility by allowing bare confirmation only when exactly one pending candidate has event guesses. Multiple plausible event-matched candidates still require the user to choose.</li>
-      <li>Left durable shared state out of the Candidate Intake pass. The next system gap is still making pending candidates and relationship memory shared across the local checker and live iMessage runtime.</li>
+      <li>Left durable shared state out of the Candidate Intake pass. The later runtime-store pass made pending candidates and relationship memory shareable across the local checker and live iMessage runtime.</li>
+      <li>For the SQLite repository pass, kept schema setup hand-written and scoped to the repository's current API. Users, calendar events, candidates, event matches, memories, and interactions each persist their full raw object while duplicating only the columns needed for filtering, sorting, and relationship identifier columns.</li>
     </ul>
     <h2>Verification</h2>
     <ul>

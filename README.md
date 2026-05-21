@@ -255,6 +255,17 @@ FRIENDY_LOCAL_CHECK_SEND=1 FRIENDY_LOCAL_CHECK_TO_PHONE=+15550100000 npm run ing
 
 If `FRIENDY_LOCAL_CHECK_TO_PHONE` is missing, Friendy falls back to `FRIENDY_OWNER_PHONE`. On non-macOS environments, real-provider mode fails clearly and points to the mock command so fixture checks still work.
 
+## Optional Durable Runtime Store
+
+By default, fixture checks use in-memory state. To let the explicit local checker and the Spectrum/iMessage runtime share pending candidates and relationship memories across separate processes, run both with:
+
+```bash
+FRIENDY_RUNTIME_STORE=sqlite
+FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite
+```
+
+The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state.
+
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 
 ```bash
