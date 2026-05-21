@@ -23,13 +23,17 @@ export type SqliteRelationshipRepositoryOptions = {
   seed?: RepositorySeed;
 };
 
+export type SqliteRelationshipRepository = RelationshipRepository & {
+  close(): void;
+};
+
 type RawJsonRow = {
   raw_json: string;
 };
 
 type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "memories" | "interactions";
 
-export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): RelationshipRepository {
+export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
   mkdirSync(dirname(options.path), { recursive: true });
 
   const db = new DatabaseSync(options.path);
@@ -132,7 +136,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           updatedAt: "2026-05-20T12:00:00.000Z"
         };
 
-        upsertMemory(db, memory);
+        insertMemory(db, memory);
         return memory;
       });
     },
@@ -159,12 +163,12 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
-      upsertMemory(db, memory);
+      insertMemory(db, memory);
       return memory;
     },
 
     addInteraction(interaction: AgentInteraction): AgentInteraction {
-      upsertInteraction(db, interaction);
+      insertInteraction(db, interaction);
       return interaction;
     },
 
@@ -176,6 +180,10 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       }
 
       return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY insert_order, id").all());
+    },
+
+    close(): void {
+      db.close();
     }
   };
 }
@@ -281,10 +289,10 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
     upsertEventMatch(db, match);
   }
   for (const memory of seed.memories ?? []) {
-    upsertMemory(db, memory);
+    insertMemory(db, memory);
   }
   for (const interaction of seed.interactions ?? []) {
-    upsertInteraction(db, interaction);
+    insertInteraction(db, interaction);
   }
 }
 
@@ -385,22 +393,13 @@ function upsertEventMatch(db: DatabaseSync, match: EventContextMatch): void {
   );
 }
 
-function upsertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
+function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
   db.prepare(
     `
       INSERT INTO memories (
         id, insert_order, user_id, candidate_id, display_name, event_id, event_title, created_at, updated_at, raw_json
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        user_id = excluded.user_id,
-        candidate_id = excluded.candidate_id,
-        display_name = excluded.display_name,
-        event_id = excluded.event_id,
-        event_title = excluded.event_title,
-        created_at = excluded.created_at,
-        updated_at = excluded.updated_at,
-        raw_json = excluded.raw_json
     `
   ).run(
     memory.id,
@@ -416,17 +415,11 @@ function upsertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
   );
 }
 
-function upsertInteraction(db: DatabaseSync, interaction: AgentInteraction): void {
+function insertInteraction(db: DatabaseSync, interaction: AgentInteraction): void {
   db.prepare(
     `
       INSERT INTO interactions (id, insert_order, user_id, platform, space_id, created_at, raw_json)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        user_id = excluded.user_id,
-        platform = excluded.platform,
-        space_id = excluded.space_id,
-        created_at = excluded.created_at,
-        raw_json = excluded.raw_json
     `
   ).run(
     interaction.id,
