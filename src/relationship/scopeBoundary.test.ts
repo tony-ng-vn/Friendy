@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { decideMessageScope } from "./scopeBoundary";
+import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
 
 describe("relationship agent scope boundary", () => {
   it("blocks general math without allowing tools", () => {
     const decision = decideMessageScope({ text: "What is 582 * 91?", hasPendingCandidate: false });
 
     expect(decision.scope).toBe("out_of_scope");
-    expect(decision.redirect).toContain("general tasks");
+    expect(outOfScopeRedirect(decision)).toContain("general tasks");
   });
 
   it("blocks person-laundered coding tasks", () => {
@@ -16,7 +16,7 @@ describe("relationship agent scope boundary", () => {
     });
 
     expect(decision.scope).toBe("out_of_scope");
-    expect(decision.redirect).toContain("coding tasks");
+    expect(outOfScopeRedirect(decision)).toContain("coding tasks");
   });
 
   it("allows drafting a relationship-centered reply", () => {
@@ -51,6 +51,14 @@ describe("relationship agent scope boundary", () => {
     });
 
     expect(decision.scope).toBe("out_of_scope");
-    expect(decision.redirect).toContain("people you know");
+    expect(outOfScopeRedirect(decision)).toContain("people you know");
   });
 });
+
+function outOfScopeRedirect(decision: ScopeDecision): string {
+  if (decision.scope !== "out_of_scope") {
+    throw new Error(`Expected out_of_scope decision, received ${decision.scope}`);
+  }
+
+  return decision.redirect;
+}
