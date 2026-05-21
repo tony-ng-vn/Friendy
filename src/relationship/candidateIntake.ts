@@ -76,14 +76,15 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       }
 
       const selected = selectCandidate(candidates, input.replyText);
-      if (!selected && candidates.length > 1) {
+      const onlyReviewable = selected ? undefined : selectOnlyCandidateWithEventGuess(candidates, input.scope.userId, tools);
+      if (!selected && !onlyReviewable && candidates.length > 1) {
         return {
           kind: "ambiguous",
           candidates: candidates.map(({ id, displayName }) => ({ id, displayName }))
         };
       }
 
-      const candidate = selected ?? candidates[0];
+      const candidate = selected ?? onlyReviewable ?? candidates[0];
       const eventMatches = tools.list_candidate_event_matches(input.scope.userId, candidate.id);
       const confirmation = resolveCandidateConfirmation(stripCandidateSelector(input.replyText, candidate), eventMatches);
       const memory = tools.confirm_candidate(
@@ -142,6 +143,18 @@ function selectCandidate(candidates: ContactCandidate[], text: string): ContactC
     const nameParts = candidate.displayName.toLowerCase().split(/\s+/).filter(Boolean);
     return nameParts.some((part) => normalized.includes(part));
   });
+}
+
+function selectOnlyCandidateWithEventGuess(
+  candidates: ContactCandidate[],
+  userId: string,
+  tools: RelationshipTools
+): ContactCandidate | undefined {
+  const candidatesWithEventGuesses = candidates.filter(
+    (candidate) => tools.list_candidate_event_matches(userId, candidate.id).length > 0
+  );
+
+  return candidatesWithEventGuesses.length === 1 ? candidatesWithEventGuesses[0] : undefined;
 }
 
 function stripCandidateSelector(replyText: string, candidate: ContactCandidate): string {
