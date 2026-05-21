@@ -45,7 +45,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
   function listEventMatches(candidateId: string): EventContextMatch[] {
     return readRows<EventContextMatch>(
-      db.prepare("SELECT raw_json FROM event_matches WHERE candidate_id = ? ORDER BY rank, id").all(candidateId)
+      db.prepare("SELECT raw_json FROM event_matches WHERE candidate_id = ? ORDER BY rank, rowid").all(candidateId)
     );
   }
 

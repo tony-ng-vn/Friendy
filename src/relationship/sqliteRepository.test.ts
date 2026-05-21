@@ -184,6 +184,39 @@ describe("sqlite relationship repository", () => {
     expect(reopened.listMemories(userId)).toEqual([orphanMemory]);
   });
 
+  it("preserves equal-rank event match seed order like the in-memory repository", () => {
+    const dbPath = tempDatabasePath();
+    const candidateId = "candidate_equal_rank";
+    const firstMatch: EventContextMatch = {
+      id: "match_z",
+      candidateId,
+      calendarEventId: "event_z",
+      eventTitle: "Z Event",
+      confidence: 0.8,
+      reason: "Seeded first with the same rank.",
+      rank: 1
+    };
+    const secondMatch: EventContextMatch = {
+      id: "match_a",
+      candidateId,
+      calendarEventId: "event_a",
+      eventTitle: "A Event",
+      confidence: 0.8,
+      reason: "Seeded second with the same rank.",
+      rank: 1
+    };
+
+    createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        eventMatches: [firstMatch, secondMatch]
+      }
+    });
+
+    const reopened = createSqliteRelationshipRepository({ path: dbPath });
+    expect(reopened.listEventMatches(candidateId).map((match) => match.id)).toEqual(["match_z", "match_a"]);
+  });
+
   it("preserves memory and interaction insertion order instead of sorting by createdAt", () => {
     const dbPath = tempDatabasePath();
     const userId = "user_ordering";
