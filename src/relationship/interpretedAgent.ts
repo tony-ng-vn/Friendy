@@ -122,7 +122,7 @@ function executeInterpretation(
   }
 
   if (interpretation.intent === "ignore_candidate") {
-    return ignorePendingCandidate(message, candidateIntake, toolCalls);
+    return ignorePendingCandidate(message, interpretation, candidateIntake, toolCalls);
   }
 
   return composeNoMatchReply();
@@ -184,13 +184,18 @@ function confirmPendingCandidate(
 
 function ignorePendingCandidate(
   message: InboundAgentMessage,
+  interpretation: MessageInterpretation,
   candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("list_pending_candidates");
-  const result = candidateIntake.ignoreCandidate({ scope: message });
+  const result = candidateIntake.ignoreCandidate({ scope: message, candidateName: ignoreCandidateName(interpretation) });
   recordCandidateIgnoreToolCalls(result, toolCalls);
   return composeCandidateIgnoreReply(result);
+}
+
+function ignoreCandidateName(interpretation: MessageInterpretation): string | undefined {
+  return interpretation.people[0]?.name || interpretation.query || undefined;
 }
 
 function recordCandidateReplyToolCalls(result: CandidateReplyResult, toolCalls: AgentToolCall[]): void {
