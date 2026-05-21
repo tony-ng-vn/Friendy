@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
@@ -95,7 +96,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       options: { eventTitle?: string; dateContext?: RelationshipDateContext } = {}
     ) {
       const memory: RelationshipMemory = {
-        id: `memory_manual_${Date.now()}`,
+        id: `memory_manual_${randomUUID()}`,
         userId,
         displayName: name,
         primaryContactLabel: contactMethod,

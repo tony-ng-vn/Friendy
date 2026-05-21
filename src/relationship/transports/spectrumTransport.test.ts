@@ -111,4 +111,90 @@ describe("spectrum transport", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("confirms a local-checker candidate through Spectrum when owner identity is configured", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { createFixtureCalendarEventProvider } = await import("../ingestion/ingestionPipeline");
+    const { runLocalContactCalendarCheck } = await import("../ingestion/localCheck");
+    const { createSqliteRelationshipRepository } = await import("../sqliteRepository");
+
+    const dir = mkdtempSync(join(tmpdir(), "friendy-spectrum-local-check-"));
+    const ownerUserId = "+15550109999";
+    const env = {
+      FRIENDY_RUNTIME_STORE: "sqlite",
+      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite"),
+      FRIENDY_OWNER_PHONE: ownerUserId
+    };
+    const localRepo = createSqliteRelationshipRepository({ path: env.FRIENDY_SQLITE_PATH });
+    let runtime: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;
+
+    try {
+      await runLocalContactCalendarCheck({
+        before: localContactSnapshot(ownerUserId, []),
+        after: localContactSnapshot(ownerUserId, [
+          {
+            stableId: "contact_friendy_201",
+            displayName: "Friendy-201",
+            phoneNumbers: ["+1 (555) 010-0201"],
+            emails: [],
+            updatedAt: "2026-05-20T19:30:00.000Z"
+          }
+        ]),
+        calendarProvider: createFixtureCalendarEventProvider([
+          {
+            id: "event_owner_photon_dinner",
+            userId: ownerUserId,
+            title: "Photon Residency Dinner",
+            startsAt: "2026-05-20T19:00:00.000Z",
+            endsAt: "2026-05-20T22:00:00.000Z",
+            timezone: "America/Los_Angeles",
+            location: "San Francisco",
+            calendarSource: "simulated",
+            eventKind: "short"
+          }
+        ]),
+        repo: localRepo,
+        env: {}
+      });
+      localRepo.close();
+
+      runtime = createSpectrumFriendyRuntime({
+        interpreter: createRuleBasedInterpreter(),
+        now: () => "2026-05-20T20:05:00.000Z",
+        env
+      });
+
+      const confirmation = await runtime.handleInboundText({
+        text: "yes, met Friendy-201 at Photon Residency Dinner, AI infra",
+        spaceId: "space_live_owner",
+        receivedAt: "2026-05-20T20:05:00.000Z"
+      });
+
+      expect(confirmation.replyText).toContain("Friendy-201");
+      expect(runtime.repo.listMemories(ownerUserId)[0]).toMatchObject({
+        displayName: "Friendy-201",
+        eventTitle: "Photon Residency Dinner"
+      });
+      expect(runtime.repo.listPendingCandidates(ownerUserId)).toEqual([]);
+    } finally {
+      (runtime?.repo as { close?: () => void } | undefined)?.close?.();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
+
+function localContactSnapshot(userId: string, contacts: Array<{
+  stableId: string;
+  displayName: string;
+  phoneNumbers: string[];
+  emails: string[];
+  updatedAt: string;
+}>) {
+  return {
+    userId,
+    capturedAt: "2026-05-20T20:00:00.000Z",
+    contacts
+  };
+}

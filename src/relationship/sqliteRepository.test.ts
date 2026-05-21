@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createSqliteRelationshipRepository } from "./sqliteRepository";
 import { createRelationshipTools } from "./tools";
@@ -378,6 +378,25 @@ describe("sqlite relationship repository", () => {
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
     expect(reopened.listMemories(userId)).toEqual([originalMemory]);
     expect(reopened.listInteractions(userId)).toEqual([originalInteraction]);
+  });
+
+  it("stores multiple manual memories created in the same millisecond", () => {
+    const dbPath = tempDatabasePath();
+    const userId = "user_same_millisecond";
+    const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const tools = createRelationshipTools(repo);
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(1779307200000);
+
+    try {
+      tools.create_manual_memory(userId, "Amaya", "met at Photon Residency, AI recruiting founder");
+      tools.create_manual_memory(userId, "Sarah Fah", "ran Photon Residency II as community lead");
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    const memories = repo.listMemories(userId);
+    expect(memories.map((memory) => memory.displayName)).toEqual(["Amaya", "Sarah Fah"]);
+    expect(new Set(memories.map((memory) => memory.id)).size).toBe(2);
   });
 
   it("sets schema version and stores explicit insert order columns", () => {

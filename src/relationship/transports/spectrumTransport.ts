@@ -8,6 +8,7 @@ import {
 } from "../openRouterInterpreter";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
+import { resolveConfiguredUserId } from "../identity";
 import type { RelationshipRepository } from "../repository";
 import { createRuntimeRelationshipRepository } from "../runtimeRepository";
 import { createRelationshipTools } from "../tools";
@@ -45,9 +46,9 @@ export type CompactInteractionLog = {
 };
 
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
-export function toInboundAgentMessage(input: SpectrumInboundInput): InboundAgentMessage {
+export function toInboundAgentMessage(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv> = {}): InboundAgentMessage {
   return {
-    userId: resolveSpectrumUserId(input),
+    userId: resolveSpectrumUserId(input, env),
     platform: "imessage",
     spaceId: input.spaceId,
     text: input.text,
@@ -81,7 +82,7 @@ export function createSpectrumFriendyRuntime({
   return {
     repo,
     async handleInboundText(input: SpectrumInboundInput) {
-      const result = await agent.handleMessage(toInboundAgentMessage(input));
+      const result = await agent.handleMessage(toInboundAgentMessage(input, env));
 
       return {
         replyText: result.outbound.text,
@@ -125,8 +126,8 @@ export async function startSpectrumFriendyAgent() {
   }
 }
 
-function resolveSpectrumUserId(input: SpectrumInboundInput): string {
-  return input.userId?.trim() || input.spaceId?.trim() || fixtureUser.id;
+function resolveSpectrumUserId(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv>): string {
+  return input.userId?.trim() || resolveConfiguredUserId(env) || input.spaceId?.trim() || fixtureUser.id;
 }
 
 function toCompactInteractionLog(interaction: AgentInteraction): CompactInteractionLog {
