@@ -3,6 +3,15 @@ import {
   type MessageInterpretation,
   validateMessageInterpretation
 } from "./interpretation";
+import {
+  getConversationId,
+  getRelationshipTracer,
+  inputMessages,
+  recordSpanError,
+  RELATIONSHIP_AGENT_NAME,
+  SpanKind,
+  SpanStatusCode
+} from "./instrumentation";
 import type { InboundAgentMessage } from "./types";
 
 export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
@@ -106,7 +115,22 @@ async function callOpenRouter({
   fetchImpl: FetchLike;
   message: InboundAgentMessage;
 }): Promise<MessageInterpretation> {
-  const response = await fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
+  const tracer = getRelationshipTracer();
+  const span = tracer.startSpan("openrouter.chat", {
+    kind: SpanKind.CLIENT,
+    attributes: {
+      "gen_ai.agent.name": RELATIONSHIP_AGENT_NAME,
+      "gen_ai.conversation.id": getConversationId(message),
+      "gen_ai.operation.name": "chat",
+      "gen_ai.system": "openrouter",
+      "gen_ai.request.model": model,
+      "gen_ai.request.temperature": 0,
+      "gen_ai.input.messages": JSON.stringify(inputMessages(message))
+    }
+  });
+
+  try {
+    const response = await fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -140,14 +164,34 @@ async function callOpenRouter({
     })
   });
 
-  if (!response.ok) {
-    throw new Error(`OpenRouter request failed with status ${response.status}`);
-  }
+    if (!response.ok) {
+      throw new Error(`OpenRouter request failed with status ${response.status}`);
+    }
 
-  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
-  const content = payload.choices?.[0]?.message?.content;
-  const parsed = typeof content === "string" ? JSON.parse(content) : content;
-  return validateMessageInterpretation(parsed);
+    const payload = (await response.json()) as {
+      id?: string;
+      model?: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    const parsed = typeof content === "string" ? JSON.parse(content) : content;
+    const interpretation = validateMessageInterpretation(parsed);
+    span.setAttributes({
+      "gen_ai.response.id": payload.id ?? "",
+      "gen_ai.response.model": payload.model ?? model,
+      "gen_ai.usage.input_tokens": payload.usage?.prompt_tokens ?? 0,
+      "gen_ai.usage.output_tokens": payload.usage?.completion_tokens ?? 0,
+      "gen_ai.output.messages": JSON.stringify([{ role: "assistant", parts: [{ type: "text", content: JSON.stringify(interpretation) }], finish_reason: "stop" }])
+    });
+    span.setStatus({ code: SpanStatusCode.OK });
+    return interpretation;
+  } catch (error) {
+    recordSpanError(span, error);
+    throw error;
+  } finally {
+    span.end();
+  }
 }
 
 function ruleBasedInterpret(text: string): MessageInterpretation {

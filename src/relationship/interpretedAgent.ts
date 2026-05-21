@@ -1,4 +1,14 @@
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
+import {
+  getConversationId,
+  getRelationshipTracer,
+  inputMessages,
+  outputMessages,
+  recordSpanError,
+  RELATIONSHIP_AGENT_NAME,
+  SpanKind,
+  SpanStatusCode
+} from "./instrumentation";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import type { MessageInterpreter } from "./openRouterInterpreter";
@@ -57,8 +67,20 @@ export function createInterpretedRelationshipAgent({
 
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
+      const tracer = getRelationshipTracer();
+      const span = tracer.startSpan("relationship.handle_message", {
+        kind: SpanKind.INTERNAL,
+        attributes: {
+          "gen_ai.agent.name": RELATIONSHIP_AGENT_NAME,
+          "gen_ai.conversation.id": getConversationId(message),
+          "gen_ai.operation.name": "chat",
+          "gen_ai.input.messages": JSON.stringify(inputMessages(message))
+        }
+      });
       const startedAt = Date.now();
-      const interpreted = await interpreter.interpret(message);
+
+      try {
+        const interpreted = await interpreter.interpret(message);
       const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
       const interpretation = enrichInterpretationWithContext(
         interpreted.interpretation,
@@ -86,16 +108,29 @@ export function createInterpretedRelationshipAgent({
         createdAt: now()
       });
 
-      return {
-        outbound: {
-          userId: message.userId,
-          platform: message.platform,
-          spaceId: message.spaceId,
-          text: outboundText
-        },
-        toolCalls,
-        interaction
-      };
+        span.setAttributes({
+          "gen_ai.output.messages": JSON.stringify(outputMessages(outboundText)),
+          "friendy.intent": interpretation.intent,
+          "friendy.tool_calls": JSON.stringify(toolCalls)
+        });
+        span.setStatus({ code: SpanStatusCode.OK });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction
+        };
+      } catch (error) {
+        recordSpanError(span, error);
+        throw error;
+      } finally {
+        span.end();
+      }
     }
   };
 }
