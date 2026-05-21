@@ -94,6 +94,56 @@ describe("sqlite relationship repository", () => {
     expect(reopened.getCandidate(candidate.id)?.status).toBe("ignored");
     expect(reopened.listMemories(fixtureUser.id)).toEqual([]);
   });
+
+  it("accepts writes for unseeded users like the in-memory repository", () => {
+    const dbPath = tempDatabasePath();
+    const repo = createSqliteRelationshipRepository({ path: dbPath });
+    const userId = "user_unseeded";
+
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      userId,
+      displayName: "Unseeded Person",
+      detectedAt: "2026-05-16T09:30:00-07:00"
+    });
+    expect(repo.listPendingCandidates(userId).map((item) => item.displayName)).toEqual(["Unseeded Person"]);
+
+    repo.addMemory({
+      id: "memory_unseeded_1",
+      userId,
+      displayName: "Unseeded Person",
+      primaryContactLabel: "+15550101020",
+      contextNote: "met at an unseeded runtime check",
+      tags: ["met", "unseeded", "runtime", "check"],
+      confidence: 0.7,
+      createdAt: "2026-05-21T01:00:00.000Z",
+      updatedAt: "2026-05-21T01:00:00.000Z"
+    });
+    repo.addInteraction({
+      id: "interaction_unseeded_1",
+      userId,
+      platform: "imessage",
+      inboundText: "remember this unseeded user",
+      outboundText: "Saved Unseeded Person.",
+      toolCalls: ["create_manual_memory"],
+      createdAt: "2026-05-21T01:01:00.000Z"
+    });
+
+    const reopened = createSqliteRelationshipRepository({ path: dbPath });
+    expect(reopened.listPendingCandidates(userId).map((item) => item.displayName)).toEqual(["Unseeded Person"]);
+    expect(reopened.listMemories(userId)).toEqual([
+      expect.objectContaining({
+        id: "memory_unseeded_1",
+        displayName: "Unseeded Person"
+      })
+    ]);
+    expect(reopened.listInteractions(userId)).toEqual([
+      expect.objectContaining({
+        id: "interaction_unseeded_1",
+        inboundText: "remember this unseeded user"
+      })
+    ]);
+  });
 });
 
 function tempDatabasePath(): string {

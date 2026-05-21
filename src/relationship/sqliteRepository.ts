@@ -194,8 +194,7 @@ function setupSchema(db: DatabaseSync): void {
       timezone TEXT NOT NULL,
       calendar_source TEXT NOT NULL,
       event_kind TEXT NOT NULL,
-      raw_json TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      raw_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS calendar_events_user_time_idx
@@ -208,8 +207,7 @@ function setupSchema(db: DatabaseSync): void {
       detected_at TEXT NOT NULL,
       source TEXT NOT NULL,
       status TEXT NOT NULL,
-      raw_json TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      raw_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS candidates_user_status_idx
@@ -240,7 +238,6 @@ function setupSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       raw_json TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE SET NULL
     );
 
@@ -253,8 +250,7 @@ function setupSchema(db: DatabaseSync): void {
       platform TEXT NOT NULL,
       space_id TEXT,
       created_at TEXT NOT NULL,
-      raw_json TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      raw_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS interactions_user_created_idx
