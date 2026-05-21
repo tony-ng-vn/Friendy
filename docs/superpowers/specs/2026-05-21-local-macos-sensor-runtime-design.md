@@ -27,7 +27,7 @@ The implementation should keep the product brain in TypeScript and use a small s
 - Do not put scoring, prompting, persistence, LLM calls, or Spectrum sending in Swift.
 - Do not create memories directly from sensor events without user confirmation.
 - Do not treat old Contacts as candidates on first launch or token reset.
-- Do not make every relationship memory require a contact candidate. Explicit user-authored iMessage saves remain allowed as manual memories; the strict confirmation boundary applies to sensor-detected contacts.
+- Do not bypass the candidate lifecycle when saving memories. Explicit user-authored iMessage saves remain allowed, but they should create a synthetic `manual_imessage` candidate and then confirm it in the same repository transaction.
 
 ## Current Product Gap
 
@@ -86,7 +86,7 @@ Emitted once when the sensor starts successfully and has verified permissions.
 
 ### `contact_added`
 
-Emitted when a new contact is detected. `calendarMatches` contains up to five raw overlapping EventKit events. The `stableId` must be preserved by Node and used as the primary seed for candidate identity so people with the same display name remain distinct.
+Emitted when a new contact is detected. `calendarMatches` contains up to five raw overlapping EventKit events. The `stableId` must be preserved by Node as `contact_identifier` so people with the same display name remain distinct. Node still creates its own Friendy candidate id for the observation.
 
 ```json
 {
@@ -225,54 +225,258 @@ Node reads sensor stdout, splits by newline, and parses each line as JSON.
 
 ### Warning State
 
-Sensor failures are non-fatal, but the user should not receive repeated setup warnings on every restart. Add a minimal runtime state key-value capability backed by SQLite, for example:
+Sensor failures are non-fatal, but the user should not receive repeated setup warnings on every restart. Use the `runtime_warnings` table keyed by `user_id`, `sensor_name`, and `warning_code`; do not use ephemeral process memory for warning suppression.
 
-```text
-runtime_state
-  key primary key
-  value_json
-  updated_at
-```
+If a duplicate `contact_added` event arrives with an already processed `idempotencyKey`, Node should log it and create no candidate or prompt.
 
-Use it for warning flags such as:
-
-```text
-sensor_warning.contacts_permission_denied.sent
-sensor_warning.calendar_permission_denied.sent
-sensor_warning.binary_missing.sent
-sensor_warning.fatal_error.sent
-```
-
-Also use runtime state, or a dedicated table with the same semantics, for processed sensor events:
-
-```text
-processed_sensor_event.<idempotencyKey>
-```
-
-If a duplicate `contact_added` event arrives with an already processed idempotency key, Node should log it and create no candidate or prompt.
-
-If a permission or fatal sensor error occurs, Node checks the relevant warning key. If it has not been sent, Node texts the owner:
+If a permission or fatal sensor error occurs, Node upserts the relevant warning row. If it is a new actionable warning, or if the warning cooldown has elapsed, Node texts the owner:
 
 ```text
 Friendy is running, but I need Contacts/Calendar permission before I can notice new contacts.
 ```
 
-Then it sets the warning key. Spectrum stays alive so manual memory capture and search continue to work.
+Then it records `last_notified_at` and increments `notification_count`. Spectrum stays alive so manual memory capture and search continue to work.
 
 ### SQLite Concurrency
 
 `agent:friendy` is one Node process, but current development can still run the local checker and Spectrum runtime as separate processes against the same SQLite file. The SQLite repository must therefore be configured for safe local multi-process access.
 
-When opening SQLite, apply these settings before schema use:
+WAL, busy timeout, foreign keys, and short transactions are mandatory acceptance criteria for the SQLite runtime store, not optional tuning. When opening SQLite, use both the Node connection timeout and explicit pragmas:
 
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA busy_timeout = 5000;
-PRAGMA foreign_keys = ON;
-PRAGMA synchronous = NORMAL;
+```ts
+import { DatabaseSync } from 'node:sqlite';
+
+export function openRuntimeDatabase(dbPath: string): DatabaseSync {
+  const db = new DatabaseSync(dbPath, {
+    timeout: 5000,
+    enableForeignKeyConstraints: true
+  });
+
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA busy_timeout = 5000;
+    PRAGMA foreign_keys = ON;
+    PRAGMA synchronous = NORMAL;
+  `);
+
+  applySchema(db);
+  return db;
+}
 ```
 
+The schema initializer must verify these settings in tests. `synchronous = NORMAL` is the MVP durability tradeoff for local app state; switch to `FULL` later only if crash durability proves more important than local latency.
+
 Keep transactions short. Do not silently fall back to in-memory state in live runtime commands. Treat lock contention as retryable at the repository boundary where possible, and keep the iMessage message path free of long-running database operations.
+
+### Live Runtime Store Rules
+
+If `FRIENDY_RUNTIME_STORE=sqlite`, any database open, schema, or migration failure is fatal for that process. Silent fallback would make the checker and iMessage runtime look healthy while writing to different stores.
+
+If `FRIENDY_RUNTIME_STORE` is unset:
+
+- tests and fixtures may use memory;
+- `npm run agent:friendy` defaults to SQLite;
+- any live Spectrum/iMessage runtime that would use memory must require `FRIENDY_ALLOW_MEMORY_RUNTIME=1`;
+- a local checker running in memory mode must warn that its results will not be visible to the live runtime.
+
+## Durable Store Schema
+
+The durable store exists to enforce product invariants, not just to retain objects. The database should reject impossible state even if a TypeScript call path has a bug.
+
+### Migrations
+
+Add a minimal migration ledger before adding tables:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TEXT NOT NULL
+);
+```
+
+The first migration should be `1_initial_runtime_store`. `CREATE TABLE IF NOT EXISTS` is acceptable inside the first migration, but future schema changes must be explicit migrations instead of silent table drift.
+
+### Users
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  display_name TEXT,
+  phone_number TEXT,
+  timezone TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
+
+### Agent Interactions
+
+```sql
+CREATE TABLE IF NOT EXISTS agent_interactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL,
+  space_id TEXT,
+  inbound_text TEXT,
+  interpretation_json TEXT,
+  tool_calls_json TEXT,
+  outbound_text TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_interactions_user_created
+ON agent_interactions(user_id, created_at);
+```
+
+### Sensor State
+
+```sql
+CREATE TABLE IF NOT EXISTS sensor_state (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sensor_name TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  history_token_blob BLOB,
+  baseline_completed_at TEXT,
+  last_success_at TEXT,
+  last_error_code TEXT,
+  last_permission_status TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, sensor_name, device_id)
+);
+```
+
+The Swift binary owns the on-disk Contacts token while the current MVP runs as a standalone sensor, but the SQLite store still needs this table so Node can record sensor health, permission state, baseline status, and future packaging transitions without inventing a second state path.
+
+### Runtime Warnings
+
+```sql
+CREATE TABLE IF NOT EXISTS runtime_warnings (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sensor_name TEXT NOT NULL,
+  warning_code TEXT NOT NULL,
+  permission_status TEXT,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  last_notified_at TEXT,
+  suppressed_until TEXT,
+  acknowledged_at TEXT,
+  notification_count INTEGER NOT NULL DEFAULT 0,
+  raw_json TEXT,
+  PRIMARY KEY (user_id, sensor_name, warning_code)
+);
+```
+
+Permission and sensor failures update durable warning state. They may notify the owner on a new actionable state or after a cooldown, but repeated checker restarts must not send repeated setup texts.
+
+### Processed Sensor Events
+
+```sql
+CREATE TABLE IF NOT EXISTS processed_sensor_events (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  idempotency_key TEXT NOT NULL,
+  sensor_event_id TEXT,
+  sensor_name TEXT NOT NULL,
+  processed_at TEXT NOT NULL,
+  raw_json TEXT NOT NULL,
+  PRIMARY KEY (user_id, idempotency_key)
+);
+```
+
+Node records a sensor event in this table in the same transaction that creates the candidate. Replayed `contact_added` events must not create another candidate or another prompt.
+
+### Contact Candidates
+
+```sql
+CREATE TABLE IF NOT EXISTS contact_candidates (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sensor_event_id TEXT,
+  contact_identifier TEXT,
+  unified_contact_identifier TEXT,
+  container_identifier TEXT,
+  contact_fingerprint TEXT,
+  display_name_snapshot TEXT NOT NULL,
+  contact_methods_json TEXT,
+  detected_at TEXT NOT NULL,
+  observed_at TEXT,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (
+    status IN ('pending', 'prompted', 'confirmed', 'ignored', 'expired', 'error')
+  ),
+  status_reason TEXT,
+  prompt_interaction_id TEXT REFERENCES agent_interactions(id),
+  confirmed_interaction_id TEXT REFERENCES agent_interactions(id),
+  ignored_interaction_id TEXT REFERENCES agent_interactions(id),
+  prompted_at TEXT,
+  confirmed_at TEXT,
+  ignored_at TEXT,
+  expires_at TEXT,
+  raw_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, sensor_event_id),
+  UNIQUE(user_id, contact_identifier, detected_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidates_pending
+ON contact_candidates(user_id, status, detected_at);
+```
+
+`display_name_snapshot` is presentation only. Candidate identity must come from `sensor_event_id`, contact identifiers, contact fingerprint, and source metadata. For manual iMessage saves, create a candidate with `source = 'manual_imessage'`, no sensor event id, and a contact fingerprint derived from the parsed name/context when available.
+
+### Candidate Event Matches
+
+```sql
+CREATE TABLE IF NOT EXISTS candidate_event_matches (
+  candidate_id TEXT NOT NULL REFERENCES contact_candidates(id) ON DELETE CASCADE,
+  event_id TEXT,
+  rank INTEGER NOT NULL,
+  confidence INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  event_snapshot_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (candidate_id, rank)
+);
+```
+
+Store event snapshots, not only EventKit identifiers. Calendar identifiers can change or become stale; the memory should preserve the event context that was actually shown to the user.
+
+### Relationship Memories
+
+```sql
+CREATE TABLE IF NOT EXISTS relationship_memories (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  candidate_id TEXT NOT NULL UNIQUE REFERENCES contact_candidates(id),
+  contact_identifier TEXT,
+  unified_contact_identifier TEXT,
+  display_name_snapshot TEXT NOT NULL,
+  event_id TEXT,
+  event_title TEXT,
+  event_snapshot_json TEXT,
+  context_note TEXT,
+  relationship_context TEXT,
+  contact_method_json TEXT,
+  tags_json TEXT,
+  detected_at TEXT NOT NULL,
+  confirmed_at TEXT NOT NULL,
+  confirmed_by_interaction_id TEXT NOT NULL REFERENCES agent_interactions(id),
+  raw_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memories_user_confirmed
+ON relationship_memories(user_id, confirmed_at);
+
+CREATE INDEX IF NOT EXISTS idx_memories_display_name
+ON relationship_memories(user_id, display_name_snapshot);
+```
+
+No repository method should insert a relationship memory without a candidate row. This applies to both sensor-detected contacts and explicit manual iMessage saves.
 
 ## Candidate Pipeline
 
@@ -280,7 +484,7 @@ The automated sensor flow must preserve same-name contacts as separate candidate
 
 1. Swift emits `contact_added` with a `stableId`.
 2. Node passes raw calendar matches through the deterministic calendar scorer.
-3. Node creates one pending candidate using `stableId` as the primary candidate identity seed. The TypeScript domain should preserve this as a first-class field such as `sourceContactId` or `macosContactStableId`, not only inside `raw_json`.
+3. Node creates one pending candidate with a Friendy candidate id and preserves `stableId` as `contact_identifier`. A contact identifier and a candidate identifier are not the same thing: one contact may generate multiple observations over time, and one observation may or may not become a memory.
 4. Node persists the candidate and zero or more `candidate_event_matches`.
 5. Node sends exactly one iMessage prompt:
    - no event prompt;
@@ -292,7 +496,50 @@ The automated sensor flow must preserve same-name contacts as separate candidate
 
 If two contacts named "Maya" are added, Apple provides different contact identifiers, Swift emits two events, Node creates two candidates, and later search can return both memories. Manual update and entity deduplication are deferred.
 
-For sensor-detected candidates, confirmation must be a state transition, not a blind insert. `confirm_candidate` should only create a relationship memory when the candidate belongs to the user and is still `pending`. Ignored, expired, already-confirmed, or missing candidates must not create another memory. This can be enforced in the repository transaction even though manual user-authored memories continue to use the explicit manual memory path.
+Confirmation must be a state transition, not a blind insert. `confirmCandidate` should only create a relationship memory when the candidate belongs to the user and is still `pending` or `prompted`. Ignored, expired, already-confirmed, or missing candidates must not create another memory.
+
+Manual user-authored saves use the same invariant: create a `manual_imessage` candidate, then confirm it in the same transaction. They do not bypass the candidate table.
+
+## Repository Invariants
+
+The repository interface is the mutation boundary for relationship memory state. Required methods and invariants:
+
+```text
+createCandidate(input)
+  - idempotent by user_id + sensor_event_id when present
+  - creates candidate_event_matches in the same transaction when provided
+  - records processed_sensor_events in the same transaction when idempotencyKey is present
+  - never creates a memory
+
+listPendingCandidates(userId)
+  - returns only pending and prompted candidates
+  - ordered by detected_at
+
+markCandidatePrompted(candidateId, interactionId)
+  - only pending -> prompted
+  - records prompt_interaction_id and prompted_at
+
+ignoreCandidate(candidateId, interactionId)
+  - only pending/prompted -> ignored
+  - records ignored_interaction_id and ignored_at
+  - never deletes the row
+
+confirmCandidate(candidateId, confirmation)
+  - only pending/prompted -> confirmed
+  - creates exactly one relationship memory in the same transaction
+  - fails without creating a memory if candidate is ignored, expired, confirmed, missing, or scoped to another user
+
+createAndConfirmManualMemory(input)
+  - creates a manual_imessage candidate
+  - confirms it through the same transaction path as confirmCandidate
+  - creates exactly one relationship memory
+
+searchMemories(userId, query)
+  - searches relationship_memories only
+  - never returns pending, ignored, expired, or error candidates
+```
+
+`confirmCandidate` should use a single transaction. The transaction first updates `contact_candidates` from `pending` or `prompted` to `confirmed` with the confirmation interaction id; only if exactly one row is returned should it insert into `relationship_memories`. If any insert fails, the candidate status update must roll back.
 
 ## Prompt Behavior
 
@@ -523,18 +770,33 @@ Use `FRIENDY_SENSOR_MOCK=1` or an injected fake sensor process to simulate:
 
 Required coverage:
 
+- SQLite initializes with WAL enabled;
+- SQLite initializes with `busy_timeout > 0`;
+- SQLite initializes with foreign keys enabled;
+- repository A creates a candidate and repository B lists it from the same SQLite file;
+- repository A ignores a candidate and repository B no longer lists it as pending;
+- repository A confirms a candidate and repository B can search the resulting memory;
+- double confirm creates one memory;
+- confirm ignored candidate fails without creating a memory;
+- confirm expired candidate fails without creating a memory;
+- confirm candidate for the wrong user fails without creating a memory;
+- candidate replay with the same sensor event or idempotency key is idempotent;
+- relationship memories cannot be inserted without candidates through the public repository API;
+- `relationship_memories.candidate_id` is unique;
 - orchestrator defaults SQLite env for `agent:friendy`;
 - orchestrator spawns mock sensor or real binary path correctly;
 - malformed sensor lines do not crash the runtime;
-- permission/fatal warnings are texted once using runtime state;
+- permission/fatal warnings are texted once using `runtime_warnings`;
 - history reset is logged and does not create candidates or send prompts;
-- contact added creates a pending candidate seeded by `stableId`;
+- contact added creates a pending candidate while preserving `stableId` as `contact_identifier`;
 - duplicate `contact_added` events with the same idempotency key do not create another candidate or prompt;
 - confirmation of ignored, already-confirmed, expired, missing, or wrong-user sensor candidates does not create a memory;
 - single strong event sends the single-event prompt;
 - multiple plausible events send numbered disambiguation;
 - no surviving events sends no-event prompt;
 - same display-name contacts create separate candidates when `stableId` differs.
+
+At least one cross-connection lock test should open two SQLite connections to the same file, hold a transaction on one connection, and verify the second connection waits within the configured busy timeout or returns a controlled retryable repository error instead of crashing the agent wrapper.
 
 ### Swift Build
 
@@ -566,9 +828,17 @@ Local-only edge checks should include permission denied/granted/revoked, same-na
 - Detected contacts remain pending until the user confirms.
 - Multiple calendar matches trigger disambiguation instead of overconfident guessing.
 - SQLite and sensor state live under `.friendy/` by default and remain ignored by git.
+- `raw_json` stores Friendy domain snapshots, not unfiltered Contacts framework dumps.
+- Do not store contact notes, birthdays, postal addresses, organization fields, image data, or other address-book fields unless they become explicit product requirements.
+- Phone and email values should be normalized. If a value is only needed for dedupe or disambiguation, store a hash instead of the raw value.
 
 ## Open Decisions
 
-No product decision remains open for this spec.
+Open implementation decisions before merging implementation code:
+
+- exact warning cooldown duration for repeated sensor permission failures;
+- exact SQLite migration helper shape after `1_initial_runtime_store`;
+- exact contact fingerprint format for manual iMessage candidates;
+- whether `synchronous = NORMAL` remains enough after real local crash testing.
 
 Implementation should start with the TypeScript sensor event contract, fake sensor, orchestrator tests, and calendar scorer. The Swift binary and build script should be included in the same implementation phase, with automated tests relying on fake sensor events.
