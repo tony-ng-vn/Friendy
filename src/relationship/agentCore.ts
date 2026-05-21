@@ -4,12 +4,14 @@ import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import {
   composeCandidateAmbiguityReply,
+  composeClarificationReply,
   composeIgnoreCandidateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
+import { decideMessageScope } from "./scopeBoundary";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
@@ -27,6 +29,18 @@ export function createRelationshipAgent(tools: RelationshipTools) {
       const normalized = message.text.trim();
       const lower = normalized.toLowerCase();
       const toolCalls: AgentToolCall[] = [];
+      const scopeDecision = decideMessageScope({
+        text: normalized,
+        hasPendingCandidate: tools.list_pending_candidates(message.userId).length > 0
+      });
+
+      if (scopeDecision.scope === "out_of_scope") {
+        return reply(message, scopeDecision.redirect, toolCalls);
+      }
+
+      if (scopeDecision.scope === "needs_clarification") {
+        return reply(message, composeClarificationReply(scopeDecision.question), toolCalls);
+      }
 
       if (isConfirmationReply(normalized)) {
         toolCalls.push("list_pending_candidates");

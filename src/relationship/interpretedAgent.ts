@@ -12,6 +12,7 @@ import {
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
+import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage } from "./types";
@@ -58,6 +59,42 @@ export function createInterpretedRelationshipAgent({
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
       const startedAt = Date.now();
+      const scopeDecision = decideMessageScope({
+        text: message.text,
+        hasPendingCandidate: repo.listPendingCandidates(message.userId).length > 0
+      });
+
+      if (scopeDecision.scope === "out_of_scope" || scopeDecision.scope === "needs_clarification") {
+        const outboundText =
+          scopeDecision.scope === "out_of_scope"
+            ? scopeDecision.redirect
+            : composeClarificationReply(scopeDecision.question);
+        const interaction = repo.addInteraction({
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: scopeOnlyLog(scopeDecision),
+          outboundText,
+          toolCalls: [],
+          confidence: scopeDecision.scope === "out_of_scope" ? 1 : 0.7,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction
+        };
+      }
+
       const interpreted = await interpreter.interpret(message);
       const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
       const interpretation = enrichInterpretationWithContext(
@@ -76,7 +113,7 @@ export function createInterpretedRelationshipAgent({
         platform: message.platform,
         spaceId: message.spaceId,
         inboundText: message.text,
-        interpretedIntentJson: interpretation,
+        interpretedIntentJson: { ...interpretation, scopeDecision, interpretation },
         outboundText,
         toolCalls,
         modelUsed: interpreted.modelUsed,
@@ -98,6 +135,20 @@ export function createInterpretedRelationshipAgent({
       };
     }
   };
+}
+
+function scopeOnlyLog(scopeDecision: ScopeDecision): unknown {
+  if (scopeDecision.scope === "needs_clarification") {
+    return {
+      scopeDecision,
+      intent: "clarify",
+      confidence: 0.7,
+      needsClarification: true,
+      clarificationQuestion: scopeDecision.question
+    };
+  }
+
+  return { scopeDecision };
 }
 
 function executeInterpretation(

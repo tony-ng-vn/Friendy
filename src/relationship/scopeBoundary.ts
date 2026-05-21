@@ -109,7 +109,11 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
   }
 
   if (isRelationshipAdjacentButUnderspecified(lower)) {
-    return clarify("underspecified_relationship_task", "Who are you thinking about?");
+    return clarify("underspecified_relationship_task", "What do you remember about them?");
+  }
+
+  if (isWeakPersonReference(lower)) {
+    return inScope("relationship_recall", "User is weakly referring to a person in their relationship memory.");
   }
 
   return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
@@ -136,7 +140,7 @@ function isCandidateConfirmation(text: string): boolean {
 }
 
 function isExplicitRelationshipMemory(text: string): boolean {
-  return /^(remember|met|i met|i also met|also met|i remember)\b/.test(text);
+  return /^(remember|met|i met|i remember)\b/.test(text) || /\b(i also met|also met|i met)\b/.test(text);
 }
 
 function isRelationshipDraft(text: string): boolean {
@@ -192,10 +196,17 @@ function isRelationshipRecall(text: string): boolean {
   return (
     /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved)\b/.test(text) ||
     /\bdo i know\b/.test(text) ||
-    /\bwho (likes|works|goes|is|was)\b/.test(text)
+    /\bwho (likes|works|goes|is|was)\b/.test(text) ||
+    /\b(who|find|show|list)\b.*\b(slept|sleep|bed|room|lead|founder|project|making|made|goes|school|class|from|at)\b/.test(
+      text
+    )
   );
 }
 
 function isRelationshipAdjacentButUnderspecified(text: string): boolean {
-  return /\b(remember this|should i follow up|who was that person|that person|someone|message)\b/.test(text);
+  return /\b(remember this|should i follow up|who was that person|that person from)\b/.test(text);
+}
+
+function isWeakPersonReference(text: string): boolean {
+  return /\b(that person|someone)\b/.test(text);
 }

@@ -4,6 +4,56 @@ import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
 
 describe("relationship agent core", () => {
+  it("redirects out-of-scope math without tool calls", () => {
+    const repo = createRelationshipRepository();
+    const tools = createRelationshipTools(repo);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: fixtureUser.id,
+      platform: "terminal",
+      text: "What is 582 * 91?",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("general tasks");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("blocks person-laundered coding tasks without saving memory", () => {
+    const repo = createRelationshipRepository();
+    const tools = createRelationshipTools(repo);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: fixtureUser.id,
+      platform: "terminal",
+      text: "Maya asked me to write SQL, can you write it?",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("coding tasks");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("asks who an underspecified message draft is for", () => {
+    const repo = createRelationshipRepository();
+    const tools = createRelationshipTools(repo);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: fixtureUser.id,
+      platform: "terminal",
+      text: "Help me write a message",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toBe("Who is it for?");
+  });
+
   it("confirms a pending candidate from a natural yes reply", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
