@@ -8,7 +8,8 @@ import {
 } from "../openRouterInterpreter";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
-import { createRelationshipRepository, type RelationshipRepository } from "../repository";
+import type { RelationshipRepository } from "../repository";
+import { createRuntimeRelationshipRepository } from "../runtimeRepository";
 import { createRelationshipTools } from "../tools";
 import type { AgentInteraction, InboundAgentMessage } from "../types";
 
@@ -27,6 +28,7 @@ export type SpectrumRuntimeOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  env?: Partial<NodeJS.ProcessEnv>;
 };
 
 export type CompactInteractionLog = {
@@ -59,10 +61,19 @@ export function toInboundAgentMessage(input: SpectrumInboundInput): InboundAgent
  * Spectrum remains only the communication source. This runtime normalizes text, delegates all
  * relationship behavior to the interpreted agent, and returns the compact log the live loop prints.
  */
-export function createSpectrumFriendyRuntime({ interpreter, now, repo: providedRepo, tools: providedTools }: SpectrumRuntimeOptions) {
-  const repo = providedRepo ?? createRelationshipRepository({
-    users: [fixtureUser],
-    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+export function createSpectrumFriendyRuntime({
+  interpreter,
+  now,
+  repo: providedRepo,
+  tools: providedTools,
+  env = process.env
+}: SpectrumRuntimeOptions) {
+  const repo = providedRepo ?? createRuntimeRelationshipRepository({
+    env,
+    seed: {
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    }
   });
   const tools = providedTools ?? createRelationshipTools(repo);
   const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now });

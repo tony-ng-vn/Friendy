@@ -64,4 +64,51 @@ describe("spectrum transport", () => {
     expect(runtime.repo.listInteractions("space_first_inbound")).toHaveLength(2);
     expect(runtime.repo.listMemories("space_first_inbound")[0].displayName).toBe("Amaya");
   });
+
+  it("shares SQLite runtime state across Spectrum runtime instances when configured", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "friendy-spectrum-runtime-"));
+    const env = {
+      FRIENDY_RUNTIME_STORE: "sqlite",
+      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite")
+    };
+    let first: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;
+    let second: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;
+
+    try {
+      first = createSpectrumFriendyRuntime({
+        interpreter: createRuleBasedInterpreter(),
+        now: () => "2026-05-20T12:00:00.000Z",
+        env
+      });
+
+      await first.handleInboundText({
+        text: "I met Amaya at Photon Residency II, recruiting agents founder",
+        spaceId: "space_persistent",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      });
+
+      second = createSpectrumFriendyRuntime({
+        interpreter: createRuleBasedInterpreter(),
+        now: () => "2026-05-20T12:05:00.000Z",
+        env
+      });
+
+      const search = await second.handleInboundText({
+        text: "Who was the recruiting agents founder from Photon?",
+        spaceId: "space_persistent",
+        receivedAt: "2026-05-20T12:05:00.000Z"
+      });
+
+      expect(search.replyText).toContain("Amaya");
+      expect(second.repo.listInteractions("space_persistent")).toHaveLength(2);
+    } finally {
+      (first?.repo as { close?: () => void } | undefined)?.close?.();
+      (second?.repo as { close?: () => void } | undefined)?.close?.();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
