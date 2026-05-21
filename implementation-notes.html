@@ -11,6 +11,7 @@
       <li>Friendy is currently an iMessage-first relationship memory system. The canonical architecture source is <code>docs/ai-system-architecture.md</code>.</li>
       <li>The active MVP detector scope is phone contacts plus calendar context. Fixture checks are deterministic, and real macOS Contacts/Calendar reads happen only through explicit local commands.</li>
       <li>The main unresolved system gap is shared durable state between the local checker and the live iMessage/Spectrum runtime.</li>
+      <li>Candidate Intake now owns queued contact candidate confirmation and ignore decisions for both deterministic and interpreted agents.</li>
     </ul>
     <h2>Historical Starting Point</h2>
     <ul>
@@ -53,6 +54,10 @@
       <li>Stored local checker snapshot state under <code>.friendy/local-contact-snapshot.json</code> and ignored <code>.friendy/</code> because the file is machine-local state, not project source.</li>
       <li>Kept local checker sending dry-run by default. Live Spectrum sending requires <code>FRIENDY_LOCAL_CHECK_SEND=1</code> plus a target phone number so a local read cannot accidentally message the user.</li>
       <li>Routed the local checker through the existing ingestion, repository, candidate queue, and prompt builder instead of creating a separate path for real Contacts/Calendar data.</li>
+      <li>Added <code>candidateIntake.ts</code> as the structured decision module for queued contact candidates. It selects, confirms, ignores, or reports ambiguity without composing final user-facing text.</li>
+      <li>Kept Candidate Intake behind relationship tools instead of direct repository writes. This preserves the tool boundary for future agent traces and keeps mutation behavior testable through the same interface the agents use.</li>
+      <li>Preserved ingestion compatibility by allowing bare confirmation only when exactly one pending candidate has event guesses. Multiple plausible event-matched candidates still require the user to choose.</li>
+      <li>Left durable shared state out of the Candidate Intake pass. The next system gap is still making pending candidates and relationship memory shared across the local checker and live iMessage runtime.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -102,6 +107,11 @@
       <li>Ran targeted local checker verification: adapter and checker tests passed, <code>npm run ingest:local:check -- --mock</code> printed the Friendy confirmation prompt for <code>Friendy-101</code>, and real-provider mode failed clearly on non-macOS with the mock-mode hint.</li>
       <li>Ran local checker feature-branch verification: <code>npm test</code> passed with 25 files and 101 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, <code>npm run ingest:local:check -- --mock</code> printed the dry-run Friendy prompt for <code>Friendy-101</code>, <code>git diff --check</code> passed, and the forbidden-term search returned no matches.</li>
       <li>After fast-forwarding <code>main</code> for the local macOS checker goal, reran <code>npm test</code>, <code>npm run build</code>, <code>npm run eval:agent</code>, <code>npm run check:imessage-e2e</code>, <code>npm run ingest:check</code>, <code>npm run ingest:local:check -- --mock</code>, <code>git diff --check</code>, and the forbidden-term search successfully.</li>
+      <li>For the Candidate Intake implementation pass, first ran the focused red spec where all five Candidate Intake tests failed because <code>candidateIntake.ts</code> did not exist.</li>
+      <li>Ran <code>npm test -- src/relationship/candidateIntake.test.ts</code> after implementation: five Candidate Intake tests passed.</li>
+      <li>Ran the focused agent refactor suite <code>npm test -- src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/candidateIntake.test.ts src/relationship/responseComposer.test.ts</code>: four files and 31 tests passed.</li>
+      <li>Fixed the ingestion compatibility regression, then ran <code>npm test -- src/relationship/candidateIntake.test.ts src/relationship/ingestion/ingestionPipeline.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts</code>: four files and 33 tests passed.</li>
+      <li>Ran full Candidate Intake verification: <code>npm test</code> passed with 26 files and 106 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 12/12 required cases, <code>npm run check:imessage-e2e</code> passed, <code>npm run ingest:check</code> passed, and <code>npm run ingest:local:check -- --mock</code> passed.</li>
     </ul>
   </body>
 </html>
