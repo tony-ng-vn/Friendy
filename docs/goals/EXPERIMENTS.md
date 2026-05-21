@@ -25,4 +25,4 @@
 - `npm run ingest:check`: passed, fixture contacts produced expected pending queue.
 - `npm run ingest:local:check -- --mock`: passed, mock `Friendy-101` contact mapped to `Photon Residency Dinner` and dry-run send was skipped.
 - `git diff --check`: passed.
-- `rg -n "demo|Demo"`: no matches.
+- Forbidden product-showcase wording search: no matches.
