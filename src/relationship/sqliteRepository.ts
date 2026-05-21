@@ -27,6 +27,8 @@ type RawJsonRow = {
   raw_json: string;
 };
 
+type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "memories" | "interactions";
+
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): RelationshipRepository {
   mkdirSync(dirname(options.path), { recursive: true });
 
@@ -34,18 +36,18 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
   setupSchema(db);
 
   if (options.seed) {
-    seedRepository(db, options.seed);
+    runTransaction(db, () => seedRepository(db, options.seed));
   }
 
   function listCalendarEvents(userId: string): CalendarEvent[] {
     return readRows<CalendarEvent>(
-      db.prepare("SELECT raw_json FROM calendar_events WHERE user_id = ? ORDER BY rowid").all(userId)
+      db.prepare("SELECT raw_json FROM calendar_events WHERE user_id = ? ORDER BY insert_order, id").all(userId)
     );
   }
 
   function listEventMatches(candidateId: string): EventContextMatch[] {
     return readRows<EventContextMatch>(
-      db.prepare("SELECT raw_json FROM event_matches WHERE candidate_id = ? ORDER BY rank, rowid").all(candidateId)
+      db.prepare("SELECT raw_json FROM event_matches WHERE candidate_id = ? ORDER BY rank, insert_order, id").all(candidateId)
     );
   }
 
@@ -61,25 +63,29 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
-      const candidate: ContactCandidate = {
-        ...contact,
-        id: createCandidateId(contact),
-        status: "pending"
-      };
+      return runTransaction(db, () => {
+        const candidate: ContactCandidate = {
+          ...contact,
+          id: createCandidateId(contact),
+          status: "pending"
+        };
 
-      upsertCandidate(db, candidate);
+        upsertCandidate(db, candidate);
 
-      const eventMatches = mapCandidateToEvents(candidate.id, contact, listCalendarEvents(contact.userId));
-      for (const match of eventMatches) {
-        upsertEventMatch(db, match);
-      }
+        const eventMatches = mapCandidateToEvents(candidate.id, contact, listCalendarEvents(contact.userId));
+        for (const match of eventMatches) {
+          upsertEventMatch(db, match);
+        }
 
-      return candidate;
+        return candidate;
+      });
     },
 
     listPendingCandidates(userId: string): ContactCandidate[] {
       return readRows<ContactCandidate>(
-        db.prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY rowid").all(userId)
+        db
+          .prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY insert_order, id")
+          .all(userId)
       );
     },
 
@@ -97,36 +103,38 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       eventId?: string,
       options: ConfirmCandidateOptions = {}
     ): RelationshipMemory {
-      const candidate = readOptionalRow<ContactCandidate>(
-        db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
-      );
-      if (!candidate) {
-        throw new Error(`Candidate not found: ${candidateId}`);
-      }
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
 
-      const confirmedCandidate: ContactCandidate = { ...candidate, status: "confirmed" };
-      upsertCandidate(db, confirmedCandidate);
+        const confirmedCandidate: ContactCandidate = { ...candidate, status: "confirmed" };
+        upsertCandidate(db, confirmedCandidate);
 
-      const selectedMatch =
-        options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
-      const memory: RelationshipMemory = {
-        id: `memory_${candidate.id}`,
-        userId: candidate.userId,
-        candidateId: candidate.id,
-        displayName: candidate.displayName,
-        primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
-        eventId: selectedMatch?.calendarEventId,
-        eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
-        contextNote,
-        relationshipContext: options.relationshipContext,
-        tags: extractTags(contextNote),
-        confidence: selectedMatch?.confidence ?? 0.5,
-        createdAt: "2026-05-20T12:00:00.000Z",
-        updatedAt: "2026-05-20T12:00:00.000Z"
-      };
+        const selectedMatch =
+          options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
+        const memory: RelationshipMemory = {
+          id: `memory_${candidate.id}`,
+          userId: candidate.userId,
+          candidateId: candidate.id,
+          displayName: candidate.displayName,
+          primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
+          eventId: selectedMatch?.calendarEventId,
+          eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
+          contextNote,
+          relationshipContext: options.relationshipContext,
+          tags: extractTags(contextNote),
+          confidence: selectedMatch?.confidence ?? 0.5,
+          createdAt: "2026-05-20T12:00:00.000Z",
+          updatedAt: "2026-05-20T12:00:00.000Z"
+        };
 
-      upsertMemory(db, memory);
-      return memory;
+        upsertMemory(db, memory);
+        return memory;
+      });
     },
 
     ignoreCandidate(candidateId: string): void {
@@ -143,11 +151,11 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listMemories(userId?: string): RelationshipMemory[] {
       if (userId) {
         return readRows<RelationshipMemory>(
-          db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY rowid").all(userId)
+          db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY insert_order, id").all(userId)
         );
       }
 
-      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY rowid").all());
+      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -163,11 +171,11 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listInteractions(userId?: string): AgentInteraction[] {
       if (userId) {
         return readRows<AgentInteraction>(
-          db.prepare("SELECT raw_json FROM interactions WHERE user_id = ? ORDER BY rowid").all(userId)
+          db.prepare("SELECT raw_json FROM interactions WHERE user_id = ? ORDER BY insert_order, id").all(userId)
         );
       }
 
-      return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY rowid").all());
+      return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY insert_order, id").all());
     }
   };
 }
@@ -184,6 +192,7 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS calendar_events (
       id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
       user_id TEXT NOT NULL,
       title TEXT NOT NULL,
       starts_at TEXT NOT NULL,
@@ -199,6 +208,7 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS candidates (
       id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
       user_id TEXT NOT NULL,
       display_name TEXT NOT NULL,
       detected_at TEXT NOT NULL,
@@ -212,6 +222,7 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS event_matches (
       id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
       candidate_id TEXT NOT NULL,
       calendar_event_id TEXT NOT NULL,
       event_title TEXT NOT NULL,
@@ -225,6 +236,7 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
       user_id TEXT NOT NULL,
       candidate_id TEXT,
       display_name TEXT NOT NULL,
@@ -240,6 +252,7 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS interactions (
       id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
       user_id TEXT NOT NULL,
       platform TEXT NOT NULL,
       space_id TEXT,
@@ -249,6 +262,8 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS interactions_user_created_idx
       ON interactions(user_id, created_at);
+
+    PRAGMA user_version = 1;
   `);
 }
 
@@ -291,9 +306,9 @@ function upsertCalendarEvent(db: DatabaseSync, event: CalendarEvent): void {
   db.prepare(
     `
       INSERT INTO calendar_events (
-        id, user_id, title, starts_at, ends_at, timezone, calendar_source, event_kind, raw_json
+        id, insert_order, user_id, title, starts_at, ends_at, timezone, calendar_source, event_kind, raw_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         title = excluded.title,
@@ -306,6 +321,7 @@ function upsertCalendarEvent(db: DatabaseSync, event: CalendarEvent): void {
     `
   ).run(
     event.id,
+    nextInsertOrder(db, "calendar_events"),
     event.userId,
     event.title,
     event.startsAt,
@@ -320,8 +336,8 @@ function upsertCalendarEvent(db: DatabaseSync, event: CalendarEvent): void {
 function upsertCandidate(db: DatabaseSync, candidate: ContactCandidate): void {
   db.prepare(
     `
-      INSERT INTO candidates (id, user_id, display_name, detected_at, source, status, raw_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO candidates (id, insert_order, user_id, display_name, detected_at, source, status, raw_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         display_name = excluded.display_name,
@@ -332,6 +348,7 @@ function upsertCandidate(db: DatabaseSync, candidate: ContactCandidate): void {
     `
   ).run(
     candidate.id,
+    nextInsertOrder(db, "candidates"),
     candidate.userId,
     candidate.displayName,
     candidate.detectedAt,
@@ -345,9 +362,9 @@ function upsertEventMatch(db: DatabaseSync, match: EventContextMatch): void {
   db.prepare(
     `
       INSERT INTO event_matches (
-        id, candidate_id, calendar_event_id, event_title, confidence, rank, raw_json
+        id, insert_order, candidate_id, calendar_event_id, event_title, confidence, rank, raw_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         candidate_id = excluded.candidate_id,
         calendar_event_id = excluded.calendar_event_id,
@@ -358,6 +375,7 @@ function upsertEventMatch(db: DatabaseSync, match: EventContextMatch): void {
     `
   ).run(
     match.id,
+    nextInsertOrder(db, "event_matches"),
     match.candidateId,
     match.calendarEventId,
     match.eventTitle,
@@ -371,9 +389,9 @@ function upsertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
   db.prepare(
     `
       INSERT INTO memories (
-        id, user_id, candidate_id, display_name, event_id, event_title, created_at, updated_at, raw_json
+        id, insert_order, user_id, candidate_id, display_name, event_id, event_title, created_at, updated_at, raw_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         candidate_id = excluded.candidate_id,
@@ -386,6 +404,7 @@ function upsertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
     `
   ).run(
     memory.id,
+    nextInsertOrder(db, "memories"),
     memory.userId,
     memory.candidateId ?? null,
     memory.displayName,
@@ -400,8 +419,8 @@ function upsertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
 function upsertInteraction(db: DatabaseSync, interaction: AgentInteraction): void {
   db.prepare(
     `
-      INSERT INTO interactions (id, user_id, platform, space_id, created_at, raw_json)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO interactions (id, insert_order, user_id, platform, space_id, created_at, raw_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         platform = excluded.platform,
@@ -411,12 +430,32 @@ function upsertInteraction(db: DatabaseSync, interaction: AgentInteraction): voi
     `
   ).run(
     interaction.id,
+    nextInsertOrder(db, "interactions"),
     interaction.userId,
     interaction.platform,
     interaction.spaceId ?? null,
     interaction.createdAt,
     stringify(interaction)
   );
+}
+
+function runTransaction<T>(db: DatabaseSync, callback: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = callback();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function nextInsertOrder(db: DatabaseSync, table: InsertOrderedTable): number {
+  const row = db.prepare(`SELECT COALESCE(MAX(insert_order), 0) + 1 AS next_order FROM ${table}`).get() as {
+    next_order: number;
+  };
+  return row.next_order;
 }
 
 function readRows<T>(rows: unknown[]): T[] {

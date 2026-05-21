@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createSqliteRelationshipRepository } from "./sqliteRepository";
@@ -278,6 +279,61 @@ describe("sqlite relationship repository", () => {
       "interaction_order_first",
       "interaction_order_second"
     ]);
+  });
+
+  it("rolls back seed writes when a later seeded row fails", () => {
+    const dbPath = tempDatabasePath();
+    const userId = "user_seed_transaction";
+
+    expect(() =>
+      createSqliteRelationshipRepository({
+        path: dbPath,
+        seed: {
+          memories: [
+            {
+              id: "memory_before_failed_seed",
+              userId,
+              displayName: "Seed Transaction Person",
+              primaryContactLabel: "seeded contact",
+              contextNote: "this should roll back",
+              tags: ["rollback"],
+              confidence: 0.6,
+              createdAt: "2026-05-21T04:00:00.000Z",
+              updatedAt: "2026-05-21T04:00:00.000Z"
+            }
+          ],
+          interactions: [
+            {
+              id: "interaction_invalid_seed",
+              userId,
+              inboundText: "invalid interaction",
+              outboundText: "Invalid.",
+              toolCalls: [],
+              createdAt: "2026-05-21T04:01:00.000Z"
+            } as AgentInteraction
+          ]
+        }
+      })
+    ).toThrow();
+
+    const reopened = createSqliteRelationshipRepository({ path: dbPath });
+    expect(reopened.listMemories(userId)).toEqual([]);
+  });
+
+  it("sets schema version and stores explicit insert order columns", () => {
+    const dbPath = tempDatabasePath();
+    createSqliteRelationshipRepository({ path: dbPath });
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(1);
+      for (const table of ["calendar_events", "candidates", "memories", "interactions"]) {
+        const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+        expect(columns.map((column) => column.name)).toContain("insert_order");
+      }
+    } finally {
+      db.close();
+    }
   });
 });
 
