@@ -8,7 +8,7 @@ import {
 } from "./agentEvalRunner";
 
 describe("relationship agent eval runner", () => {
-  it("defines the required 12 trajectory eval cases with measurable assertions", () => {
+  it("defines the required trajectory eval cases with measurable assertions", () => {
     const requiredIds = [
       "clear-event-contact-confirmation",
       "overlapping-event-correction",
@@ -21,10 +21,15 @@ describe("relationship agent eval runner", () => {
       "hallucination-guard",
       "unsafe-save-guard",
       "spectrum-first-inbound-identity",
-      "messy-human-wording"
+      "messy-human-wording",
+      "scope-out-of-scope-math",
+      "scope-person-laundered-coding",
+      "scope-in-scope-refusal-draft",
+      "scope-ambiguous-message-draft",
+      "scope-adversarial-instruction"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(12);
+    expect(relationshipAgentEvalCases).toHaveLength(17);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -40,8 +45,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(12);
-    expect(summary.requiredTotal).toBe(12);
+    expect(summary.total).toBe(17);
+    expect(summary.requiredTotal).toBe(17);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);
@@ -50,6 +55,7 @@ describe("relationship agent eval runner", () => {
     expect(summary.metrics.unsafeMutationCount).toBe(0);
     expect(summary.metrics.hallucinationCount).toBe(0);
     expect(summary.metrics.clarificationCorrectness).toBe(1);
+    expect(summary.metrics.scopeBoundaryCorrectness).toBe(1);
     expect(summary.optionalModelBacked.enabled).toBe(false);
     expect(summary.results.every((result) => result.assertions.every((assertion) => assertion.passed))).toBe(true);
   });
