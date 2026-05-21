@@ -83,9 +83,9 @@ export async function runLocalContactCalendarCheck({
 }
 
 /** Deterministic local-check scenario used when real macOS permissions are unavailable. */
-export function createMockLocalCheckScenario(): MockLocalCheckScenario {
+export function createMockLocalCheckScenario(userId = fixtureUser.id): MockLocalCheckScenario {
   const before: ContactSnapshot = {
-    userId: fixtureUser.id,
+    userId,
     capturedAt: "2026-05-20T18:00:00.000Z",
     contacts: [
       {
@@ -98,7 +98,7 @@ export function createMockLocalCheckScenario(): MockLocalCheckScenario {
     ]
   };
   const after: ContactSnapshot = {
-    userId: fixtureUser.id,
+    userId,
     capturedAt: "2026-05-20T20:00:00.000Z",
     contacts: [
       ...before.contacts,
@@ -113,7 +113,7 @@ export function createMockLocalCheckScenario(): MockLocalCheckScenario {
   };
   const event: CalendarEvent = {
     id: "event_photon_residency_dinner_local",
-    userId: fixtureUser.id,
+    userId,
     title: "Photon Residency Dinner",
     startsAt: "2026-05-20T19:00:00.000Z",
     endsAt: "2026-05-20T22:00:00.000Z",
