@@ -14,7 +14,7 @@
       <li>Kept in-memory repositories as the default for deterministic tests and fixture checks. SQLite is selected explicitly with <code>FRIENDY_RUNTIME_STORE=sqlite</code> and <code>FRIENDY_SQLITE_PATH</code>.</li>
       <li>Used Node's built-in <code>node:sqlite</code> instead of adding a native dependency because the project already runs on Node 24.</li>
       <li>Candidate Intake now owns queued contact candidate confirmation and ignore decisions for both deterministic and interpreted agents.</li>
-      <li>Durable runtime store Task 3 adds a SQLite relationship repository using Node's built-in <code>node:sqlite</code> <code>DatabaseSync</code>, with indexed columns for query paths and raw JSON snapshots for evolving relationship objects.</li>
+      <li>The SQLite relationship repository uses Node's built-in <code>node:sqlite</code> <code>DatabaseSync</code>, with indexed columns for query paths and raw JSON snapshots for evolving relationship objects.</li>
     </ul>
     <h2>Historical Starting Point</h2>
     <ul>

@@ -257,11 +257,16 @@ If `FRIENDY_LOCAL_CHECK_TO_PHONE` is missing, Friendy falls back to `FRIENDY_OWN
 
 ## Optional Durable Runtime Store
 
-By default, fixture checks use in-memory state. To let the explicit local checker and the Spectrum/iMessage runtime share pending candidates and relationship memories across separate processes, run both with:
+By default, fixture checks use in-memory state. To let the explicit local checker and the Spectrum/iMessage runtime share pending candidates and relationship memories across separate processes, put the SQLite settings in `.env.local` or pass them inline to each process:
 
 ```bash
 FRIENDY_RUNTIME_STORE=sqlite
 FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite
+```
+
+```bash
+FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite npm run ingest:local:check
+FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite npm run agent:spectrum
 ```
 
 The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state.
