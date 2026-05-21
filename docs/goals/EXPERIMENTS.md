@@ -1,28 +1,32 @@
-# Docs And Agent Navigation Cleanup Goal Experiments
+# Candidate Intake Interface Spec Goal Experiments
 
 ## Baseline
 
 - Date: 2026-05-21
 - Branch: `main`
-- Goal source: Codex active goal context and `docs/reviews/current-system-audit.md`.
-- Starting state: `docs/reviews/current-system-audit.md` existed as an untracked audit artifact from the previous goal.
+- Goal source: active Candidate Intake interface-spec goal.
+- Starting state: no `CONTEXT.md`; no `src/relationship/candidateIntake.ts`; existing candidate confirmation behavior lives in `agentCore.ts`, `interpretedAgent.ts`, `candidateConfirmation.ts`, tools, and repository.
 
-## Cleanup Pass
+## Red Spec
 
 - Date: 2026-05-21
-- Files updated: `README.md`, `REFERENCE.md`, `CHANGELOG.md`, `docs/ai-system-architecture.md`, `implementation-notes.html`, `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, `docs/goals/EXPERIMENT_NOTES.md`, `src/relationship/AGENTS.md`, and `src/relationship/ingestion/AGENTS.md`.
-- Result: Stale local-checker guidance was corrected, ingestion got scoped instructions, completed goals were relabeled as historical references, architecture docs were marked canonical, the old web shell was relabeled, and implementation notes now start with current state.
+- File added: `src/relationship/candidateIntake.test.ts`.
+- First focused run: `npm test -- src/relationship/candidateIntake.test.ts` failed during import-analysis because `./candidateIntake` does not exist.
+- Adjustment: changed the test helper to use a dynamic module path so Vitest collects the tests before failing at the missing module seam.
+- Second focused run: `npm test -- src/relationship/candidateIntake.test.ts` collected five tests and all five failed with `Cannot find module './candidateIntake'`.
+
+## Interface Spec Docs
+
+- Date: 2026-05-21
+- File added: `CONTEXT.md`.
+- File added: `docs/superpowers/plans/2026-05-21-candidate-intake.md`.
+- Result: Friendy domain terms now include Contact Signal, Candidate Intake, Pending Candidate, Review Prompt, Relationship Memory, and Relationship Runtime. The implementation plan keeps durable/shared state, UI, Spectrum behavior changes, and manual memory capture out of scope.
 
 ## Verification
 
 - Date: 2026-05-21
-- `git status --short`: clean before recording verification evidence.
-- Changed-file scope: cleanup commit `b4368ae` changed only docs and scoped `AGENTS.md` files.
-- `npm test`: passed, 25 files and 101 tests.
-- `npm run build`: passed, TypeScript and Vite production build completed.
-- `npm run eval:agent`: passed, 12/12 required cases, 100% pass rate, 0 unsafe mutations, 0 hallucinations.
-- `npm run check:imessage-e2e`: passed, contact confirmation and later search flow completed.
-- `npm run ingest:check`: passed, fixture contacts produced expected pending queue.
-- `npm run ingest:local:check -- --mock`: passed, mock `Friendy-101` contact mapped to `Photon Residency Dinner` and dry-run send was skipped.
+- `git status --short`: changed files were docs plus `src/relationship/candidateIntake.test.ts`; no production source files were changed.
+- Focused red run: `npm test -- src/relationship/candidateIntake.test.ts` failed with five collected failing tests because `./candidateIntake` does not exist.
+- Full suite run: `npm test` reported 25 existing test files passed, 101 existing tests passed, and only `src/relationship/candidateIntake.test.ts` failed with five intentional red tests.
 - `git diff --check`: passed.
-- Forbidden product-showcase wording search: no matches.
+- `npm run build`: not run because production source/imports were not touched; this goal intentionally adds docs and red tests only.

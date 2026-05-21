@@ -1,7 +1,8 @@
-# Docs And Agent Navigation Cleanup Goal Plan
+# Candidate Intake Interface Spec Goal Plan
 
-- [x] Read `docs/reviews/current-system-audit.md`.
-- [x] Update stale scoped relationship/ingestion agent instructions.
-- [x] Normalize README, REFERENCE, architecture docs, changelog, and implementation notes for current Friendy state.
+- [x] Inspect current Friendy worktree and architecture docs.
+- [x] Add red Candidate Intake interface tests without production implementation.
+- [x] Create `CONTEXT.md` with Friendy domain vocabulary.
+- [x] Add Candidate Intake Superpowers implementation plan.
 - [x] Run required verification and record results.
-- [x] Commit docs-only cleanup.
+- [x] Commit docs-and-tests interface spec pass.
