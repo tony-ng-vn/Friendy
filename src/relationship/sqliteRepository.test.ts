@@ -4,17 +4,26 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
-import { createSqliteRelationshipRepository } from "./sqliteRepository";
+import {
+  createSqliteRelationshipRepository,
+  createSqliteRuntimeStateStore,
+  openSqliteRuntimeDatabase
+} from "./sqliteRepository";
 import { createRelationshipTools } from "./tools";
 import type { SqliteRelationshipRepository } from "./sqliteRepository";
 import type { AgentInteraction, EventContextMatch, RelationshipMemory } from "./types";
 
 const tempDirs: string[] = [];
 const repositories: SqliteRelationshipRepository[] = [];
+const closeables: Array<{ close: () => void }> = [];
 
 afterEach(() => {
   for (const repository of repositories.splice(0)) {
     repository.close();
+  }
+
+  for (const item of closeables.splice(0)) {
+    item.close();
   }
 
   for (const dir of tempDirs.splice(0)) {
@@ -23,6 +32,59 @@ afterEach(() => {
 });
 
 describe("sqlite relationship repository", () => {
+  it("initializes runtime SQLite with WAL, busy timeout, foreign keys, and migration ledger", () => {
+    const dbPath = tempDatabasePath();
+    const db = trackCloseable(openSqliteRuntimeDatabase(dbPath));
+
+    expect((db.prepare("PRAGMA journal_mode").get() as { journal_mode: string }).journal_mode.toLowerCase()).toBe("wal");
+    expect((db.prepare("PRAGMA busy_timeout").get() as { timeout: number }).timeout).toBe(5000);
+    expect((db.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number }).foreign_keys).toBe(1);
+    expect(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get()
+    ).toEqual({ name: "schema_migrations" });
+    expect(db.prepare("SELECT version, name FROM schema_migrations").all()).toEqual([
+      { version: 1, name: "1_initial_runtime_store" }
+    ]);
+  });
+
+  it("persists processed sensor events and runtime warnings across state store instances", () => {
+    const dbPath = tempDatabasePath();
+    const firstState = trackCloseable(createSqliteRuntimeStateStore({ path: dbPath }));
+
+    firstState.recordProcessedEvent({
+      idempotencyKey: "contacts:mac_1:ABCD:add",
+      sensorEventId: "sensor_evt_contact_1",
+      sensorName: "macos_contacts_calendar",
+      eventType: "contact_added",
+      status: "candidate_created",
+      candidateId: "candidate_maya_1",
+      processedAt: "2026-05-21T18:36:51.000Z"
+    });
+    firstState.upsertWarning({
+      userId: "user_friendy",
+      sensorName: "macos_contacts_calendar",
+      warningCode: "contacts_permission_denied",
+      permissionStatus: "denied",
+      now: "2026-05-21T18:36:51.000Z",
+      notified: true
+    });
+
+    const secondState = trackCloseable(createSqliteRuntimeStateStore({ path: dbPath }));
+    expect(secondState.getProcessedEvent("contacts:mac_1:ABCD:add")).toMatchObject({
+      sensorEventId: "sensor_evt_contact_1",
+      status: "candidate_created",
+      candidateId: "candidate_maya_1"
+    });
+    expect(secondState.getProcessedEventBySensorEventId("sensor_evt_contact_1")).toMatchObject({
+      idempotencyKey: "contacts:mac_1:ABCD:add"
+    });
+    expect(secondState.getWarning("user_friendy", "macos_contacts_calendar", "contacts_permission_denied")).toMatchObject({
+      permissionStatus: "denied",
+      notificationCount: 1,
+      lastNotifiedAt: "2026-05-21T18:36:51.000Z"
+    });
+  });
+
   it("persists candidates, event matches, memories, and interactions across repository instances", () => {
     const dbPath = tempDatabasePath();
     const firstRepo = trackRepository(createSqliteRelationshipRepository({
@@ -425,4 +487,9 @@ function tempDatabasePath(): string {
 function trackRepository(repository: SqliteRelationshipRepository): SqliteRelationshipRepository {
   repositories.push(repository);
   return repository;
+}
+
+function trackCloseable<T extends { close: () => void }>(item: T): T {
+  closeables.push(item);
+  return item;
 }

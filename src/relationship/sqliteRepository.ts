@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
+import type { ProcessedSensorEvent, RuntimeStateStore, RuntimeWarningState } from "./runtime/friendyRuntime";
 import {
   extractTags,
   type ConfirmCandidateOptions,
@@ -27,6 +28,10 @@ export type SqliteRelationshipRepository = RelationshipRepository & {
   close(): void;
 };
 
+export type SqliteRuntimeStateStore = RuntimeStateStore & {
+  close(): void;
+};
+
 type RawJsonRow = {
   raw_json: string;
 };
@@ -34,13 +39,9 @@ type RawJsonRow = {
 type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "memories" | "interactions";
 
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
-  mkdirSync(dirname(options.path), { recursive: true });
-
   const seed = options.seed;
-  const db = new DatabaseSync(options.path);
+  const db = openSqliteRuntimeDatabase(options.path);
   try {
-    setupSchema(db);
-
     if (seed) {
       runTransaction(db, () => seedRepository(db, seed));
     }
@@ -196,8 +197,154 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
   };
 }
 
+export function openSqliteRuntimeDatabase(path: string): DatabaseSync {
+  mkdirSync(dirname(path), { recursive: true });
+  const db = new DatabaseSync(path, {
+    timeout: 5000,
+    enableForeignKeyConstraints: true
+  });
+
+  try {
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
+      PRAGMA foreign_keys = ON;
+      PRAGMA synchronous = NORMAL;
+    `);
+    setupSchema(db);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+
+export function createSqliteRuntimeStateStore({ path }: { path: string }): SqliteRuntimeStateStore {
+  const db = openSqliteRuntimeDatabase(path);
+
+  return {
+    getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined {
+      return readProcessedEvent(
+        db.prepare("SELECT * FROM processed_sensor_events WHERE idempotency_key = ?").get(idempotencyKey)
+      );
+    },
+
+    getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined {
+      return readProcessedEvent(
+        db.prepare("SELECT * FROM processed_sensor_events WHERE sensor_event_id = ? ORDER BY processed_at DESC LIMIT 1").get(sensorEventId)
+      );
+    },
+
+    recordProcessedEvent(event: ProcessedSensorEvent): void {
+      db.prepare(
+        `
+          INSERT INTO processed_sensor_events (
+            idempotency_key, sensor_event_id, sensor_name, event_type, status,
+            candidate_id, warning_code, processed_at, raw_json
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(idempotency_key) DO UPDATE SET
+            sensor_event_id = excluded.sensor_event_id,
+            sensor_name = excluded.sensor_name,
+            event_type = excluded.event_type,
+            status = excluded.status,
+            candidate_id = excluded.candidate_id,
+            warning_code = excluded.warning_code,
+            processed_at = excluded.processed_at,
+            raw_json = excluded.raw_json
+        `
+      ).run(
+        event.idempotencyKey,
+        event.sensorEventId ?? null,
+        event.sensorName,
+        event.eventType,
+        event.status,
+        event.candidateId ?? null,
+        event.warningCode ?? null,
+        event.processedAt,
+        stringify(event)
+      );
+    },
+
+    getWarning(userId: string, sensorName: string, warningCode: string): RuntimeWarningState | undefined {
+      return readRuntimeWarning(
+        db
+          .prepare("SELECT * FROM runtime_warnings WHERE user_id = ? AND sensor_name = ? AND warning_code = ?")
+          .get(userId, sensorName, warningCode)
+      );
+    },
+
+    upsertWarning(input: {
+      userId: string;
+      sensorName: string;
+      warningCode: string;
+      permissionStatus?: string;
+      now: string;
+      notified: boolean;
+    }): RuntimeWarningState {
+      const existing = this.getWarning(input.userId, input.sensorName, input.warningCode);
+      const warning: RuntimeWarningState = existing
+        ? {
+            ...existing,
+            permissionStatus: input.permissionStatus,
+            lastSeenAt: input.now,
+            lastNotifiedAt: input.notified ? input.now : existing.lastNotifiedAt,
+            notificationCount: existing.notificationCount + (input.notified ? 1 : 0)
+          }
+        : {
+            userId: input.userId,
+            sensorName: input.sensorName,
+            warningCode: input.warningCode,
+            permissionStatus: input.permissionStatus,
+            firstSeenAt: input.now,
+            lastSeenAt: input.now,
+            lastNotifiedAt: input.notified ? input.now : undefined,
+            notificationCount: input.notified ? 1 : 0
+          };
+
+      db.prepare(
+        `
+          INSERT INTO runtime_warnings (
+            user_id, sensor_name, warning_code, permission_status, first_seen_at,
+            last_seen_at, last_notified_at, notification_count, raw_json
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, sensor_name, warning_code) DO UPDATE SET
+            permission_status = excluded.permission_status,
+            last_seen_at = excluded.last_seen_at,
+            last_notified_at = excluded.last_notified_at,
+            notification_count = excluded.notification_count,
+            raw_json = excluded.raw_json
+        `
+      ).run(
+        warning.userId,
+        warning.sensorName,
+        warning.warningCode,
+        warning.permissionStatus ?? null,
+        warning.firstSeenAt,
+        warning.lastSeenAt,
+        warning.lastNotifiedAt ?? null,
+        warning.notificationCount,
+        stringify(warning)
+      );
+
+      return warning;
+    },
+
+    close(): void {
+      db.close();
+    }
+  };
+}
+
 function setupSchema(db: DatabaseSync): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       phone_number TEXT NOT NULL,
@@ -278,6 +425,41 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS interactions_user_created_idx
       ON interactions(user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS runtime_warnings (
+      user_id TEXT NOT NULL,
+      sensor_name TEXT NOT NULL,
+      warning_code TEXT NOT NULL,
+      permission_status TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      last_notified_at TEXT,
+      suppressed_until TEXT,
+      acknowledged_at TEXT,
+      notification_count INTEGER NOT NULL DEFAULT 0,
+      raw_json TEXT,
+      PRIMARY KEY (user_id, sensor_name, warning_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS processed_sensor_events (
+      idempotency_key TEXT PRIMARY KEY,
+      sensor_event_id TEXT,
+      sensor_name TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (
+        status IN ('candidate_created', 'duplicate', 'ignored', 'baselined', 'warning', 'failed')
+      ),
+      candidate_id TEXT,
+      warning_code TEXT,
+      processed_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS processed_sensor_events_sensor_event_idx
+      ON processed_sensor_events(sensor_event_id);
+
+    INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+    VALUES (1, '1_initial_runtime_store', '2026-05-21T00:00:00.000Z');
 
     PRAGMA user_version = 1;
   `);
@@ -469,6 +651,62 @@ function readOptionalRow<T>(row: unknown): T | undefined {
   }
 
   return parseJson<T>((row as RawJsonRow).raw_json);
+}
+
+function readProcessedEvent(row: unknown): ProcessedSensorEvent | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    idempotency_key: string;
+    sensor_event_id: string | null;
+    sensor_name: string;
+    event_type: string;
+    status: ProcessedSensorEvent["status"];
+    candidate_id: string | null;
+    warning_code: string | null;
+    processed_at: string;
+  };
+
+  return {
+    idempotencyKey: value.idempotency_key,
+    sensorEventId: value.sensor_event_id ?? undefined,
+    sensorName: value.sensor_name,
+    eventType: value.event_type,
+    status: value.status,
+    candidateId: value.candidate_id ?? undefined,
+    warningCode: value.warning_code ?? undefined,
+    processedAt: value.processed_at
+  };
+}
+
+function readRuntimeWarning(row: unknown): RuntimeWarningState | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    user_id: string;
+    sensor_name: string;
+    warning_code: string;
+    permission_status: string | null;
+    first_seen_at: string;
+    last_seen_at: string;
+    last_notified_at: string | null;
+    notification_count: number;
+  };
+
+  return {
+    userId: value.user_id,
+    sensorName: value.sensor_name,
+    warningCode: value.warning_code,
+    permissionStatus: value.permission_status ?? undefined,
+    firstSeenAt: value.first_seen_at,
+    lastSeenAt: value.last_seen_at,
+    lastNotifiedAt: value.last_notified_at ?? undefined,
+    notificationCount: value.notification_count
+  };
 }
 
 function selectEventMatch(matches: EventContextMatch[], eventId?: string): EventContextMatch | undefined {
