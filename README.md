@@ -262,14 +262,15 @@ By default, fixture checks use in-memory state. To let the explicit local checke
 ```bash
 FRIENDY_RUNTIME_STORE=sqlite
 FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite
+FRIENDY_OWNER_PHONE=+15550100000
 ```
 
 ```bash
-FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite npm run ingest:local:check
-FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite npm run agent:spectrum
+FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite FRIENDY_OWNER_PHONE=+15550100000 npm run ingest:local:check
+FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite FRIENDY_OWNER_PHONE=+15550100000 npm run agent:spectrum
 ```
 
-The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state.
+The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state. `FRIENDY_OWNER_PHONE` is the temporary single-owner identity that lets the local checker and Spectrum/iMessage process read and write the same candidate queue before a real signup identity exists.
 
 Run the Spectrum/iMessage agent when Spectrum credentials are available:
 
