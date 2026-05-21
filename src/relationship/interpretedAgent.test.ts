@@ -247,6 +247,52 @@ describe("interpreted relationship agent", () => {
       needsClarification: true
     });
   });
+
+  it("asks for clarification instead of saving low-confidence capture interpretations", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          return {
+            modelUsed: "test-interpreter",
+            error: "",
+            interpretation: {
+              intent: "capture_memory",
+              confidence: 0.1,
+              people: [
+                {
+                  name: "Maybe Person",
+                  aliases: [],
+                  companyOrSchool: "",
+                  classYear: "",
+                  project: "",
+                  role: ""
+                }
+              ],
+              event: { name: "", dateText: "", location: "" },
+              dateContext: undefined,
+              contextNote: "maybe maybe",
+              query: "",
+              tags: [],
+              needsClarification: false,
+              clarificationQuestion: "Who should I save this about?"
+            }
+          };
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("maybe that person"));
+
+    expect(result.outbound.text).toBe("Who should I save this about?");
+    expect(result.toolCalls).toEqual([]);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
 });
 
 function createTestAgent() {

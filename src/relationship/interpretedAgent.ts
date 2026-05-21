@@ -37,6 +37,8 @@ type ConversationContext = {
   recentPeople: string[];
 };
 
+const MIN_CAPTURE_CONFIDENCE = 0.5;
+
 /**
  * Creates the LLM-interpreted relationship agent.
  *
@@ -114,6 +116,9 @@ function executeInterpretation(
   }
 
   if (interpretation.intent === "capture_memory") {
+    if (interpretation.confidence < MIN_CAPTURE_CONFIDENCE) {
+      return composeClarificationReply(interpretation.clarificationQuestion || "What should I remember about them?");
+    }
     return captureMemories(message, interpretation, tools, toolCalls);
   }
 
