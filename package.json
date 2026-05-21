@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "agent:terminal": "tsx src/relationship/transports/terminalTransport.ts",
     "agent:spectrum": "tsx src/relationship/transports/spectrumTransport.ts",
+    "agent:friendy": "tsx src/relationship/runtime/friendyRuntimeCli.ts",
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "check:imessage-e2e": "tsx src/relationship/transports/imessageE2eFlow.ts",
     "ingest:check": "tsx src/relationship/ingestion/ingestCheck.ts",
