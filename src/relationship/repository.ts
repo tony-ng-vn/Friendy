@@ -9,7 +9,7 @@ import type {
   User
 } from "./types";
 
-type RepositorySeed = {
+export type RepositorySeed = {
   users?: User[];
   calendarEvents?: CalendarEvent[];
   candidates?: ContactCandidate[];
@@ -18,13 +18,30 @@ type RepositorySeed = {
   interactions?: AgentInteraction[];
 };
 
-type ConfirmCandidateOptions = {
+export type ConfirmCandidateOptions = {
   eventTitle?: string;
   relationshipContext?: string;
 };
 
-/** Minimal repository contract inferred from the in-memory implementation. */
-export type RelationshipRepository = ReturnType<typeof createRelationshipRepository>;
+export type RelationshipRepository = {
+  listCalendarEvents(userId: string): CalendarEvent[];
+  addCalendarEvents(events: CalendarEvent[]): CalendarEvent[];
+  createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate;
+  listPendingCandidates(userId: string): ContactCandidate[];
+  getCandidate(candidateId: string): ContactCandidate | undefined;
+  listEventMatches(candidateId: string): EventContextMatch[];
+  confirmCandidate(
+    candidateId: string,
+    contextNote: string,
+    eventId?: string,
+    options?: ConfirmCandidateOptions
+  ): RelationshipMemory;
+  ignoreCandidate(candidateId: string): void;
+  listMemories(userId?: string): RelationshipMemory[];
+  addMemory(memory: RelationshipMemory): RelationshipMemory;
+  addInteraction(interaction: AgentInteraction): AgentInteraction;
+  listInteractions(userId?: string): AgentInteraction[];
+};
 
 /**
  * Creates the MVP memory repository.
@@ -32,7 +49,7 @@ export type RelationshipRepository = ReturnType<typeof createRelationshipReposit
  * It is intentionally in-memory so the agent loop can be tested without Notion, Mem0,
  * or a production database. The returned API is the boundary those stores can replace later.
  */
-export function createRelationshipRepository(seed: RepositorySeed = {}) {
+export function createRelationshipRepository(seed: RepositorySeed = {}): RelationshipRepository {
   const calendarEvents = [...(seed.calendarEvents ?? [])];
   const candidates = [...(seed.candidates ?? [])];
   const eventMatches = [...(seed.eventMatches ?? [])];
