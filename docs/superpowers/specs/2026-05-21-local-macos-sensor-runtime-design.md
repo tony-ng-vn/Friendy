@@ -27,6 +27,7 @@ The implementation should keep the product brain in TypeScript and use a small s
 - Do not put scoring, prompting, persistence, LLM calls, or Spectrum sending in Swift.
 - Do not create memories directly from sensor events without user confirmation.
 - Do not treat old Contacts as candidates on first launch or token reset.
+- Do not make every relationship memory require a contact candidate. Explicit user-authored iMessage saves remain allowed as manual memories; the strict confirmation boundary applies to sensor-detected contacts.
 
 ## Current Product Gap
 
@@ -44,13 +45,39 @@ While that command is running, Friendy should listen for new macOS contact event
 
 The Swift binary communicates strictly through stdout using newline-delimited JSON. Node parses each line as one isolated sensor event. stdout must contain only JSON event lines. Human-readable diagnostic text should go to stderr.
 
+### Common Fields
+
+Every sensor event must include these fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_01HX...",
+  "type": "ready",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z"
+}
+```
+
+`contact_added` events must also include an `idempotencyKey` so Node can safely ignore duplicate sensor output after process restarts or repeated Contacts notifications.
+
 ### `ready`
 
 Emitted once when the sensor starts successfully and has verified permissions.
 
 ```json
 {
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_ready_01HX...",
   "type": "ready",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z",
   "baselineCreated": true
 }
 ```
@@ -63,16 +90,29 @@ Emitted when a new contact is detected. `calendarMatches` contains up to five ra
 
 ```json
 {
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_contact_01HX...",
   "type": "contact_added",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z",
+  "observedAt": "2026-05-21T18:36:50Z",
+  "idempotencyKey": "contacts:mac_01HX:ABCD-1234-EFGH-5678:add",
   "detectedAt": "2026-05-21T11:36:51-07:00",
   "contact": {
     "stableId": "ABCD-1234-EFGH-5678",
+    "unifiedStableId": "ABCD-1234-EFGH-5678",
+    "containerId": "icloud_container",
     "displayName": "Maya",
     "phoneNumbers": ["+15551234567"],
     "emails": []
   },
   "calendarMatches": [
     {
+      "eventIdentifier": "event_123",
+      "calendarIdentifier": "calendar_456",
       "title": "Photon Residency Dinner",
       "startsAt": "2026-05-21T18:00:00-07:00",
       "endsAt": "2026-05-21T21:00:00-07:00",
@@ -80,7 +120,10 @@ Emitted when a new contact is detected. `calendarMatches` contains up to five ra
       "calendarSource": "apple_calendar",
       "calendarTitle": "Work",
       "isAllDay": false,
-      "attendeeCount": 12
+      "attendeeCount": 12,
+      "availability": "busy",
+      "status": "confirmed",
+      "isRecurring": false
     }
   ]
 }
@@ -92,7 +135,14 @@ Emitted if the saved contact history token expires or becomes invalid.
 
 ```json
 {
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_reset_01HX...",
   "type": "history_reset",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z",
   "reason": "expired_token",
   "detectedAt": "2026-05-21T11:36:51-07:00"
 }
@@ -106,9 +156,17 @@ Emitted during startup if the OS denies Contacts or Calendar access. The binary 
 
 ```json
 {
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_permission_01HX...",
   "type": "permission_error",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z",
   "code": "contacts_permission_denied",
-  "message": "Contacts permission denied by user."
+  "message": "Contacts permission denied by user.",
+  "retryable": true
 }
 ```
 
@@ -118,9 +176,17 @@ Emitted for unexpected sensor failures. The binary exits immediately after sendi
 
 ```json
 {
+  "schemaVersion": 1,
+  "eventId": "sensor_evt_fatal_01HX...",
   "type": "fatal_error",
+  "sensorName": "macos_contacts_calendar",
+  "sensorVersion": "0.1.0",
+  "runId": "sensor_run_01HX...",
+  "deviceId": "mac_01HX...",
+  "emittedAt": "2026-05-21T18:36:51Z",
   "code": "internal_crash",
-  "message": "Failed to read token from disk."
+  "message": "Failed to read token from disk.",
+  "retryable": false
 }
 ```
 
@@ -134,7 +200,7 @@ Add a TypeScript entry point for `npm run agent:friendy`.
 2. Default `FRIENDY_RUNTIME_STORE` to `sqlite` if it is unset.
 3. Default `FRIENDY_SQLITE_PATH` to `.friendy/friendy.sqlite` if it is unset.
 4. Resolve the owner identity from `FRIENDY_LOCAL_USER_ID` or `FRIENDY_OWNER_PHONE`.
-5. Initialize the SQLite runtime repository and schema, including runtime warning state.
+5. Initialize the SQLite runtime repository and schema, including runtime warning and processed-sensor-event state.
 6. Start the Spectrum/iMessage runtime.
 7. If `FRIENDY_SENSOR_MOCK=1`, spawn the fake NDJSON sensor.
 8. Otherwise verify `./bin/friendy-macos-sensor` exists.
@@ -152,7 +218,7 @@ Node reads sensor stdout, splits by newline, and parses each line as JSON.
 
 - On `ready`: log startup success.
 - On `history_reset`: log reset, create no candidates, send no iMessage.
-- On `contact_added`: score calendar matches, create a pending candidate, persist candidate event matches, and send a Spectrum/iMessage prompt.
+- On `contact_added`: validate schema, check `idempotencyKey`, score calendar matches, create a pending candidate, persist candidate event matches, record the processed sensor event, and send a Spectrum/iMessage prompt.
 - On `permission_error` or `fatal_error`: log the error, warn the owner once if appropriate, keep Spectrum running.
 - On malformed JSON: log and ignore the line. Do not crash the runtime.
 - On sensor process exit: log exit. Keep Spectrum running.
@@ -177,6 +243,14 @@ sensor_warning.binary_missing.sent
 sensor_warning.fatal_error.sent
 ```
 
+Also use runtime state, or a dedicated table with the same semantics, for processed sensor events:
+
+```text
+processed_sensor_event.<idempotencyKey>
+```
+
+If a duplicate `contact_added` event arrives with an already processed idempotency key, Node should log it and create no candidate or prompt.
+
 If a permission or fatal sensor error occurs, Node checks the relevant warning key. If it has not been sent, Node texts the owner:
 
 ```text
@@ -185,13 +259,28 @@ Friendy is running, but I need Contacts/Calendar permission before I can notice 
 
 Then it sets the warning key. Spectrum stays alive so manual memory capture and search continue to work.
 
+### SQLite Concurrency
+
+`agent:friendy` is one Node process, but current development can still run the local checker and Spectrum runtime as separate processes against the same SQLite file. The SQLite repository must therefore be configured for safe local multi-process access.
+
+When opening SQLite, apply these settings before schema use:
+
+```sql
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+PRAGMA synchronous = NORMAL;
+```
+
+Keep transactions short. Do not silently fall back to in-memory state in live runtime commands. Treat lock contention as retryable at the repository boundary where possible, and keep the iMessage message path free of long-running database operations.
+
 ## Candidate Pipeline
 
 The automated sensor flow must preserve same-name contacts as separate candidates.
 
 1. Swift emits `contact_added` with a `stableId`.
 2. Node passes raw calendar matches through the deterministic calendar scorer.
-3. Node creates one pending candidate using `stableId` as the primary candidate identity seed.
+3. Node creates one pending candidate using `stableId` as the primary candidate identity seed. The TypeScript domain should preserve this as a first-class field such as `sourceContactId` or `macosContactStableId`, not only inside `raw_json`.
 4. Node persists the candidate and zero or more `candidate_event_matches`.
 5. Node sends exactly one iMessage prompt:
    - no event prompt;
@@ -202,6 +291,8 @@ The automated sensor flow must preserve same-name contacts as separate candidate
 8. A confirmed sensor candidate becomes a relationship memory linked to that candidate.
 
 If two contacts named "Maya" are added, Apple provides different contact identifiers, Swift emits two events, Node creates two candidates, and later search can return both memories. Manual update and entity deduplication are deferred.
+
+For sensor-detected candidates, confirmation must be a state transition, not a blind insert. `confirm_candidate` should only create a relationship memory when the candidate belongs to the user and is still `pending`. Ignored, expired, already-confirmed, or missing candidates must not create another memory. This can be enforced in the repository transaction even though manual user-authored memories continue to use the explicit manual memory path.
 
 ## Prompt Behavior
 
@@ -250,6 +341,8 @@ The Swift sensor returns raw EventKit matches. TypeScript owns all product judgm
 Drop an event if any apply:
 
 - title is missing;
+- event is cancelled or declined when EventKit exposes that state;
+- event title is private or unavailable and there is no location or attendee signal;
 - title contains only generic availability: `busy`, `hold`, `blocked`, `ooo`;
 - calendar source or title includes noise categories: `holidays`, `birthday`, `birthdays`, `weather`, `sports`;
 - event is all-day or duration is greater than 24 hours, unless the title contains strong event terms.
@@ -259,7 +352,7 @@ Drop an event if any apply:
 Start at 0.
 
 - `+40`: event time overlaps `detectedAt`.
-- `+25`: title contains strong event terms: `dinner`, `lunch`, `coffee`, `meetup`, `hackathon`, `residency`, `conference`, `summit`, `demo day`, `party`, `social`, `founders`, `workshop`, `offsite`.
+- `+25`: title contains strong event terms: `dinner`, `lunch`, `coffee`, `meetup`, `hackathon`, `residency`, `conference`, `summit`, `presentation day`, `party`, `social`, `founders`, `workshop`, `offsite`.
 - `+15`: location exists.
 - `+10`: `attendeeCount > 1`.
 - `+10`: duration is between 30 minutes and 6 hours.
@@ -278,6 +371,7 @@ Start at 0.
 
 - Drop scores under 35.
 - Sort descending.
+- Collapse obvious duplicate calendar results before prompt routing.
 - Keep at most three prompt options.
 - If top event is at least 60 and the gap to the second event is greater than 15, send single-event prompt.
 - If two or three events score at least 45, send numbered disambiguation.
@@ -345,12 +439,14 @@ Requirements:
 2. Fetch change events.
 3. For each `CNChangeHistoryAddContactEvent`, extract:
    - stable contact identifier;
+   - unified contact identifier when available;
+   - container identifier when available;
    - display name;
    - normalized phone numbers;
    - emails;
    - detectedAt timestamp.
 4. Query EventKit from `detectedAt - 4h` to `detectedAt + 1h`.
-5. Map up to five raw calendar events into the sensor event schema.
+5. Sort EventKit results deterministically, then map up to five raw calendar events into the sensor event schema.
 6. Default `attendeeCount` to 0 if EventKit returns nil or hidden attendees.
 7. Map `calendarTitle` from `EKCalendar.title`.
 8. Map `calendarSource` from `EKCalendar.source.title`.
@@ -365,6 +461,14 @@ If change history fails because the token is expired or invalid:
 - emit `history_reset`;
 - create no `contact_added` events;
 - keep running if possible.
+
+If Contacts reports a drop-everything or reset-style history response, treat it the same way: overwrite the saved token, emit `history_reset`, create no contact events, and keep the user quiet.
+
+### Contact Fetching Notes
+
+The sensor should treat change-history events as identifier-first. If the change-history event does not include all contact fields needed for the event contract, Swift should refetch only the needed keys for the changed contact, including display name, phone numbers, email addresses, identifier, unified identifier if available, and container identifier if available. It must not perform a full address-book import.
+
+The Swift package should include an Info.plist or documented packaging requirements for Contacts and Calendar usage descriptions. Local CLI behavior can be tested first, but the spec must not assume `swift run` or an unsigned ad hoc execution shape will represent final macOS TCC behavior.
 
 ## Build And Scripts
 
@@ -425,6 +529,8 @@ Required coverage:
 - permission/fatal warnings are texted once using runtime state;
 - history reset is logged and does not create candidates or send prompts;
 - contact added creates a pending candidate seeded by `stableId`;
+- duplicate `contact_added` events with the same idempotency key do not create another candidate or prompt;
+- confirmation of ignored, already-confirmed, expired, missing, or wrong-user sensor candidates does not create a memory;
 - single strong event sends the single-event prompt;
 - multiple plausible events send numbered disambiguation;
 - no surviving events sends no-event prompt;
@@ -447,6 +553,8 @@ Manual macOS verification:
 7. Confirm Friendy sends the appropriate iMessage prompt.
 8. Reply in iMessage.
 9. Confirm a relationship memory is saved and searchable.
+
+Local-only edge checks should include permission denied/granted/revoked, same-name contacts, iPhone-to-Mac iCloud sync delay, noisy calendars, token reset, and process restart between prompt and reply.
 
 ## Privacy And Safety
 
