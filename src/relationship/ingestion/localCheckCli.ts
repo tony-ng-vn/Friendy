@@ -4,7 +4,8 @@ import { dirname, resolve } from "node:path";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
-import type { CalendarEvent } from "../types";
+import { createRuntimeRelationshipRepository } from "../runtimeRepository";
+import type { CalendarEvent, User } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEventProvider } from "./ingestionPipeline";
 import { createMockLocalCheckScenario, type LocalPromptSender, runLocalContactCalendarCheck } from "./localCheck";
@@ -20,9 +21,7 @@ async function main() {
   loadFriendyEnv();
   const args = parseArgs(process.argv.slice(2), process.env);
   const sender = await maybeCreateLiveSender(process.env);
-  const result = args.mock
-    ? await runLocalContactCalendarCheck({ ...createMockLocalCheckScenario(), sender, env: process.env })
-    : await runRealLocalCheck(args, sender);
+  const result = args.mock ? await runMockLocalCheck(sender) : await runRealLocalCheck(args, sender);
 
   console.log(result.lines.join("\n"));
 }
@@ -34,6 +33,19 @@ function parseArgs(argv: string[], env: NodeJS.ProcessEnv): LocalCheckArgs {
     stateFile,
     userId: env.FRIENDY_LOCAL_USER_ID || "user_local"
   };
+}
+
+async function runMockLocalCheck(sender?: LocalPromptSender) {
+  const scenario = createMockLocalCheckScenario();
+  const repo =
+    process.env.FRIENDY_RUNTIME_STORE === "sqlite"
+      ? createRuntimeRelationshipRepository({
+          env: process.env,
+          seed: { users: [localUser(scenario.after)] }
+        })
+      : undefined;
+
+  return runLocalContactCalendarCheck({ ...scenario, repo, sender, env: process.env });
 }
 
 async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSender) {
@@ -53,7 +65,8 @@ async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
 
   const before = readSnapshot(args.stateFile);
   const calendarProvider = createAppleCalendarProvider(args.userId, capturedAt);
-  const result = await runLocalContactCalendarCheck({ before, after, calendarProvider, sender, env: process.env });
+  const repo = createRuntimeRelationshipRepository({ seed: { users: [localUser(after)] } });
+  const result = await runLocalContactCalendarCheck({ before, after, calendarProvider, repo, sender, env: process.env });
   writeSnapshot(args.stateFile, after);
   return result;
 }
@@ -112,6 +125,15 @@ function readSnapshot(path: string): ContactSnapshot {
 function writeSnapshot(path: string, snapshot: ContactSnapshot): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(snapshot, null, 2)}\n`);
+}
+
+function localUser(snapshot: ContactSnapshot): User {
+  return {
+    id: snapshot.userId,
+    phoneNumber: "",
+    displayName: "Local Friendy User",
+    createdAt: snapshot.capturedAt
+  };
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {

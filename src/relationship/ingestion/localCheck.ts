@@ -1,6 +1,6 @@
 import { buildCandidateReviewPrompt } from "../agentCore";
 import { fixtureUser } from "../fixtures";
-import { createRelationshipRepository } from "../repository";
+import { createRelationshipRepository, type RelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { CalendarEvent, ContactCandidate, EventContextMatch, User } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
@@ -21,6 +21,7 @@ export type RunLocalContactCalendarCheckInput = {
   before: ContactSnapshot;
   after: ContactSnapshot;
   calendarProvider: CalendarEventProvider;
+  repo?: RelationshipRepository;
   sender?: LocalPromptSender;
   env?: Partial<Pick<NodeJS.ProcessEnv, "FRIENDY_LOCAL_CHECK_SEND">>;
 };
@@ -42,10 +43,11 @@ export async function runLocalContactCalendarCheck({
   before,
   after,
   calendarProvider,
+  repo: inputRepo,
   sender,
   env = process.env
 }: RunLocalContactCalendarCheckInput): Promise<LocalContactCalendarCheckResult> {
-  const repo = createRelationshipRepository({ users: [localUser(after)] });
+  const repo = inputRepo ?? createRelationshipRepository({ users: [localUser(after)] });
   const tools = createRelationshipTools(repo);
   const ingestion = ingestContactSnapshotDiff({ before, after, calendarProvider, tools });
   const promptPayloads = ingestion.candidates.map((candidate) => {

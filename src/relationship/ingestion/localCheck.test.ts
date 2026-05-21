@@ -3,6 +3,7 @@ import packageJson from "../../../package.json";
 import { createFixtureCalendarEventProvider } from "./ingestionPipeline";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEvent } from "../types";
+import type { SqliteRelationshipRepository } from "../sqliteRepository";
 import { runLocalContactCalendarCheck } from "./localCheck";
 
 const userId = "user_local";
@@ -73,6 +74,58 @@ describe("local contact/calendar checker", () => {
       text: "I noticed you added Friendy-104 during Photon Residency Dinner. Did you meet Friendy-104 there?"
     });
     expect(result.lines).toContain("Live send: sent 1 prompt");
+  });
+
+  it("writes candidates into an injected repository that another agent instance can confirm", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { createSqliteRelationshipRepository } = await import("../sqliteRepository");
+    const { createRelationshipTools } = await import("../tools");
+    const { createRuleBasedInterpreter } = await import("../openRouterInterpreter");
+    const { createInterpretedRelationshipAgent } = await import("../interpretedAgent");
+
+    const dir = mkdtempSync(join(tmpdir(), "friendy-local-check-"));
+    const dbPath = join(dir, "friendy.sqlite");
+    let localRepo: SqliteRelationshipRepository | undefined;
+    let agentRepo: SqliteRelationshipRepository | undefined;
+
+    try {
+      localRepo = createSqliteRelationshipRepository({ path: dbPath });
+      const result = await runLocalContactCalendarCheck({
+        before: beforeSnapshot(),
+        after: afterSnapshot("Friendy-105", "2026-05-20T19:30:00.000Z"),
+        calendarProvider: createFixtureCalendarEventProvider([photonDinnerEvent()]),
+        repo: localRepo,
+        env: {}
+      });
+
+      agentRepo = createSqliteRelationshipRepository({ path: dbPath });
+      const agent = createInterpretedRelationshipAgent({
+        repo: agentRepo,
+        tools: createRelationshipTools(agentRepo),
+        interpreter: createRuleBasedInterpreter(),
+        now: () => "2026-05-20T20:10:00.000Z"
+      });
+
+      const reply = await agent.handleMessage({
+        userId,
+        platform: "imessage",
+        text: "yes, met Friendy-105 at Photon Residency Dinner, AI infra",
+        receivedAt: "2026-05-20T20:10:00.000Z"
+      });
+
+      expect(result.candidates[0].displayName).toBe("Friendy-105");
+      expect(reply.outbound.text).toContain("Friendy-105");
+      expect(agentRepo.listMemories(userId)[0]).toMatchObject({
+        displayName: "Friendy-105",
+        eventTitle: "Photon Residency Dinner"
+      });
+    } finally {
+      localRepo?.close();
+      agentRepo?.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
