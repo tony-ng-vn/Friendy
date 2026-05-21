@@ -316,7 +316,7 @@ describe("sqlite relationship repository", () => {
               outboundText: "Invalid.",
               toolCalls: [],
               createdAt: "2026-05-21T04:01:00.000Z"
-            } as AgentInteraction
+            } as unknown as AgentInteraction
           ]
         }
       }))

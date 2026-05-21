@@ -36,11 +36,17 @@ type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
   mkdirSync(dirname(options.path), { recursive: true });
 
+  const seed = options.seed;
   const db = new DatabaseSync(options.path);
-  setupSchema(db);
+  try {
+    setupSchema(db);
 
-  if (options.seed) {
-    runTransaction(db, () => seedRepository(db, options.seed));
+    if (seed) {
+      runTransaction(db, () => seedRepository(db, seed));
+    }
+  } catch (error) {
+    db.close();
+    throw error;
   }
 
   function listCalendarEvents(userId: string): CalendarEvent[] {
@@ -59,11 +65,13 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listCalendarEvents,
 
     addCalendarEvents(events: CalendarEvent[]): CalendarEvent[] {
-      for (const event of events) {
-        upsertCalendarEvent(db, event);
-      }
+      return runTransaction(db, () => {
+        for (const event of events) {
+          upsertCalendarEvent(db, event);
+        }
 
-      return events;
+        return events;
+      });
     },
 
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
