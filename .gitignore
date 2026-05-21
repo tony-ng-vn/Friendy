@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .friendy/
+.worktrees/
 .DS_Store
 *.env.*
 !.env.example
