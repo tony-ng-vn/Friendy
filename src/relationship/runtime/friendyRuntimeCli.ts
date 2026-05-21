@@ -1,6 +1,10 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
+import { resolveConfiguredUserId } from "../identity";
+import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
+import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
+import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
 
 export type FriendyRuntimeConfigInput = {
   cwd?: string;
@@ -26,6 +30,21 @@ export type FriendyRuntimeConfig = {
   sensor: FriendySensorLaunchConfig;
 };
 
+export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
+  sender?: RuntimePromptSender;
+  logger?: RuntimeLogger;
+  startSensor?: (input: { launch: FriendySensorLaunchConfig; runtime: SensorRuntimeLineProcessor }) => StartedSensorProcess;
+  ackWriter?: RuntimeAckWriter;
+};
+
+export type StartedFriendyForegroundRuntime = {
+  config: FriendyRuntimeConfig;
+  repo: SqliteRelationshipRepository;
+  state: SqliteRuntimeStateStore;
+  sensor: StartedSensorProcess;
+  close(): void;
+};
+
 /** Resolves the foreground Friendy runtime config without starting Spectrum or a sensor process. */
 export function resolveFriendyRuntimeConfig({
   cwd = process.cwd(),
@@ -40,6 +59,45 @@ export function resolveFriendyRuntimeConfig({
     sqlitePath,
     sensorStateDir,
     sensor: resolveSensorLaunchConfig({ cwd, env, sensorStateDir })
+  };
+}
+
+/** Starts the foreground Friendy runtime pieces that are safe to compose without real macOS APIs. */
+export async function startFriendyForegroundRuntime({
+  cwd = process.cwd(),
+  env = process.env,
+  sender = createConsolePromptSender(),
+  logger = console,
+  ackWriter = createFileAckWriter(cwd),
+  startSensor = defaultStartSensor
+}: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
+  const config = resolveFriendyRuntimeConfig({ cwd, env });
+  if (config.runtimeStore !== "sqlite") {
+    throw new Error("agent:friendy requires FRIENDY_RUNTIME_STORE=sqlite for shared local runtime state.");
+  }
+
+  const userId = resolveConfiguredUserId(env, "local_friendy_user") ?? "local_friendy_user";
+  const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
+  const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
+  const runtime = createFriendySensorRuntime({
+    userId,
+    repo,
+    state,
+    sender,
+    ackWriter,
+    logger
+  });
+  const sensor = startSensor({ launch: config.sensor, runtime });
+
+  return {
+    config,
+    repo,
+    state,
+    sensor,
+    close() {
+      repo.close();
+      state.close();
+    }
   };
 }
 
@@ -76,9 +134,9 @@ function resolveSensorLaunchConfig({
 
 export async function main(): Promise<void> {
   loadFriendyEnv();
-  const config = resolveFriendyRuntimeConfig();
-  console.info("[friendy:runtime_config]", JSON.stringify(config));
-  console.info("[friendy:runtime_status]", "agent:friendy config resolved; process orchestration will be enabled in the next runtime slice.");
+  const started = await startFriendyForegroundRuntime();
+  console.info("[friendy:runtime_config]", JSON.stringify(started.config));
+  console.info("[friendy:runtime_status]", "agent:friendy started foreground sensor runtime.");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -86,4 +144,39 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error(error);
     process.exit(1);
   });
+}
+
+function defaultStartSensor({
+  launch,
+  runtime
+}: {
+  launch: FriendySensorLaunchConfig;
+  runtime: SensorRuntimeLineProcessor;
+}): StartedSensorProcess {
+  return startSensorProcess({
+    launch: {
+      command: launch.command,
+      args: launch.args
+    },
+    runtime
+  });
+}
+
+function createConsolePromptSender(): RuntimePromptSender {
+  return {
+    async sendPrompt(input) {
+      console.info("[friendy:prompt]", JSON.stringify(input));
+      return {};
+    }
+  };
+}
+
+function createFileAckWriter(cwd: string): RuntimeAckWriter {
+  return {
+    async writeAck(path) {
+      const ackPath = isAbsolute(path) ? path : resolve(cwd, path);
+      mkdirSync(dirname(ackPath), { recursive: true });
+      writeFileSync(ackPath, new Date().toISOString());
+    }
+  };
 }
