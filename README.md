@@ -1,263 +1,172 @@
 # Friendy
 
-Friendy is an iMessage-first relationship memory agent, built on Photon/Spectrum, that helps you remember and refind people you met during approved event windows.
+Friendy is an iMessage-first relationship memory agent. It helps you remember and refind people you meet by combining new contact signals, calendar context, user confirmation, structured memory, and natural-language search.
 
-The current version is a local prototype. It uses deterministic fixture signals for repeatable checks and now has an explicit macOS local checker for real Contacts/Calendar reads when the user runs the command.
+Photon/Spectrum is the communication transport. The product is the relationship agent.
 
-## MVP Loop
+## Current State
 
-1. Friendy notices an upcoming event from a calendar feed.
-2. The Photon-style agent asks whether to remember new people during that event.
-3. The user approves the memory window.
-4. Contact deltas appear after the event.
-5. The agent asks the user to confirm which contacts were actually met.
-6. The user adds context in natural language.
-7. Later, the user can ask vague recall questions like `who was playing piano at dinner?`.
+Friendy currently works as a local macOS-first prototype with deterministic verification paths.
 
-## How The AI System Works
+What works today:
 
-Friendy is an AI system, not just an LLM call. The system combines contact signals, event context, iMessage conversation, structured interpretation, deterministic tools, relationship memory, search, response composition, and evals. Treat [Friendy AI System Architecture](docs/ai-system-architecture.md) as the canonical architecture source; this README is the quickstart and operator guide.
+- Text the Spectrum/iMessage agent to save and search relationship memories.
+- Detect newly added macOS Contacts when the explicit local checker runs.
+- Map a new contact to nearby Apple Calendar events when an event is available.
+- Ask for user confirmation before saving a detected contact as relationship memory.
+- Handle no-event contact adds by asking where the user met the person.
+- Share pending candidates and memories between the local checker and Spectrum runtime through optional local SQLite storage.
+- Evaluate agent behavior with deterministic multi-turn relationship trajectories.
 
-The product loop:
+What is not built yet:
+
+- A one-command foreground runtime that runs Spectrum and contact/calendar checking together.
+- A macOS LaunchAgent or always-on background watcher.
+- LinkedIn, Instagram, X, or other social connection detectors.
+- Face recognition, scraping, a CRM, or automatic memory creation without user confirmation.
+- Production cloud sync or multi-user signup identity.
+
+## Product Loop
 
 ```mermaid
 flowchart TD
-  A[New phone contact] --> B[Guess event/context]
-  B --> C[Friendy texts user in iMessage]
-  C --> D{User confirms?}
-  D -->|Ignore| E[Dismiss candidate]
-  D -->|Confirm| F[User adds messy human context]
-  F --> G[Save structured relationship memory]
-  G --> H[User later searches by context in iMessage]
-  H --> I[Return likely person and contact route]
+  A[User adds a new phone or email contact] --> B[Friendy detects the contact delta]
+  B --> C[Friendy checks calendar context]
+  C --> D[Pending candidate]
+  D --> E[Friendy asks in iMessage]
+  E --> F{User confirms?}
+  F -->|Ignore| G[Candidate dismissed]
+  F -->|Yes, with context| H[Structured relationship memory]
+  H --> I[Later vague iMessage search]
+  I --> J[Friendy returns likely person]
 ```
 
-The current architecture flow:
+The model can help interpret messy human text, but it does not directly mutate memory. Writes, ignores, corrected events, and searches go through deterministic tools.
 
-```mermaid
-flowchart LR
-  A[Contact snapshot diff] --> B[New phone/email method]
-  B --> C[detectedAt from snapshot]
-  C --> D[Calendar event match]
-  D --> E[Pending contact candidate]
-  E --> F[iMessage confirmation prompt]
-  F --> G[User reply]
-  G --> H[Structured interpretation]
-  H --> I[Deterministic tool call]
-  I --> J[Relationship memory]
-  J --> K[Later fuzzy search]
-  K --> L[Composed iMessage response]
-```
+## Quickstart
 
-The model may help interpret messy user language, but it does not directly mutate memory. State changes go through deterministic tools for confirmation, memory writes, ignores, event corrections, and searches.
-
-Friendy also separates context that humans often blend together:
-
-- `eventContext`: where or when this interaction happened.
-- `relationshipContext`: prior history or backstory.
-- `userNote`: the user's raw or lightly cleaned memory.
-- `contactMethod`: how to reach the person.
-
-Example:
-
-```text
-met abc at Photon Residency II after havent met him since high school in minnesota
-```
-
-Friendy should treat `Photon Residency II` as the current event and `high school in Minnesota` as relationship backstory, not confuse the two.
-
-See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the full system boundary, current limitations, and next milestone.
-
-## Docs
-
-- [Product spec](docs/product-spec.md)
-- [AI system architecture](docs/ai-system-architecture.md)
-- [Changelog](CHANGELOG.md)
-- [Current system audit](docs/reviews/current-system-audit.md)
-- [Product Flow plan](docs/product-flow-plan.md)
-- [Handoff](docs/handoff.md)
-- [Codex access setup](docs/codex-access.md)
-- [Contact-event verification product flow transcript](docs/goals/contact-event-verification-queue.md)
-- [Original Superpowers planning artifacts](docs/superpowers/README.md)
-
-## Explicit Non-Goals For V1
-
-- No iMessage reading.
-- No Instagram, LinkedIn, or X scraping.
-- No face recognition.
-- No full CRM workflow.
-- No automatic identity graph.
-- No real iOS background contact monitoring yet.
-
-## Getting Started
+Install dependencies:
 
 ```bash
 npm install
-npm run dev
 ```
 
-Run checks:
+Run the core verification checks:
 
 ```bash
 npm test
 npm run build
 npm run eval:agent
+```
+
+Run safe product-flow checks that do not read real Contacts or send live iMessages:
+
+```bash
 npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 ```
 
-## Legacy Local Web Shell
+## Live iMessage Agent
 
-This older web shell is still useful as a local UI sanity check, but it is not the current product center. The current MVP is the iMessage-first relationship system under `src/relationship/`.
-
-In the chat UI:
-
-1. Send `yes`.
-2. Confirm the candidate queue shows Maya, Alex, and Priya.
-3. Send `save Maya: played piano, AI recruiting founder`.
-4. Confirm saved memories show Maya.
-5. Send `who was playing piano at dinner`.
-6. Friendy should return Maya with the saved context in a human-sounding reply.
-
-## Relationship Agent Core
-
-Run the local terminal agent product flow:
+Create `.env.local`:
 
 ```bash
-npm run agent:terminal -- "yes, recruiting agents, played piano"
+cp .env.example .env.local
 ```
 
-The iMessage/Spectrum agent also accepts natural save messages such as:
+Required for live Spectrum and the temporary single-owner memory scope:
+
+```bash
+SPECTRUM_PROJECT_ID=
+SPECTRUM_PROJECT_SECRET=
+FRIENDY_AGENT_NUMBER=+14156056081
+FRIENDY_OWNER_PHONE=+15550100000
+```
+
+Optional model-backed interpretation:
+
+```bash
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+```
+
+If `OPENROUTER_API_KEY` is missing, Friendy uses the deterministic fallback interpreter so local checks still run.
+
+Start the Spectrum/iMessage agent:
+
+```bash
+npm run agent:spectrum
+```
+
+Then text the Friendy agent number:
+
+```text
++14156056081
+```
+
+Example messages:
 
 ```text
 I met Amaya at Photon Residency II, and we talked about AI agents
+Who did I meet at Photon Residency?
+Who was the recruiting agents person?
 ```
 
-Then search with:
+## Local Contact And Calendar Checker
 
-```text
-who did I meet at Photon Residency?
-```
-
-Queued contact confirmations stay deterministic:
-
-```text
-new contact detected during Photon Residency Dinner
-Friendy: I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?
-You: yes, actually at Photon Residency, recruiting agents
-Friendy: Saved Maya Chen. I'll remember: recruiting agents.
-You: who was the recruiting agents person from Photon?
-Friendy: I think that was Maya Chen...
-```
-
-Friendy also carries recent event context across follow-up messages:
-
-```text
-I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(
-I also met Sarah Fah who ran Photon Residency II as the community lead
-And also met Felix Ng who goes to UBC and sleep in the same room with me and Amaya
-Who did I meet at Photon Residency II?
-```
-
-Date phrases are parsed with `chrono-node` against the inbound message timestamp and configured user timezone, so messages like `I met Maya yesterday at Photon Residency II dinner` store both the raw phrase and a normalized date.
-
-Search and save replies are composed through `src/relationship/responseComposer.ts`. The search tools still choose matches deterministically, but user-facing replies avoid raw phrases such as `matched:`, internal reason strings, and placeholder labels like `manual contact`.
-
-Search ranking is field-aware: narrow queries such as `Find the recruiting agents founder from Photon` prefer role/project/context matches over broad event overlap, while broad event queries such as `Who did I meet at Photon Residency II?` still list everyone from that event.
-
-Run the relationship-agent eval harness:
-
-```bash
-npm run eval:agent
-```
-
-The required eval set is deterministic and runs without OpenRouter credentials. It scores 12 realistic trajectories across contact confirmation, event correction, no-event confirmation, ignore, post-confirmation search, clarification, event-wide recall, context carryover, hallucination guard, unsafe-save guard, Spectrum first-inbound identity, and messy human wording. Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness. Optional repeated model-backed evals are gated behind `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
-
-## iMessage Contact Confirmation Product Flow
-
-Run the deterministic iMessage/Spectrum-style E2E product flow:
-
-```bash
-npm run check:imessage-e2e
-```
-
-The product flow uses fixture contact/calendar ingestion, then routes the user's confirmation and later search through the same Spectrum/iMessage runtime boundary used by the live agent. It does not send real iMessages.
-
-Expected shape:
-
-```text
-Detected contact: Abc
-Best event guess: Photon Residency II
-Friendy -> User: I noticed you added Abc around Photon Residency II. Did you meet them there?
-User -> Friendy: yes, met abc at Photon Residency II after havent met him since high school in minnesota
-Saved memory: Abc
-Event context: Photon Residency II
-Relationship backstory: had not seen him since high school in Minnesota
-User -> Friendy: who did I run into from high school at Photon?
-Friendy -> User: I think that was Abc
-```
-
-## Contact/Calendar Ingestion Product Flow
-
-Run the fixture-only ingestion product flow:
-
-```bash
-npm run ingest:check
-```
-
-The product flow uses checked-in before/after contact snapshots and fixture calendar events. It prints a deterministic summary with detected contacts, candidate ids, event guesses, and the pending queue. It does not read real Contacts or real calendars.
-
-Expected shape:
-
-```text
-Detected contacts: Maya Chen, Nina Park
-Candidate candidate_maya_chen_1778906520000: Maya Chen
-Event guesses: 1. Photon Residency Dinner | 2. Photon Residency
-Candidate candidate_nina_park_1780340400000: Nina Park
-Event guesses: none
-Pending queue: Maya Chen, Nina Park
-```
-
-Optional macOS Contacts smoke test:
-
-```bash
-npm run ingest:contacts:smoke -- --name Friendy-001
-```
-
-This command is explicit and is never run by `npm test`, `npm run build`, `npm run eval:agent`, or `npm run ingest:check`. It only accepts names matching `Friendy-<number>`, creates or reuses that exact test contact, and prints the exact name and phone method it created or reused. On non-macOS environments it fails clearly while fixture ingestion continues to work.
-
-To manually delete a smoke-test contact, open the macOS Contacts app, search for the exact test name such as `Friendy-001`, select that contact, and delete it.
-
-## Local macOS Contact/Calendar Checker
-
-Run the deterministic local checker path without real macOS permissions:
+Run the deterministic local checker without macOS permissions:
 
 ```bash
 npm run ingest:local:check -- --mock
 ```
 
-This exercises the same path the real local checker uses: contact snapshot diff, calendar event match, pending candidate creation, and Friendy confirmation prompt output. It does not send a live iMessage.
-
-On macOS, run the real explicit local check:
+Run the real macOS checker explicitly:
 
 ```bash
 npm run ingest:local:check
 ```
 
-The first run saves a baseline snapshot at `.friendy/local-contact-snapshot.json`. After that, add a test contact named like `Friendy-101` with a phone number or email, then run the command again. Friendy compares the new Contacts snapshot against the baseline, reads Apple Calendar events around the detection window, maps the new contact method to the best event, creates a pending candidate, and prints the confirmation prompt.
+First run behavior:
 
-The command is dry-run by default. Live Spectrum sending requires all normal Spectrum credentials plus an explicit send flag:
+- Reads current macOS Contacts.
+- Saves `.friendy/local-contact-snapshot.json`.
+- Creates no candidates from existing contacts.
+- Starts future checks from that baseline.
+
+After the baseline exists:
+
+1. Add a new contact in macOS Contacts with a phone number or email.
+2. Run `npm run ingest:local:check` again.
+3. Friendy compares the new snapshot against the baseline.
+4. Friendy reads Apple Calendar around the contact change window.
+5. Friendy creates a pending candidate and prints the confirmation prompt.
+
+If a matching event is found:
+
+```text
+Friendy -> User: I noticed you added Friendy-101 during Photon Residency Dinner. Did you meet Friendy-101 there?
+```
+
+If no matching event is found:
+
+```text
+Friendy -> User: I noticed you added Friendy-101. Where did you meet them?
+```
+
+The checker is dry-run by default. It only sends a live iMessage prompt when explicitly enabled:
 
 ```bash
 FRIENDY_LOCAL_CHECK_SEND=1 FRIENDY_LOCAL_CHECK_TO_PHONE=+15550100000 npm run ingest:local:check
 ```
 
-If `FRIENDY_LOCAL_CHECK_TO_PHONE` is missing, Friendy falls back to `FRIENDY_OWNER_PHONE`. On non-macOS environments, real-provider mode fails clearly and points to the mock command so fixture checks still work.
+If `FRIENDY_LOCAL_CHECK_TO_PHONE` is missing, Friendy falls back to `FRIENDY_OWNER_PHONE`.
 
-## Optional Durable Runtime Store
+## Shared Local Runtime State
 
-By default, fixture checks use in-memory state. To let the explicit local checker and the Spectrum/iMessage runtime share pending candidates and relationship memories across separate processes, put the SQLite settings in `.env.local` or pass them inline to each process:
+Use local SQLite when the checker and Spectrum runtime need to share pending candidates, confirmed memories, ignored candidates, and interaction logs across separate processes.
+
+Add this to `.env.local`:
 
 ```bash
 FRIENDY_RUNTIME_STORE=sqlite
@@ -265,45 +174,189 @@ FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite
 FRIENDY_OWNER_PHONE=+15550100000
 ```
 
-```bash
-FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite FRIENDY_OWNER_PHONE=+15550100000 npm run ingest:local:check
-FRIENDY_RUNTIME_STORE=sqlite FRIENDY_SQLITE_PATH=.friendy/friendy.sqlite FRIENDY_OWNER_PHONE=+15550100000 npm run agent:spectrum
-```
-
-The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state. `FRIENDY_OWNER_PHONE` is the temporary single-owner identity that lets the local checker and Spectrum/iMessage process read and write the same candidate queue before a real signup identity exists.
-
-Run the Spectrum/iMessage agent when Spectrum credentials are available:
+Run Spectrum in one terminal:
 
 ```bash
-# .env.local is supported for local credentials and is ignored by git.
-cp .env.example .env.local
 npm run agent:spectrum
 ```
 
-The agent number for the first iMessage channel is `+14156056081`.
-
-Configure the LLM interpreter in `.env.local`:
+Run the local checker in another terminal:
 
 ```bash
-SPECTRUM_PROJECT_ID=
-SPECTRUM_PROJECT_SECRET=
-FRIENDY_AGENT_NUMBER=+14156056081
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+npm run ingest:local:check
 ```
 
-`OPENROUTER_API_KEY` is optional for local testing. If it is missing, Friendy falls back to a deterministic interpreter so the MVP examples still run without model access. When OpenRouter is configured, the model only returns validated structured intent JSON; deterministic backend tools still perform all memory writes and searches.
+To have the checker proactively text the confirmation prompt:
 
-Live iMessage smoke test:
+```bash
+FRIENDY_LOCAL_CHECK_SEND=1 npm run ingest:local:check
+```
+
+The SQLite file lives under `.friendy/`, which is ignored by git because it contains local relationship-memory state. `FRIENDY_OWNER_PHONE` is the temporary single-owner identity that lets the checker and Spectrum runtime use the same memory scope before real signup exists.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run the legacy local web shell. |
+| `npm test` | Run unit and integration tests. |
+| `npm run build` | Type-check and build the Vite app. |
+| `npm run eval:agent` | Run deterministic multi-turn relationship-agent evals. |
+| `npm run agent:terminal -- "..."` | Run a local terminal agent path without Spectrum credentials. |
+| `npm run agent:spectrum` | Run the live Spectrum/iMessage transport. |
+| `npm run check:imessage-e2e` | Run deterministic iMessage-style contact confirmation and search flow. |
+| `npm run ingest:check` | Run fixture contact/calendar ingestion. |
+| `npm run ingest:local:check -- --mock` | Run local checker with deterministic mock data. |
+| `npm run ingest:local:check` | Explicitly read real macOS Contacts and Calendar. |
+| `npm run ingest:contacts:smoke -- --name Friendy-001` | Create or reuse one guarded macOS Contacts test contact. |
+
+## Agent Behavior
+
+Friendy supports two main interaction modes.
+
+Manual memory capture:
 
 ```text
-I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(
-Who did I meet at the residency?
-Ok so at the residency, I also met Zhiyuan who also call zed, go to CMU, class 2028 and making swift project that allow you to control your computer through your phone with a clicky UI and similar function like Wisper Flow
-Who was making the Swift project?
-that person from the thing
+You: I met Sarah Fah at Photon Residency II. She ran the community.
+Friendy: Saved Sarah Fah. I'll remember she ran the community at Photon Residency II.
+```
+
+Detected contact confirmation:
+
+```text
+Friendy: I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?
+You: yes, actually at Photon Residency, recruiting agents
+Friendy: Saved Maya Chen. I'll remember recruiting agents at Photon Residency.
+```
+
+Search:
+
+```text
+You: who was the recruiting agents person from Photon?
+Friendy: I think that was Maya Chen.
+```
+
+Friendy also carries recent event context across follow-up messages:
+
+```text
+I met Amaya at Photon Residency II
+I also met Sarah Fah who ran the community
+And Felix Ng from UBC was in the same room
+Who did I meet at Photon Residency II?
+```
+
+Date phrases are parsed with `chrono-node`, so messages such as `yesterday`, `today`, or `last week` store both the raw phrase and normalized date context.
+
+## Architecture
+
+Treat [Friendy AI System Architecture](docs/ai-system-architecture.md) as the canonical architecture source. This README is the quickstart and operator guide.
+
+Current source map:
+
+```text
+src/relationship/transports/
+  Spectrum/iMessage and terminal adapters
+
+src/relationship/ingestion/
+  contact snapshot diffing, fixture ingestion, and explicit local macOS checker
+
+src/relationship/interpretation.ts
+src/relationship/openRouterInterpreter.ts
+  structured intent schema and optional OpenRouter interpreter
+
+src/relationship/interpretedAgent.ts
+  conversation context carryover and interpreted execution
+
+src/relationship/env.ts
+src/relationship/identity.ts
+  local environment loading and temporary single-owner identity resolution
+
+src/relationship/tools.ts
+src/relationship/repository.ts
+src/relationship/sqliteRepository.ts
+src/relationship/runtimeRepository.ts
+  deterministic tools and memory persistence boundary
+
+src/relationship/responseComposer.ts
+  short user-facing iMessage replies
+
+src/relationship/evals/
+  trajectory-level behavior evaluation
+```
+
+## Evaluation
+
+The required eval suite is deterministic and runs without OpenRouter credentials:
+
+```bash
+npm run eval:agent
+```
+
+It currently covers:
+
+- clear-event contact confirmation
+- overlapping-event correction
+- no-event confirmation
+- ignored candidates
+- post-confirmation search
+- vague-search clarification
+- event-wide recall
+- context carryover
+- hallucination guard
+- unsafe-save guard
+- Spectrum first-inbound identity
+- messy human wording
+
+Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness.
+
+Optional repeated model-backed evals require:
+
+```bash
+OPENROUTER_API_KEY=
+FRIENDY_EVAL_RUN_MODEL=1
+```
+
+## Privacy And Safety
+
+Friendy should feel like a personal memory assistant, not surveillance.
+
+Current guardrails:
+
+- Real Contacts and Calendar reads only happen through explicit local commands.
+- The local checker starts with a baseline and does not import all existing contacts.
+- Detected contacts become pending candidates, not saved memories.
+- User confirmation is required before a detected candidate becomes relationship memory.
+- Live checker sending requires `FRIENDY_LOCAL_CHECK_SEND=1`.
+- `.friendy/` local state and `.env.local` secrets are ignored by git.
+
+## Docs
+
+- [AI system architecture](docs/ai-system-architecture.md)
+- [Product spec](docs/product-spec.md)
+- [Product flow plan](docs/product-flow-plan.md)
+- [Changelog](CHANGELOG.md)
+- [System audit snapshot](docs/reviews/current-system-audit.md)
+- [Agent navigation](docs/agent-navigation.md)
+- [Handoff](docs/handoff.md)
+- [Codex access setup](docs/codex-access.md)
+- [Superpowers planning artifacts](docs/superpowers/README.md)
+
+## Legacy Local Web Shell
+
+The Vite web app still exists as a local UI sanity check, but it is not the current product center. The current MVP is the iMessage-first relationship system under `src/relationship/`.
+
+Run it with:
+
+```bash
+npm run dev
 ```
 
 ## Product Direction
 
-Friendy should stay agent-centric. A future mobile companion app can provide Contacts and Calendar signals, but the user-facing product is the Photon agent that asks, confirms, remembers, searches, explains, and helps follow up.
+The next product milestone is a foreground local runtime:
+
+```bash
+npm run agent:friendy
+```
+
+That command should run Spectrum and the contact/calendar checker together so the user can start Friendy once, add contacts, receive iMessage confirmation prompts, and search later without manually running separate commands.
