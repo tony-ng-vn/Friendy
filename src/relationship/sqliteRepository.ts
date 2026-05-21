@@ -31,7 +31,6 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
   mkdirSync(dirname(options.path), { recursive: true });
 
   const db = new DatabaseSync(options.path);
-  db.exec("PRAGMA foreign_keys = ON");
   setupSchema(db);
 
   if (options.seed) {
@@ -220,9 +219,7 @@ function setupSchema(db: DatabaseSync): void {
       event_title TEXT NOT NULL,
       confidence REAL NOT NULL,
       rank INTEGER NOT NULL,
-      raw_json TEXT NOT NULL,
-      FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-      FOREIGN KEY (calendar_event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
+      raw_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS event_matches_candidate_rank_idx
@@ -237,8 +234,7 @@ function setupSchema(db: DatabaseSync): void {
       event_title TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      raw_json TEXT NOT NULL,
-      FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE SET NULL
+      raw_json TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS memories_user_created_idx

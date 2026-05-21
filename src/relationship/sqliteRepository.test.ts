@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createSqliteRelationshipRepository } from "./sqliteRepository";
 import { createRelationshipTools } from "./tools";
+import type { EventContextMatch, RelationshipMemory } from "./types";
 
 const tempDirs: string[] = [];
 
@@ -143,6 +144,44 @@ describe("sqlite relationship repository", () => {
         inboundText: "remember this unseeded user"
       })
     ]);
+  });
+
+  it("preserves orphan event match and memory seeds like the in-memory repository", () => {
+    const dbPath = tempDatabasePath();
+    const userId = "user_orphan_seed";
+    const orphanMatch: EventContextMatch = {
+      id: "match_orphan_seed",
+      candidateId: "candidate_missing",
+      calendarEventId: "event_missing",
+      eventTitle: "Missing Event",
+      confidence: 0.5,
+      reason: "Seeded without related rows.",
+      rank: 1
+    };
+    const orphanMemory: RelationshipMemory = {
+      id: "memory_orphan_seed",
+      userId,
+      candidateId: "candidate_missing",
+      displayName: "Orphan Seed Person",
+      primaryContactLabel: "seeded contact",
+      contextNote: "seeded memory with missing candidate",
+      tags: ["seeded", "missing", "candidate"],
+      confidence: 0.6,
+      createdAt: "2026-05-21T02:00:00.000Z",
+      updatedAt: "2026-05-21T02:00:00.000Z"
+    };
+
+    createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        eventMatches: [orphanMatch],
+        memories: [orphanMemory]
+      }
+    });
+
+    const reopened = createSqliteRelationshipRepository({ path: dbPath });
+    expect(reopened.listEventMatches("candidate_missing")).toEqual([orphanMatch]);
+    expect(reopened.listMemories(userId)).toEqual([orphanMemory]);
   });
 });
 
