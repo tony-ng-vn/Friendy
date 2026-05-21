@@ -41,6 +41,19 @@ export type ContactCandidateDetected = {
   emails: string[];
   detectedAt: string;
   source: "simulated" | "contacts_delta";
+  sensorEventId?: string;
+  contactIdentifier?: string;
+  unifiedContactIdentifier?: string;
+  containerIdentifier?: string;
+  observedAt?: string;
+  contactMethodHashes?: {
+    phoneNumberHashes: string[];
+    emailHashes: string[];
+  };
+  contactMethodHints?: {
+    phoneNumberHints: Array<{ last4?: string; label?: string }>;
+    emailHints: Array<{ domain?: string; label?: string }>;
+  };
 };
 
 /** Reviewable contact candidate waiting for the user to confirm, ignore, or annotate. */

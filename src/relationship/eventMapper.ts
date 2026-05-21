@@ -19,8 +19,11 @@ const EVENT_KIND_RANK = {
  * The MVP uses deterministic ids so contact-delta fixtures can be replayed in tests.
  * A real persistence layer can replace this with database ids without changing agent behavior.
  */
-export function createCandidateId(contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt">): string {
-  return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}`;
+export function createCandidateId(
+  contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt" | "contactIdentifier">
+): string {
+  const identity = contact.contactIdentifier ? `_${slug(contact.contactIdentifier)}` : "";
+  return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}${identity}`;
 }
 
 /**
