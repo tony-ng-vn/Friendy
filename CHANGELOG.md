@@ -14,6 +14,7 @@ This file records the main product, architecture, and verification progress for 
   - `npm run eval:agent`
   - `npm run check:imessage-e2e`
   - `npm run ingest:check`
+  - `npm run ingest:local:check -- --mock`
 
 ### Product And Planning
 

@@ -2,6 +2,8 @@
 
 ## Definition
 
+This is the canonical architecture document for Friendy. `README.md` should stay a quickstart/operator guide, `REFERENCE.md` should stay the repo navigation map, and `CHANGELOG.md` should stay historical.
+
 An AI system is a product system where models, tools, memory, state, interfaces, rules, and evaluations work together to turn uncertain human input or external signals into useful actions.
 
 Friendy is an iMessage-first relationship memory AI system. The LLM is not the whole system. The system is the loop that detects relationship signals, asks the user for consent and context, stores structured memory, and retrieves the right person later from vague human recall.
@@ -149,7 +151,8 @@ src/relationship/evals/
 
 ## Current Limitations
 
-- Contact detection is fixture-based except for the explicit macOS Contacts smoke command.
+- Contact detection is deterministic for fixture checks and explicit-command-only for real local macOS reads.
+- Real Contacts access exists only in explicit local commands: the Contacts smoke command and the local macOS contact/calendar checker.
 - The real local checker is explicit command-line tooling, not a background watcher or mobile production detector.
 - Calendar matching can use fixture events or the explicit local Apple Calendar adapter, but durable production calendar sync is not implemented.
 - Memory is in-memory, not production durable storage.

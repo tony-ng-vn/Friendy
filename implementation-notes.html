@@ -6,6 +6,13 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Current State</h2>
+    <ul>
+      <li>Friendy is currently an iMessage-first relationship memory system. The canonical architecture source is <code>docs/ai-system-architecture.md</code>.</li>
+      <li>The active MVP detector scope is phone contacts plus calendar context. Fixture checks are deterministic, and real macOS Contacts/Calendar reads happen only through explicit local commands.</li>
+      <li>The main unresolved system gap is shared durable state between the local checker and the live iMessage/Spectrum runtime.</li>
+    </ul>
+    <h2>Historical Starting Point</h2>
     <ul>
       <li>Initial build target is a local web product flow with mocked contact and calendar signals.</li>
       <li>Native Contacts and Calendar integrations are intentionally deferred.</li>

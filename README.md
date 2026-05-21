@@ -16,7 +16,7 @@ The current version is a local prototype. It uses deterministic fixture signals 
 
 ## How The AI System Works
 
-Friendy is an AI system, not just an LLM call. The system combines contact signals, event context, iMessage conversation, structured interpretation, deterministic tools, relationship memory, search, response composition, and evals.
+Friendy is an AI system, not just an LLM call. The system combines contact signals, event context, iMessage conversation, structured interpretation, deterministic tools, relationship memory, search, response composition, and evals. Treat [Friendy AI System Architecture](docs/ai-system-architecture.md) as the canonical architecture source; this README is the quickstart and operator guide.
 
 The product loop:
 
@@ -73,6 +73,7 @@ See [Friendy AI System Architecture](docs/ai-system-architecture.md) for the ful
 - [Product spec](docs/product-spec.md)
 - [AI system architecture](docs/ai-system-architecture.md)
 - [Changelog](CHANGELOG.md)
+- [Current system audit](docs/reviews/current-system-audit.md)
 - [Product Flow plan](docs/product-flow-plan.md)
 - [Handoff](docs/handoff.md)
 - [Codex access setup](docs/codex-access.md)
@@ -106,7 +107,9 @@ npm run ingest:check
 npm run ingest:local:check -- --mock
 ```
 
-## Product Flow Script
+## Legacy Local Web Shell
+
+This older web shell is still useful as a local UI sanity check, but it is not the current product center. The current MVP is the iMessage-first relationship system under `src/relationship/`.
 
 In the chat UI:
 

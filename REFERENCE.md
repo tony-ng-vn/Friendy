@@ -32,12 +32,13 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
-- Current iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
-- Current local macOS checker goal: `docs/goals/local-macos-contact-calendar-checker-goal.md`
+- Completed iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
+- Completed local macOS checker goal: `docs/goals/local-macos-contact-calendar-checker-goal.md`
+- Current system audit: `docs/reviews/current-system-audit.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
 - Relationship-agent source: `src/relationship/`
-- Existing UI/product flow shell: `src/App.tsx`, `src/agent.ts`, `src/memoryStore.ts`, `src/mockData.ts`
+- Legacy local web shell: `src/App.tsx`, `src/agent.ts`, `src/memoryStore.ts`, `src/mockData.ts`
 - Spectrum/iMessage adapter: `src/relationship/transports/spectrumTransport.ts`
 - Terminal smoke product flow: `src/relationship/transports/terminalTransport.ts`
 
