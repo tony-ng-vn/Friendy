@@ -1,11 +1,14 @@
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
-import { isConfirmationReply, resolveCandidateConfirmation } from "./candidateConfirmation";
+import { isConfirmationReply } from "./candidateConfirmation";
+import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
 import {
+  composeCandidateAmbiguityReply,
   composeClarificationReply,
   composeIgnoreCandidateReply,
   composeNoMatchReply,
+  composeNoPendingCandidateReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
@@ -14,6 +17,7 @@ import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage } from "./types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
+type CandidateIntake = ReturnType<typeof createCandidateIntake>;
 
 type InterpretedRelationshipAgentOptions = {
   repo: RelationshipRepository;
@@ -47,6 +51,7 @@ export function createInterpretedRelationshipAgent({
   timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
   const conversationContexts = new Map<string, ConversationContext>();
+  const candidateIntake = createCandidateIntake({ tools });
 
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
@@ -60,7 +65,7 @@ export function createInterpretedRelationshipAgent({
         message.text
       );
       const toolCalls: AgentToolCall[] = [];
-      const outboundText = executeInterpretation(message, interpretation, tools, toolCalls);
+      const outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls);
       conversationContexts.set(message.userId, updateConversationContext(existingContext, interpretation));
 
       const interaction = repo.addInteraction({
@@ -97,10 +102,11 @@ function executeInterpretation(
   message: InboundAgentMessage,
   interpretation: MessageInterpretation,
   tools: RelationshipTools,
+  candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[]
 ): string {
   if (isConfirmationReply(message.text)) {
-    return confirmPendingCandidate(message, tools, toolCalls);
+    return confirmPendingCandidate(message, candidateIntake, toolCalls);
   }
 
   if (interpretation.needsClarification || interpretation.intent === "clarify") {
@@ -116,7 +122,7 @@ function executeInterpretation(
   }
 
   if (interpretation.intent === "ignore_candidate") {
-    return ignorePendingCandidate(message, tools, toolCalls);
+    return ignorePendingCandidate(message, candidateIntake, toolCalls);
   }
 
   return composeNoMatchReply();
@@ -163,44 +169,60 @@ function searchMemories(
 
 function confirmPendingCandidate(
   message: InboundAgentMessage,
-  tools: RelationshipTools,
+  candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("list_pending_candidates");
-  const candidate = tools.list_pending_candidates(message.userId)[0];
-
-  if (!candidate) {
-    return "I do not see a pending contact to confirm.";
-  }
-
-  toolCalls.push("list_candidate_event_matches");
-  const eventMatches = tools.list_candidate_event_matches(message.userId, candidate.id);
-  const confirmation = resolveCandidateConfirmation(message.text, eventMatches);
-
-  toolCalls.push("confirm_candidate");
-  const memory = tools.confirm_candidate(message.userId, candidate.id, confirmation.contextNote, confirmation.eventId, {
-    eventTitle: confirmation.eventTitle,
-    relationshipContext: confirmation.relationshipContext
+  const result = candidateIntake.resolveCandidateReply({
+    scope: message,
+    replyText: message.text
   });
+  recordCandidateReplyToolCalls(result, toolCalls);
 
-  return composeSaveConfirmation({ memories: [memory] });
+  return composeCandidateReply(result);
 }
 
 function ignorePendingCandidate(
   message: InboundAgentMessage,
-  tools: RelationshipTools,
+  candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("list_pending_candidates");
-  const candidate = tools.list_pending_candidates(message.userId)[0];
+  const result = candidateIntake.ignoreCandidate({ scope: message });
+  recordCandidateIgnoreToolCalls(result, toolCalls);
+  return composeCandidateIgnoreReply(result);
+}
 
-  if (!candidate) {
-    return composeIgnoreCandidateReply();
+function recordCandidateReplyToolCalls(result: CandidateReplyResult, toolCalls: AgentToolCall[]): void {
+  if (result.kind === "confirmed") {
+    toolCalls.push("list_candidate_event_matches", "confirm_candidate");
+  }
+}
+
+function recordCandidateIgnoreToolCalls(result: CandidateIgnoreResult, toolCalls: AgentToolCall[]): void {
+  if (result.kind === "ignored") {
+    toolCalls.push("ignore_candidate");
+  }
+}
+
+function composeCandidateReply(result: CandidateReplyResult): string {
+  if (result.kind === "confirmed") {
+    return composeSaveConfirmation({ memories: [result.memory] });
   }
 
-  toolCalls.push("ignore_candidate");
-  tools.ignore_candidate(message.userId, candidate.id);
-  return composeIgnoreCandidateReply({ candidateName: candidate.displayName });
+  if (result.kind === "ambiguous") {
+    return composeCandidateAmbiguityReply({ candidates: result.candidates });
+  }
+
+  return composeNoPendingCandidateReply();
+}
+
+function composeCandidateIgnoreReply(result: CandidateIgnoreResult): string {
+  if (result.kind === "ignored") {
+    return composeIgnoreCandidateReply({ candidateName: result.displayName });
+  }
+
+  return composeIgnoreCandidateReply();
 }
 
 function buildMemoryNote(

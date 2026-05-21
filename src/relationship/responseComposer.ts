@@ -14,6 +14,10 @@ type IgnoreCandidateReplyInput = {
   candidateName?: string;
 };
 
+type CandidateAmbiguityReplyInput = {
+  candidates: Array<{ displayName: string }>;
+};
+
 /**
  * Formats saved memories for the user without exposing storage details.
  *
@@ -76,6 +80,17 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
 /** Formats a no-match reply that asks for one more useful clue. */
 export function composeNoMatchReply(): string {
   return "I don't have enough to confidently find them yet. Give me a name, event, date, project, school, or another clue.";
+}
+
+/** Formats the safe fallback when a confirmation could apply to multiple pending candidates. */
+export function composeCandidateAmbiguityReply({ candidates }: CandidateAmbiguityReplyInput): string {
+  const names = candidates.map((candidate) => candidate.displayName).join(", ");
+  return `I found multiple pending contacts: ${names}. Which one do you mean?`;
+}
+
+/** Formats the no-pending-candidate reply for confirmation attempts. */
+export function composeNoPendingCandidateReply(): string {
+  return "I do not see a pending contact to confirm.";
 }
 
 /** Keeps model-provided or deterministic clarification questions short and chat-native. */

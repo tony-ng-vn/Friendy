@@ -1,9 +1,12 @@
 import type { AgentCoreResult, AgentToolCall, InboundAgentMessage } from "./types";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
-import { isConfirmationReply, resolveCandidateConfirmation } from "./candidateConfirmation";
+import { isConfirmationReply } from "./candidateConfirmation";
+import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import {
+  composeCandidateAmbiguityReply,
   composeIgnoreCandidateReply,
   composeNoMatchReply,
+  composeNoPendingCandidateReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
@@ -17,6 +20,8 @@ type RelationshipTools = ReturnType<typeof createRelationshipTools>;
  * That keeps the MVP debuggable while we prove the capture-confirm-search workflow.
  */
 export function createRelationshipAgent(tools: RelationshipTools) {
+  const candidateIntake = createCandidateIntake({ tools });
+
   return {
     handleMessage(message: InboundAgentMessage): AgentCoreResult {
       const normalized = message.text.trim();
@@ -25,39 +30,23 @@ export function createRelationshipAgent(tools: RelationshipTools) {
 
       if (isConfirmationReply(normalized)) {
         toolCalls.push("list_pending_candidates");
-        const candidates = tools.list_pending_candidates(message.userId);
-        const candidate = candidates[0];
-
-        if (!candidate) {
-          return reply(message, "I do not see a pending contact to confirm.", toolCalls);
-        }
-
-        toolCalls.push("list_candidate_event_matches");
-        const eventMatches = tools.list_candidate_event_matches(message.userId, candidate.id);
-        const confirmation = resolveCandidateConfirmation(normalized, eventMatches);
-        toolCalls.push("confirm_candidate");
-        const memory = tools.confirm_candidate(message.userId, candidate.id, confirmation.contextNote, confirmation.eventId, {
-          eventTitle: confirmation.eventTitle
+        const result = candidateIntake.resolveCandidateReply({
+          scope: message,
+          replyText: normalized
         });
+        recordCandidateReplyToolCalls(result, toolCalls);
 
-        return reply(
-          message,
-          composeSaveConfirmation({ memories: [memory] }),
-          toolCalls
-        );
+        return reply(message, composeCandidateReply(result), toolCalls);
       }
 
       if (lower.startsWith("ignore")) {
         toolCalls.push("list_pending_candidates");
-        const candidates = tools.list_pending_candidates(message.userId);
-        const candidate = candidates[0];
-        if (!candidate) {
-          return reply(message, composeIgnoreCandidateReply(), toolCalls);
-        }
-
-        toolCalls.push("ignore_candidate");
-        tools.ignore_candidate(message.userId, candidate.id);
-        return reply(message, composeIgnoreCandidateReply({ candidateName: candidate.displayName }), toolCalls);
+        const result = candidateIntake.ignoreCandidate({
+          scope: message,
+          candidateName: normalized.replace(/^ignore\s*/i, "").trim()
+        });
+        recordCandidateIgnoreToolCalls(result, toolCalls);
+        return reply(message, composeCandidateIgnoreReply(result), toolCalls);
       }
 
       if (looksLikeManualMemory(lower)) {
@@ -103,6 +92,38 @@ function reply(message: InboundAgentMessage, text: string, toolCalls: AgentToolC
     },
     toolCalls
   };
+}
+
+function recordCandidateReplyToolCalls(result: CandidateReplyResult, toolCalls: AgentToolCall[]): void {
+  if (result.kind === "confirmed") {
+    toolCalls.push("list_candidate_event_matches", "confirm_candidate");
+  }
+}
+
+function recordCandidateIgnoreToolCalls(result: CandidateIgnoreResult, toolCalls: AgentToolCall[]): void {
+  if (result.kind === "ignored") {
+    toolCalls.push("ignore_candidate");
+  }
+}
+
+function composeCandidateReply(result: CandidateReplyResult): string {
+  if (result.kind === "confirmed") {
+    return composeSaveConfirmation({ memories: [result.memory] });
+  }
+
+  if (result.kind === "ambiguous") {
+    return composeCandidateAmbiguityReply({ candidates: result.candidates });
+  }
+
+  return composeNoPendingCandidateReply();
+}
+
+function composeCandidateIgnoreReply(result: CandidateIgnoreResult): string {
+  if (result.kind === "ignored") {
+    return composeIgnoreCandidateReply({ candidateName: result.displayName });
+  }
+
+  return composeIgnoreCandidateReply();
 }
 
 function looksLikeManualMemory(value: string): boolean {
