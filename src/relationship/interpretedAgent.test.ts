@@ -155,6 +155,66 @@ describe("interpreted relationship agent", () => {
     expect(result.toolCalls).toEqual(["list_pending_candidates"]);
   });
 
+  it("uses the interpreted person name when ignoring one of multiple pending candidates", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const alpha = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Alpha One",
+      detectedAt: "2026-05-15T21:44:00-07:00",
+      phoneNumbers: ["+15550101031"],
+      emails: []
+    });
+    const beta = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Beta Two",
+      detectedAt: "2026-05-15T21:45:00-07:00",
+      phoneNumbers: ["+15550101032"],
+      emails: []
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          return {
+            modelUsed: "test-interpreter",
+            error: "",
+            interpretation: {
+              intent: "ignore_candidate",
+              confidence: 0.9,
+              people: [
+                {
+                  name: "Beta Two",
+                  aliases: [],
+                  companyOrSchool: "",
+                  classYear: "",
+                  project: "",
+                  role: ""
+                }
+              ],
+              event: { name: "", dateText: "", location: "" },
+              dateContext: undefined,
+              contextNote: "",
+              query: "",
+              tags: [],
+              needsClarification: false,
+              clarificationQuestion: ""
+            }
+          };
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("ignore Beta Two"));
+
+    expect(result.outbound.text).toBe("Ignored Beta Two.");
+    expect(repo.getCandidate(alpha.id)?.status).toBe("pending");
+    expect(repo.getCandidate(beta.id)?.status).toBe("ignored");
+  });
+
   it("confirms a pending contact through the interpreted path used by Spectrum", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
