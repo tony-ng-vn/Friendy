@@ -34,6 +34,9 @@ describe("sqlite relationship repository", () => {
     const secondRepo = createSqliteRelationshipRepository({ path: dbPath });
     const secondTools = createRelationshipTools(secondRepo);
 
+    expect(secondTools.list_candidate_event_matches(fixtureUser.id, candidate.id)[0].eventTitle).toBe(
+      "Photon Residency Dinner"
+    );
     expect(secondTools.list_pending_candidates(fixtureUser.id).map((item) => item.displayName)).toEqual(["Maya Chen"]);
 
     const memory = secondTools.confirm_candidate(
