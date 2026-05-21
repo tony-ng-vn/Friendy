@@ -39,7 +39,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
   function listCalendarEvents(userId: string): CalendarEvent[] {
     return readRows<CalendarEvent>(
-      db.prepare("SELECT raw_json FROM calendar_events WHERE user_id = ? ORDER BY starts_at, id").all(userId)
+      db.prepare("SELECT raw_json FROM calendar_events WHERE user_id = ? ORDER BY rowid").all(userId)
     );
   }
 
@@ -79,9 +79,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
     listPendingCandidates(userId: string): ContactCandidate[] {
       return readRows<ContactCandidate>(
-        db
-          .prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY detected_at, id")
-          .all(userId)
+        db.prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY rowid").all(userId)
       );
     },
 
@@ -145,11 +143,11 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listMemories(userId?: string): RelationshipMemory[] {
       if (userId) {
         return readRows<RelationshipMemory>(
-          db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY created_at, id").all(userId)
+          db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY rowid").all(userId)
         );
       }
 
-      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY created_at, id").all());
+      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY rowid").all());
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -165,11 +163,11 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listInteractions(userId?: string): AgentInteraction[] {
       if (userId) {
         return readRows<AgentInteraction>(
-          db.prepare("SELECT raw_json FROM interactions WHERE user_id = ? ORDER BY created_at, id").all(userId)
+          db.prepare("SELECT raw_json FROM interactions WHERE user_id = ? ORDER BY rowid").all(userId)
         );
       }
 
-      return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY created_at, id").all());
+      return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY rowid").all());
     }
   };
 }

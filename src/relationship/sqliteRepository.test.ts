@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createSqliteRelationshipRepository } from "./sqliteRepository";
 import { createRelationshipTools } from "./tools";
-import type { EventContextMatch, RelationshipMemory } from "./types";
+import type { AgentInteraction, EventContextMatch, RelationshipMemory } from "./types";
 
 const tempDirs: string[] = [];
 
@@ -182,6 +182,69 @@ describe("sqlite relationship repository", () => {
     const reopened = createSqliteRelationshipRepository({ path: dbPath });
     expect(reopened.listEventMatches("candidate_missing")).toEqual([orphanMatch]);
     expect(reopened.listMemories(userId)).toEqual([orphanMemory]);
+  });
+
+  it("preserves memory and interaction insertion order instead of sorting by createdAt", () => {
+    const dbPath = tempDatabasePath();
+    const userId = "user_ordering";
+    const firstMemory: RelationshipMemory = {
+      id: "memory_order_first",
+      userId,
+      displayName: "First Inserted",
+      primaryContactLabel: "first contact",
+      contextNote: "inserted first with newer createdAt",
+      tags: ["first"],
+      confidence: 0.7,
+      createdAt: "2026-05-21T03:00:00.000Z",
+      updatedAt: "2026-05-21T03:00:00.000Z"
+    };
+    const secondMemory: RelationshipMemory = {
+      id: "memory_order_second",
+      userId,
+      displayName: "Second Inserted",
+      primaryContactLabel: "second contact",
+      contextNote: "inserted second with older createdAt",
+      tags: ["second"],
+      confidence: 0.7,
+      createdAt: "2026-05-21T02:00:00.000Z",
+      updatedAt: "2026-05-21T02:00:00.000Z"
+    };
+    const firstInteraction: AgentInteraction = {
+      id: "interaction_order_first",
+      userId,
+      platform: "imessage",
+      inboundText: "first inserted interaction",
+      outboundText: "First response.",
+      toolCalls: ["search_memories"],
+      createdAt: "2026-05-21T03:01:00.000Z"
+    };
+    const secondInteraction: AgentInteraction = {
+      id: "interaction_order_second",
+      userId,
+      platform: "imessage",
+      inboundText: "second inserted interaction",
+      outboundText: "Second response.",
+      toolCalls: ["search_memories"],
+      createdAt: "2026-05-21T02:01:00.000Z"
+    };
+
+    createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        memories: [firstMemory, secondMemory],
+        interactions: [firstInteraction, secondInteraction]
+      }
+    });
+
+    const reopened = createSqliteRelationshipRepository({ path: dbPath });
+    expect(reopened.listMemories(userId).map((memory) => memory.id)).toEqual([
+      "memory_order_first",
+      "memory_order_second"
+    ]);
+    expect(reopened.listInteractions(userId).map((interaction) => interaction.id)).toEqual([
+      "interaction_order_first",
+      "interaction_order_second"
+    ]);
   });
 });
 
