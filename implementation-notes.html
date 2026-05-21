@@ -68,6 +68,9 @@
       <li>Added a deterministic Friendy scope boundary before relationship interpretation and memory/search mutations. The MVP boundary blocks obvious general-assistant, math, coding, and adversarial requests while letting relationship-looking capture, recall, social reasoning, candidate confirmation, and message-drafting requests continue through the existing agent flow.</li>
       <li>Deferred a model-backed scope classifier. The current router is intentionally conservative and deterministic so evals can verify the product boundary without adding another nondeterministic call before the relationship interpreter.</li>
       <li>The deterministic agent currently checks whether pending candidates exist during scope preflight through the existing relationship tools. That preflight does not mutate memory and is kept out of user-visible tool call logs because the current deterministic agent constructor only receives tools, not the repository.</li>
+      <li>Started the foreground macOS sensor runtime with TypeScript-first boundaries: strict NDJSON event parsing, redacted contact method enforcement, deterministic EventKit snapshot scoring, prompt planning, and an injected runtime orchestrator that can run against fake sensor lines before Swift or Spectrum are involved.</li>
+      <li>The first runtime orchestrator uses an injected in-memory processed-event/warning state store so idempotency, warning suppression, and batch ack behavior are testable before the SQLite schema is expanded. The later SQLite task still needs to persist those same state transitions durably.</li>
+      <li>Expanded contact candidate data with optional sensor identity fields such as <code>sensorEventId</code>, <code>contactIdentifier</code>, and safe contact-method hints. Candidate ids now include <code>contactIdentifier</code> when present so same-name sensor contacts are less likely to collide before the stricter runtime schema lands.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -129,6 +132,8 @@
       <li>For the Friendy scope boundary pass, first ran RED targeted tests where out-of-scope math, person-laundered coding, and adversarial requests still reached the existing agent paths. After implementation, <code>npm test -- src/relationship/scopeBoundary.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts</code> passed with 3 files and 36 tests.</li>
       <li>Added five scope-boundary eval cases. <code>npm run eval:agent</code> passed 17/17 required cases with 100% scope-boundary correctness, 0 unsafe mutations, and 0 hallucinations.</li>
       <li>Ran Friendy scope-boundary final verification: <code>npm test</code> passed with 29 files and 135 tests, <code>npm run build</code> passed, and <code>npm run eval:agent</code> passed 17/17 required cases with 100% scope-boundary correctness.</li>
+      <li>For the first macOS sensor runtime slice, ran RED tests for missing sensor contract, calendar scorer, prompt planner, and injected runtime orchestrator modules, then implemented them. Focused verification passed with <code>npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/calendarScorer.test.ts src/relationship/runtime/promptPlanner.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/eventMapper.test.ts src/relationship/types.test.ts</code> and <code>npm run build</code>.</li>
+      <li>Ran first macOS sensor runtime slice regression verification: <code>npm test</code> passed with 33 files and 157 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>
