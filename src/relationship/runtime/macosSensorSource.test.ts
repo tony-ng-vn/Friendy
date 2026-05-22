@@ -37,6 +37,24 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain("CNContactStoreDidChange");
     expect(nativeSource).toContain("EKEventStore");
   });
+
+  it("documents crash-safe Contacts token and outbox handling in native source", () => {
+    const nativeSource = readSwift("NativeMacosSensor.swift");
+    const eventSource = readSwift("SensorEvents.swift");
+
+    expect(nativeSource).toContain("contacts-history-token.data");
+    expect(nativeSource).toContain("contactStore.currentHistoryToken");
+    expect(nativeSource).toContain("saveBaselineToken");
+    expect(nativeSource).toContain("baselineCreated: true");
+    expect(nativeSource).toContain("CNChangeHistoryFetchRequest");
+    expect(nativeSource).toContain("startingToken");
+    expect(nativeSource).toContain("CNChangeHistoryAddContactEvent");
+    expect(nativeSource).toContain("writeHistoryBatchOutbox");
+    expect(nativeSource).toContain("waitForAckAndAdvanceToken");
+    expect(nativeSource).toContain("history_reset");
+    expect(eventSource).toContain("historyBatchCompleteEvent");
+    expect(eventSource).toContain("contactAddedEvent");
+  });
 });
 
 function readSwift(filename: string): string {
