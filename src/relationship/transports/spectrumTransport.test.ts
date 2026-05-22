@@ -37,8 +37,16 @@ describe("spectrum transport", () => {
     expect(result.log).toMatchObject({
       intent: "capture_memory",
       modelUsed: "rule-based-fallback",
-      toolCalls: ["create_manual_memory"]
+      toolCalls: ["create_manual_memory"],
+      trace: {
+        toolCallCount: 1,
+        hasError: false
+      }
     });
+    expect(result.log.trace?.traceId).toMatch(/^trace_/);
+    expect(JSON.stringify(result.log)).not.toContain("Amaya");
+    expect(JSON.stringify(result.log)).not.toContain("Photon Residency II");
+    expect(JSON.stringify(result.log)).not.toContain("sleep on the same bed");
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
   });
 

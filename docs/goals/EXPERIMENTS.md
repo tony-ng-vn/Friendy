@@ -186,3 +186,21 @@
 - `npm run build`: passed.
 - `npm run eval:agent`: passed 22/22 with zero unsafe mutations and zero hallucinations.
 - `git diff --check`: passed.
+
+## Task 11 Red Tests
+
+- Date: 2026-05-22
+- Added runtime trace redaction coverage for names, phone numbers, emails, event titles, notes, raw interpretation fields, and raw provider errors.
+- Added integration expectations that interpreted-agent interactions store a redacted trace and Spectrum compact logs expose only a trace summary.
+- Red runs: `npm test -- src/relationship/runtime/runtimeTrace.test.ts` failed because `runtimeTrace.ts` did not exist, then the focused integration suite failed because interactions/logs did not carry trace data.
+
+## Task 11 Green Verification
+
+- Date: 2026-05-22
+- Added `buildRedactedInteractionTrace`, stored redacted trace JSON on every interpreted interaction, and exposed compact trace counts/booleans through Spectrum logs.
+- `npm test -- src/relationship/runtime/runtimeTrace.test.ts src/relationship/interpretedAgent.test.ts src/relationship/transports/spectrumTransport.test.ts`: passed with 3 files and 35 tests.
+- `npm test`: passed with 46 files and 270 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 22/22 with zero unsafe mutations and zero hallucinations.
+- `npm run agent:friendy:check`: passed.
+- `git diff --check`: passed.

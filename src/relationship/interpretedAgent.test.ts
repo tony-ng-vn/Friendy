@@ -107,6 +107,14 @@ describe("interpreted relationship agent", () => {
       modelUsed: "rule-based-fallback"
     });
     expect(logs[0].interpretedIntentJson).toMatchObject({ intent: "capture_memory" });
+    expect(logs[0].redactedTraceJson).toMatchObject({
+      interpretedIntent: { intent: "capture_memory" },
+      toolCalls: [{ name: "create_manual_memory", result: "success" }],
+      errors: []
+    });
+    expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Amaya");
+    expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Photon Residency II");
+    expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("sleep on the same bed");
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {

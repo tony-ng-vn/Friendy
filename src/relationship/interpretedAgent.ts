@@ -28,6 +28,7 @@ import {
 import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
+import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage, RelationshipMemory } from "./types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
@@ -108,7 +109,7 @@ export function createInterpretedRelationshipAgent({
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
         const outboundText = composeOnboardingControlReply(onboardingControl);
-        const interaction = repo.addInteraction({
+        const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -146,7 +147,7 @@ export function createInterpretedRelationshipAgent({
         const followUp = executeFollowUpSearchIfPresent(message, turnContext, tools, message.receivedAt);
         if (followUp) {
           conversationContexts.set(message.userId, followUp.nextContext);
-          const interaction = repo.addInteraction({
+          const interaction = addInteractionWithTrace(repo, {
             id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
             userId: message.userId,
             platform: message.platform,
@@ -184,7 +185,7 @@ export function createInterpretedRelationshipAgent({
         const mutation = executeMemoryMutationRequest(message, memoryMutationRequest, repo, tools, turnContext, toolCalls, now());
         const outboundText = mutation.outboundText;
         conversationContexts.set(message.userId, mutation.nextContext);
-        const interaction = repo.addInteraction({
+        const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -225,7 +226,7 @@ export function createInterpretedRelationshipAgent({
           scopeDecision.scope === "out_of_scope"
             ? scopeDecision.redirect
             : composeClarificationReply(scopeDecision.question);
-        const interaction = repo.addInteraction({
+        const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -254,7 +255,7 @@ export function createInterpretedRelationshipAgent({
       if (scopeDecision.capability === "candidate_confirmation") {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, toolCalls);
-        const interaction = repo.addInteraction({
+        const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -299,7 +300,7 @@ export function createInterpretedRelationshipAgent({
         updateSearchContext(message, tools, updateConversationContext(turnContext, interpretation), interpretation)
       );
 
-      const interaction = repo.addInteraction({
+      const interaction = addInteractionWithTrace(repo, {
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
         userId: message.userId,
         platform: message.platform,
@@ -326,6 +327,35 @@ export function createInterpretedRelationshipAgent({
         interaction
       };
     }
+  };
+}
+
+function addInteractionWithTrace(repo: RelationshipRepository, interaction: AgentInteraction): AgentInteraction {
+  return repo.addInteraction({
+    ...interaction,
+    redactedTraceJson: buildRedactedInteractionTrace({
+      inboundText: interaction.inboundText,
+      interpretedIntentJson: interaction.interpretedIntentJson,
+      toolCalls: interaction.toolCalls as AgentToolCall[],
+      outboundText: interaction.outboundText,
+      model: modelTraceFromInteraction(interaction.modelUsed),
+      errors: interaction.error ? [interaction.error] : [],
+      now: interaction.createdAt
+    })
+  });
+}
+
+function modelTraceFromInteraction(modelUsed: string | undefined): AgentTrace["model"] {
+  if (!modelUsed) {
+    return { used: false, fallbackUsed: true };
+  }
+
+  const deterministic = modelUsed === "deterministic-scope" || modelUsed === "rule-based-fallback";
+  return {
+    used: !deterministic,
+    provider: deterministic ? undefined : "openrouter",
+    modelName: modelUsed,
+    fallbackUsed: deterministic
   };
 }
 

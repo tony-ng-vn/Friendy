@@ -100,6 +100,7 @@
       <li>Added append-only memory revisions for saved relationship memories. Initial saves now record a <code>created</code> revision, corrections append a reasoned revision with previous/next projections, and the current memory row remains the searchable latest projection.</li>
       <li>Added bounded memory update and delete tools. Updates and deletes first resolve a user-owned current memory, deletes are soft tombstones excluded from search/list projections, and ambiguous natural delete requests ask which person instead of mutating.</li>
       <li>Added follow-up search context with a 15-minute lifetime. Ambiguous search results store only candidate memory ids, follow-up clues narrow that bounded set, stale follow-ups ask for context, and pronoun corrections only update an active or unambiguous memory target.</li>
+      <li>Added Friendy-native redacted runtime traces. Interactions now store hashed text shapes, intent/confidence, tool result names, id lists/counts, search outcome, model shape, and <code>present</code> error markers without storing raw names, contact routes, event titles, notes, interpreted JSON payloads, or provider error text in trace/log summaries.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -251,6 +252,7 @@
       <li>For Mac MVP Task 8, first ran RED tests showing <code>updateMemory</code> and <code>listMemoryRevisions</code> did not exist. After implementation, repository and SQLite revision tests passed with 39 tests. Final verification passed: <code>npm test</code> with 45 files and 256 tests, <code>npm run build</code>, and <code>git diff --check</code>.</li>
       <li>For Mac MVP Task 9, first ran RED tests showing <code>update_memory</code>, <code>delete_memory</code>, and natural update/delete routing did not exist. After implementation, tool, interpreted-agent, repository, and SQLite tests passed with 73 tests. Final verification passed: <code>npm test</code> with 45 files and 263 tests, <code>npm run build</code>, <code>npm run eval:agent</code> 17/17 with zero unsafe mutations, and <code>git diff --check</code>.</li>
       <li>For Mac MVP Task 10, first ran RED tests showing follow-up search context helpers were missing. After implementation, interpreted-agent and eval-runner tests passed with 33 tests. Final verification passed: <code>npm test</code> with 45 files and 269 tests, <code>npm run build</code>, <code>npm run eval:agent</code> 22/22 with zero unsafe mutations and zero hallucinations, and <code>git diff --check</code>.</li>
+      <li>For Mac MVP Task 11, first ran RED tests showing the runtime trace helper was missing and interactions/log summaries did not expose redacted trace data. After implementation, runtime-trace, interpreted-agent, and Spectrum transport tests passed with 35 tests. Final verification passed: <code>npm test</code> with 46 files and 270 tests, <code>npm run build</code>, <code>npm run eval:agent</code> 22/22 with zero unsafe mutations and zero hallucinations, <code>npm run agent:friendy:check</code>, and <code>git diff --check</code>.</li>
     </ul>
   </body>
 </html>

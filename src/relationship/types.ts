@@ -174,6 +174,7 @@ export type AgentInteraction = {
   interpretedIntentJson?: unknown;
   outboundText: string;
   toolCalls: string[];
+  redactedTraceJson?: unknown;
   modelUsed?: string;
   confidence?: number;
   latencyMs?: number;

@@ -60,10 +60,18 @@ export type CompactInteractionLog = {
   platform: string;
   intent: string;
   toolCalls: string[];
+  trace?: {
+    traceId: string;
+    toolCallCount: number;
+    candidateCount: number;
+    memoryCount: number;
+    hasError: boolean;
+    searchOutcome?: string;
+  };
   modelUsed?: string;
   confidence?: number;
   latencyMs?: number;
-  error?: string;
+  error?: "present";
   createdAt: string;
 };
 
@@ -180,11 +188,40 @@ function toCompactInteractionLog(interaction: AgentInteraction): CompactInteract
     platform: interaction.platform,
     intent,
     toolCalls: interaction.toolCalls,
+    trace: toCompactTrace(interaction.redactedTraceJson),
     modelUsed: interaction.modelUsed,
     confidence: interaction.confidence,
     latencyMs: interaction.latencyMs,
-    error: interaction.error,
+    error: interaction.error ? "present" : undefined,
     createdAt: interaction.createdAt
+  };
+}
+
+function toCompactTrace(trace: unknown): CompactInteractionLog["trace"] | undefined {
+  if (typeof trace !== "object" || trace === null || !("traceId" in trace)) {
+    return undefined;
+  }
+
+  const value = trace as {
+    traceId?: unknown;
+    toolCalls?: unknown;
+    candidateIdsTouched?: unknown;
+    memoryIdsTouched?: unknown;
+    errors?: unknown;
+    search?: unknown;
+  };
+  if (typeof value.traceId !== "string") {
+    return undefined;
+  }
+
+  const search = typeof value.search === "object" && value.search !== null ? value.search as { outcome?: unknown } : undefined;
+  return {
+    traceId: value.traceId,
+    toolCallCount: Array.isArray(value.toolCalls) ? value.toolCalls.length : 0,
+    candidateCount: Array.isArray(value.candidateIdsTouched) ? value.candidateIdsTouched.length : 0,
+    memoryCount: Array.isArray(value.memoryIdsTouched) ? value.memoryIdsTouched.length : 0,
+    hasError: Array.isArray(value.errors) && value.errors.length > 0,
+    searchOutcome: typeof search?.outcome === "string" ? search.outcome : undefined
   };
 }
 

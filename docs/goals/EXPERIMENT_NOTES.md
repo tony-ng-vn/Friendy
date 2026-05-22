@@ -12,3 +12,4 @@
 - 2026-05-22: Task 8 stores memory revision snapshots as partial memory projections rather than raw inbound text. User correction text is kept only when explicitly provided to `updateMemory`.
 - 2026-05-22: Task 9 treats delete as a soft delete on the current projection, not physical removal. Search and normal memory lists hide deleted rows, while revisions remain available for audit.
 - 2026-05-22: Task 10 stores only the top prior ambiguous search memory ids for 15 minutes. Follow-up clues narrow that bounded set instead of starting a broad new search, and stale follow-ups ask for context instead of reusing old candidates.
+- 2026-05-22: Task 11 redacted traces intentionally keep only decision shape: hashed text markers, intent/confidence, tool result names, touched id counts, search outcome, and `present` error markers. Raw names, contact routes, notes, event titles, raw interpreted JSON, and provider error text stay out of traces/log summaries.
