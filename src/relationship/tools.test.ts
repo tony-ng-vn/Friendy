@@ -59,6 +59,33 @@ describe("relationship tools", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([memory]);
   });
 
+  it("returns the existing manual memory when the same interaction is retried", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+
+    const first = tools.create_manual_memory(
+      fixtureUser.id,
+      "Amaya",
+      "met at Photon Residency, recruiting agents founder",
+      "manual contact",
+      { idempotencyKey: "manual_imessage:interaction_123" }
+    );
+    const second = tools.create_manual_memory(
+      fixtureUser.id,
+      "Amaya",
+      "met at Photon Residency, recruiting agents founder",
+      "manual contact",
+      { idempotencyKey: "manual_imessage:interaction_123" }
+    );
+
+    expect(second).toEqual(first);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([first]);
+    expect(repo.getCandidate(first.candidateId!)).toMatchObject({
+      source: "manual_imessage",
+      status: "confirmed"
+    });
+  });
+
   it("searches memories by vague context", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

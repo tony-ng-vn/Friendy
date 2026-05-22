@@ -92,9 +92,17 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
       return runTransaction(db, () => {
+        const candidateId = createCandidateId(contact);
+        const existingCandidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (existingCandidate) {
+          return existingCandidate;
+        }
+
         const candidate: ContactCandidate = {
           ...contact,
-          id: createCandidateId(contact),
+          id: candidateId,
           status: "pending",
           expiresAt: calculateCandidateExpiresAt(contact.detectedAt)
         };
@@ -593,6 +601,10 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS memories_user_created_idx
       ON memories(user_id, created_at);
 
+    CREATE UNIQUE INDEX IF NOT EXISTS memories_candidate_unique_idx
+      ON memories(candidate_id)
+      WHERE candidate_id IS NOT NULL;
+
     CREATE TRIGGER IF NOT EXISTS memory_requires_confirmed_candidate
     BEFORE INSERT ON memories
     FOR EACH ROW
@@ -880,6 +892,11 @@ function assertSqliteMemoryHasConfirmedCandidate(db: DatabaseSync, memory: Relat
     .get(memory.candidateId, memory.userId);
   if (!row) {
     throw new Error("Memory requires a confirmed candidate");
+  }
+
+  const existingMemory = db.prepare("SELECT id FROM memories WHERE candidate_id = ?").get(memory.candidateId);
+  if (existingMemory) {
+    throw new Error("Memory already exists for candidate");
   }
 }
 

@@ -42,6 +42,29 @@ describe("spectrum transport", () => {
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
   });
 
+  it("does not duplicate a manual memory when the same inbound message is retried", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z"
+    });
+    const inbound = {
+      userId: fixtureUser.id,
+      text: "I met Amaya at Photon Residency II, recruiting agents founder",
+      spaceId: "space_retry",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    };
+
+    await runtime.handleInboundText(inbound);
+    await runtime.handleInboundText(inbound);
+
+    const memories = runtime.repo.listMemories(fixtureUser.id);
+    expect(memories).toHaveLength(1);
+    expect(memories[0]).toMatchObject({
+      displayName: "Amaya",
+      candidateId: expect.any(String)
+    });
+  });
+
   it("uses the first inbound Spectrum space as conversation identity when no user exists yet", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),

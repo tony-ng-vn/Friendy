@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
@@ -190,12 +191,13 @@ function captureMemories(
   tools: RelationshipTools,
   toolCalls: AgentToolCall[]
 ): string {
-  const memories = interpretation.people.map((person) => {
+  const memories = interpretation.people.map((person, index) => {
     const note = buildMemoryNote(interpretation, person);
     toolCalls.push("create_manual_memory");
     return tools.create_manual_memory(message.userId, person.name, note, "manual contact", {
       eventTitle: interpretation.event.name || undefined,
-      dateContext: interpretation.dateContext
+      dateContext: interpretation.dateContext,
+      idempotencyKey: manualMemoryIdempotencyKey(message, person.name, index)
     });
   });
 
@@ -204,6 +206,14 @@ function captureMemories(
   }
 
   return composeSaveConfirmation({ memories });
+}
+
+function manualMemoryIdempotencyKey(message: InboundAgentMessage, personName: string, index: number): string {
+  const hash = createHash("sha256")
+    .update([message.platform, message.userId, message.spaceId ?? "", message.receivedAt, personName, index, message.text].join("\0"))
+    .digest("hex")
+    .slice(0, 24);
+  return `manual_imessage:${hash}`;
 }
 
 function searchMemories(

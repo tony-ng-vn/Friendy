@@ -392,6 +392,46 @@ describe("sqlite relationship repository", () => {
     ).toThrow("Memory requires a confirmed candidate");
   });
 
+  it("rejects raw SQLite memory inserts that reuse a confirmed candidate", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+    const db = trackCloseable(new DatabaseSync(dbPath));
+
+    expect(() =>
+      db
+        .prepare(
+          `
+            INSERT INTO memories (
+              id, insert_order, user_id, candidate_id, display_name, event_id, event_title,
+              created_at, updated_at, raw_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          "memory_raw_duplicate_candidate",
+          2,
+          fixtureUser.id,
+          candidate.id,
+          "Duplicate Candidate Person",
+          null,
+          null,
+          "2026-05-21T06:00:00.000Z",
+          "2026-05-21T06:00:00.000Z",
+          JSON.stringify({ id: "memory_raw_duplicate_candidate", candidateId: candidate.id })
+        )
+    ).toThrow();
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("accepts writes for unseeded users like the in-memory repository", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
@@ -689,6 +729,40 @@ describe("sqlite relationship repository", () => {
     expect(new Set(memories.map((memory) => memory.id)).size).toBe(2);
     expect(memories.every((memory) => Boolean(memory.candidateId))).toBe(true);
     expect(memories.map((memory) => repo.getCandidate(memory.candidateId!)?.status)).toEqual(["confirmed", "confirmed"]);
+  });
+
+  it("deduplicates retried manual iMessage saves by interaction id across repository instances", () => {
+    const dbPath = tempDatabasePath();
+    const userId = "user_manual_retry";
+    const firstRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const firstTools = createRelationshipTools(firstRepo);
+
+    const first = firstTools.create_manual_memory(
+      userId,
+      "Amaya",
+      "met at Photon Residency, AI recruiting founder",
+      "manual contact",
+      { idempotencyKey: "manual_imessage:interaction_retry_1" }
+    );
+    firstRepo.close();
+    repositories.splice(repositories.indexOf(firstRepo), 1);
+
+    const secondRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const secondTools = createRelationshipTools(secondRepo);
+    const second = secondTools.create_manual_memory(
+      userId,
+      "Amaya",
+      "met at Photon Residency, AI recruiting founder",
+      "manual contact",
+      { idempotencyKey: "manual_imessage:interaction_retry_1" }
+    );
+
+    expect(second).toEqual(first);
+    expect(secondRepo.listMemories(userId)).toEqual([first]);
+    expect(secondRepo.getCandidate(first.candidateId!)).toMatchObject({
+      source: "manual_imessage",
+      status: "confirmed"
+    });
   });
 
   it("sets schema version and stores explicit insert order columns", () => {

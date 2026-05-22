@@ -4,7 +4,7 @@
  * These stay as plain data objects so the same core can run behind terminal tests,
  * Spectrum/iMessage, and later persistence layers without transport-specific state.
  */
-export type ContactCandidateSource = "contacts_delta" | "manual" | "simulated";
+export type ContactCandidateSource = "contacts_delta" | "manual" | "manual_imessage" | "simulated";
 
 /** Lifecycle for a newly detected contact before it becomes searchable memory. */
 export type ContactCandidateStatus = "pending" | "prompted" | "confirmed" | "ignored" | "expired" | "error";
@@ -42,6 +42,7 @@ export type ContactCandidateDetected = {
   detectedAt: string;
   source: ContactCandidateSource;
   sensorEventId?: string;
+  manualIdempotencyKey?: string;
   contactIdentifier?: string;
   unifiedContactIdentifier?: string;
   containerIdentifier?: string;

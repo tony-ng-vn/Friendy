@@ -95,9 +95,15 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     },
 
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
+      const candidateId = createCandidateId(contact);
+      const existing = candidates.find((candidate) => candidate.id === candidateId);
+      if (existing) {
+        return existing;
+      }
+
       const candidate: ContactCandidate = {
         ...contact,
-        id: createCandidateId(contact),
+        id: candidateId,
         status: "pending",
         expiresAt: calculateCandidateExpiresAt(contact.detectedAt)
       };
@@ -231,6 +237,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
       assertMemoryHasConfirmedCandidate(memory, candidates);
+      assertCandidateHasNoMemory(memory, memories);
       if (memories.some((existing) => existing.id === memory.id)) {
         throw new Error(`Memory already exists: ${memory.id}`);
       }
@@ -253,6 +260,12 @@ function assertMemoryHasConfirmedCandidate(memory: RelationshipMemory, candidate
   const candidate = memory.candidateId ? candidates.find((item) => item.id === memory.candidateId) : undefined;
   if (!candidate || candidate.userId !== memory.userId || candidate.status !== "confirmed") {
     throw new Error("Memory requires a confirmed candidate");
+  }
+}
+
+function assertCandidateHasNoMemory(memory: RelationshipMemory, memories: RelationshipMemory[]): void {
+  if (memory.candidateId && memories.some((existing) => existing.candidateId === memory.candidateId)) {
+    throw new Error("Memory already exists for candidate");
   }
 }
 

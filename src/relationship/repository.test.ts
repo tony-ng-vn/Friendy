@@ -147,6 +147,31 @@ describe("relationship repository", () => {
     ).toThrow("Memory requires a confirmed candidate");
   });
 
+  it("rejects a second memory for the same confirmed candidate", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(() =>
+      repo.addMemory({
+        id: "memory_duplicate_candidate",
+        userId: fixtureUser.id,
+        candidateId: candidate.id,
+        displayName: "Duplicate Candidate Memory",
+        primaryContactLabel: "manual contact",
+        contextNote: "should not create another memory for this candidate",
+        tags: ["duplicate"],
+        confidence: 0.5,
+        createdAt: "2026-05-21T06:00:00.000Z",
+        updatedAt: "2026-05-21T06:00:00.000Z"
+      })
+    ).toThrow("Memory already exists for candidate");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("marks a prompted candidate while keeping it reviewable for replies", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

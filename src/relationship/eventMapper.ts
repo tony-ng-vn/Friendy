@@ -20,8 +20,12 @@ const EVENT_KIND_RANK = {
  * A real persistence layer can replace this with database ids without changing agent behavior.
  */
 export function createCandidateId(
-  contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt" | "contactIdentifier">
+  contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt" | "contactIdentifier" | "source">
 ): string {
+  if (contact.source === "manual_imessage" && contact.contactIdentifier) {
+    return `candidate_${slug(contact.displayName)}_${slug(contact.contactIdentifier)}`;
+  }
+
   const identity = contact.contactIdentifier ? `_${slug(contact.contactIdentifier)}` : "";
   return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}${identity}`;
 }

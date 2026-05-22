@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createCandidateId } from "./eventMapper";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
@@ -18,6 +19,12 @@ type InternalMemorySearchResult = MemorySearchResult & {
   coverage: number;
   eventScore: number;
   specificScore: number;
+};
+
+type CreateManualMemoryOptions = {
+  eventTitle?: string;
+  dateContext?: RelationshipDateContext;
+  idempotencyKey?: string;
 };
 
 /**
@@ -93,18 +100,26 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       name: string,
       contextNote: string,
       contactMethod = "manual contact",
-      options: { eventTitle?: string; dateContext?: RelationshipDateContext } = {}
+      options: CreateManualMemoryOptions = {}
     ) {
-      const manualId = randomUUID();
-      const candidate = repo.createCandidateFromDetectedContact({
+      const contactIdentifier = options.idempotencyKey ?? `manual:${randomUUID()}`;
+      const source = options.idempotencyKey ? "manual_imessage" : "manual";
+      const candidateInput: ContactCandidateDetected = {
         userId,
         displayName: name,
         phoneNumbers: [contactMethod],
         emails: [],
         detectedAt: new Date(Date.now()).toISOString(),
-        source: "manual",
-        contactIdentifier: `manual:${manualId}`
-      });
+        source,
+        manualIdempotencyKey: options.idempotencyKey,
+        contactIdentifier
+      };
+      const candidateId = createCandidateId(candidateInput);
+      const existingMemory = repo.listMemories(userId).find((memory) => memory.candidateId === candidateId);
+      if (existingMemory) {
+        return existingMemory;
+      }
+      const candidate = repo.getCandidate(candidateId) ?? repo.createCandidateFromDetectedContact(candidateInput);
 
       return repo.confirmCandidate(candidate.id, contextNote, undefined, {
         eventTitle: options.eventTitle,
