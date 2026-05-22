@@ -2,7 +2,12 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
-import type { ProcessedSensorEvent, RuntimeStateStore, RuntimeWarningState } from "./runtime/friendyRuntime";
+import type {
+  ProcessedSensorEvent,
+  RuntimeSensorState,
+  RuntimeStateStore,
+  RuntimeWarningState
+} from "./runtime/friendyRuntime";
 import {
   extractTags,
   type ConfirmCandidateOptions,
@@ -326,6 +331,75 @@ export function createSqliteRuntimeStateStore({ path }: { path: string }): Sqlit
       );
     },
 
+    getSensorState(userId: string, sensorName: string, deviceId: string): RuntimeSensorState | undefined {
+      return readSensorState(
+        db
+          .prepare("SELECT * FROM sensor_state WHERE user_id = ? AND sensor_name = ? AND device_id = ?")
+          .get(userId, sensorName, deviceId)
+      );
+    },
+
+    upsertSensorState(input: {
+      userId: string;
+      sensorName: string;
+      deviceId: string;
+      stateJson: Record<string, unknown>;
+      historyTokenBlob?: Uint8Array;
+      baselineCompletedAt?: string;
+      lastSuccessAt?: string;
+      lastErrorCode?: string;
+      lastPermissionStatus?: string;
+      now: string;
+    }): RuntimeSensorState {
+      const existing = this.getSensorState(input.userId, input.sensorName, input.deviceId);
+      const sensorState: RuntimeSensorState = {
+        userId: input.userId,
+        sensorName: input.sensorName,
+        deviceId: input.deviceId,
+        stateJson: input.stateJson,
+        historyTokenBlob: input.historyTokenBlob ?? existing?.historyTokenBlob,
+        baselineCompletedAt: input.baselineCompletedAt ?? existing?.baselineCompletedAt,
+        lastSuccessAt: input.lastSuccessAt ?? existing?.lastSuccessAt,
+        lastErrorCode: input.lastErrorCode ?? existing?.lastErrorCode,
+        lastPermissionStatus: input.lastPermissionStatus ?? existing?.lastPermissionStatus,
+        createdAt: existing?.createdAt ?? input.now,
+        updatedAt: input.now
+      };
+
+      db.prepare(
+        `
+          INSERT INTO sensor_state (
+            user_id, sensor_name, device_id, state_json, history_token_blob,
+            baseline_completed_at, last_success_at, last_error_code, last_permission_status,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, sensor_name, device_id) DO UPDATE SET
+            state_json = excluded.state_json,
+            history_token_blob = excluded.history_token_blob,
+            baseline_completed_at = excluded.baseline_completed_at,
+            last_success_at = excluded.last_success_at,
+            last_error_code = excluded.last_error_code,
+            last_permission_status = excluded.last_permission_status,
+            updated_at = excluded.updated_at
+        `
+      ).run(
+        sensorState.userId,
+        sensorState.sensorName,
+        sensorState.deviceId,
+        stringify(sensorState.stateJson),
+        sensorState.historyTokenBlob ?? null,
+        sensorState.baselineCompletedAt ?? null,
+        sensorState.lastSuccessAt ?? null,
+        sensorState.lastErrorCode ?? null,
+        sensorState.lastPermissionStatus ?? null,
+        sensorState.createdAt,
+        sensorState.updatedAt
+      );
+
+      return sensorState;
+    },
+
     getWarning(userId: string, sensorName: string, warningCode: string): RuntimeWarningState | undefined {
       return readRuntimeWarning(
         db
@@ -485,6 +559,21 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS interactions_user_created_idx
       ON interactions(user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS sensor_state (
+      user_id TEXT NOT NULL,
+      sensor_name TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      history_token_blob BLOB,
+      baseline_completed_at TEXT,
+      last_success_at TEXT,
+      last_error_code TEXT,
+      last_permission_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, sensor_name, device_id)
+    );
 
     CREATE TABLE IF NOT EXISTS runtime_warnings (
       user_id TEXT NOT NULL,
@@ -742,6 +831,40 @@ function readProcessedEvent(row: unknown): ProcessedSensorEvent | undefined {
     candidateId: value.candidate_id ?? undefined,
     warningCode: value.warning_code ?? undefined,
     processedAt: value.processed_at
+  };
+}
+
+function readSensorState(row: unknown): RuntimeSensorState | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    user_id: string;
+    sensor_name: string;
+    device_id: string;
+    state_json: string;
+    history_token_blob: Uint8Array | null;
+    baseline_completed_at: string | null;
+    last_success_at: string | null;
+    last_error_code: string | null;
+    last_permission_status: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+
+  return {
+    userId: value.user_id,
+    sensorName: value.sensor_name,
+    deviceId: value.device_id,
+    stateJson: parseJson<Record<string, unknown>>(value.state_json),
+    historyTokenBlob: value.history_token_blob ?? undefined,
+    baselineCompletedAt: value.baseline_completed_at ?? undefined,
+    lastSuccessAt: value.last_success_at ?? undefined,
+    lastErrorCode: value.last_error_code ?? undefined,
+    lastPermissionStatus: value.last_permission_status ?? undefined,
+    createdAt: value.created_at,
+    updatedAt: value.updated_at
   };
 }
 

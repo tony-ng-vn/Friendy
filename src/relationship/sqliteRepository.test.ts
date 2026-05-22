@@ -85,6 +85,44 @@ describe("sqlite relationship repository", () => {
     });
   });
 
+  it("persists sensor health state across state store instances", () => {
+    const dbPath = tempDatabasePath();
+    const firstState = trackCloseable(createSqliteRuntimeStateStore({ path: dbPath }));
+
+    firstState.upsertSensorState({
+      userId: "user_friendy",
+      sensorName: "macos_contacts_calendar",
+      deviceId: "mac_1",
+      stateJson: {
+        lastEventType: "ready",
+        contactsPermissionStatus: "authorized",
+        calendarPermissionStatus: "denied"
+      },
+      baselineCompletedAt: "2026-05-21T18:36:51.000Z",
+      lastSuccessAt: "2026-05-21T18:36:51.000Z",
+      lastPermissionStatus: "contacts:authorized;calendar:denied",
+      now: "2026-05-21T18:36:51.000Z"
+    });
+
+    const secondState = trackCloseable(createSqliteRuntimeStateStore({ path: dbPath }));
+    expect(secondState.getSensorState("user_friendy", "macos_contacts_calendar", "mac_1")).toMatchObject({
+      userId: "user_friendy",
+      sensorName: "macos_contacts_calendar",
+      deviceId: "mac_1",
+      stateJson: {
+        lastEventType: "ready",
+        contactsPermissionStatus: "authorized",
+        calendarPermissionStatus: "denied"
+      },
+      historyTokenBlob: undefined,
+      baselineCompletedAt: "2026-05-21T18:36:51.000Z",
+      lastSuccessAt: "2026-05-21T18:36:51.000Z",
+      lastPermissionStatus: "contacts:authorized;calendar:denied",
+      createdAt: "2026-05-21T18:36:51.000Z",
+      updatedAt: "2026-05-21T18:36:51.000Z"
+    });
+  });
+
   it("persists candidates, event matches, memories, and interactions across repository instances", () => {
     const dbPath = tempDatabasePath();
     const firstRepo = trackRepository(createSqliteRelationshipRepository({

@@ -45,10 +45,37 @@ export type RuntimeWarningState = {
   notificationCount: number;
 };
 
+export type RuntimeSensorState = {
+  userId: string;
+  sensorName: string;
+  deviceId: string;
+  stateJson: Record<string, unknown>;
+  historyTokenBlob?: Uint8Array;
+  baselineCompletedAt?: string;
+  lastSuccessAt?: string;
+  lastErrorCode?: string;
+  lastPermissionStatus?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type RuntimeStateStore = {
   getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined;
   getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined;
   recordProcessedEvent(event: ProcessedSensorEvent): void;
+  getSensorState(userId: string, sensorName: string, deviceId: string): RuntimeSensorState | undefined;
+  upsertSensorState(input: {
+    userId: string;
+    sensorName: string;
+    deviceId: string;
+    stateJson: Record<string, unknown>;
+    historyTokenBlob?: Uint8Array;
+    baselineCompletedAt?: string;
+    lastSuccessAt?: string;
+    lastErrorCode?: string;
+    lastPermissionStatus?: string;
+    now: string;
+  }): RuntimeSensorState;
   getWarning(userId: string, sensorName: string, warningCode: string): RuntimeWarningState | undefined;
   upsertWarning(input: {
     userId: string;
@@ -104,6 +131,7 @@ export function createFriendySensorRuntime({
 export function createInMemoryRuntimeStateStore(): RuntimeStateStore {
   const processedByIdempotencyKey = new Map<string, ProcessedSensorEvent>();
   const processedBySensorEventId = new Map<string, ProcessedSensorEvent>();
+  const sensorStates = new Map<string, RuntimeSensorState>();
   const warnings = new Map<string, RuntimeWarningState>();
 
   return {
@@ -118,6 +146,28 @@ export function createInMemoryRuntimeStateStore(): RuntimeStateStore {
       if (event.sensorEventId) {
         processedBySensorEventId.set(event.sensorEventId, event);
       }
+    },
+    getSensorState(userId, sensorName, deviceId) {
+      return sensorStates.get(sensorStateKey(userId, sensorName, deviceId));
+    },
+    upsertSensorState(input) {
+      const key = sensorStateKey(input.userId, input.sensorName, input.deviceId);
+      const existing = sensorStates.get(key);
+      const state: RuntimeSensorState = {
+        userId: input.userId,
+        sensorName: input.sensorName,
+        deviceId: input.deviceId,
+        stateJson: input.stateJson,
+        historyTokenBlob: input.historyTokenBlob ?? existing?.historyTokenBlob,
+        baselineCompletedAt: input.baselineCompletedAt ?? existing?.baselineCompletedAt,
+        lastSuccessAt: input.lastSuccessAt ?? existing?.lastSuccessAt,
+        lastErrorCode: input.lastErrorCode ?? existing?.lastErrorCode,
+        lastPermissionStatus: input.lastPermissionStatus ?? existing?.lastPermissionStatus,
+        createdAt: existing?.createdAt ?? input.now,
+        updatedAt: input.now
+      };
+      sensorStates.set(key, state);
+      return state;
     },
     getWarning(userId, sensorName, warningCode) {
       return warnings.get(warningKey(userId, sensorName, warningCode));
@@ -171,6 +221,8 @@ async function processEvent({
   }
 
   if (event.type === "ready") {
+    const eventNow = now();
+    recordReadySensorState({ userId, state, event, now: eventNow });
     if (event.calendarPermissionStatus !== "authorized") {
       await warnOwner({
         userId,
@@ -180,7 +232,7 @@ async function processEvent({
         sensorName: event.sensorName,
         warningCode: `calendar_permission_${event.calendarPermissionStatus}`,
         permissionStatus: event.calendarPermissionStatus,
-        now: now()
+        now: eventNow
       });
     }
     logger.info(`macOS sensor ready: baselineCreated=${event.baselineCreated}`);
@@ -188,12 +240,16 @@ async function processEvent({
   }
 
   if (event.type === "history_reset") {
-    recordProcessed(state, event, "ignored", now());
+    const eventNow = now();
+    recordHistoryResetSensorState({ userId, state, event, now: eventNow });
+    recordProcessed(state, event, "ignored", eventNow);
     logger.info(`macOS sensor history reset: ${event.reason}`);
     return;
   }
 
   if (event.type === "permission_error" || event.type === "fatal_error") {
+    const eventNow = now();
+    recordSensorErrorState({ userId, state, event, now: eventNow });
     const notified = await warnOwner({
       userId,
       state,
@@ -202,9 +258,9 @@ async function processEvent({
       sensorName: event.sensorName,
       warningCode: event.code,
       permissionStatus: event.code,
-      now: now()
+      now: eventNow
     });
-    recordProcessed(state, event, notified ? "warning" : "ignored", now(), { warningCode: event.code });
+    recordProcessed(state, event, notified ? "warning" : "ignored", eventNow, { warningCode: event.code });
     logger.warn(`macOS sensor ${event.type}: ${event.code}`);
     return;
   }
@@ -220,17 +276,135 @@ async function processEvent({
   }
 
   if (event.type === "contact_added") {
+    const eventNow = now();
     const scoredEvents = scoreCalendarContext({
       detectedAt: event.detectedAt,
       calendarMatches: event.calendarMatches
     });
     repo.addCalendarEvents(scoredEvents.map((scoredEvent) => toCalendarEvent(userId, scoredEvent)));
     const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
-    recordProcessed(state, event, "candidate_created", now(), { candidateId: candidate.id });
+    recordContactAddedSensorState({ userId, state, event, now: eventNow });
+    recordProcessed(state, event, "candidate_created", eventNow, { candidateId: candidate.id });
 
-    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: now() });
+    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: eventNow });
     return;
   }
+}
+
+function recordReadySensorState({
+  userId,
+  state,
+  event,
+  now
+}: {
+  userId: string;
+  state: RuntimeStateStore;
+  event: Extract<MacosSensorEvent, { type: "ready" }>;
+  now: string;
+}): void {
+  state.upsertSensorState({
+    userId,
+    sensorName: event.sensorName,
+    deviceId: event.deviceId,
+    stateJson: {
+      lastEventType: event.type,
+      runId: event.runId,
+      sensorVersion: event.sensorVersion,
+      contactsPermissionStatus: event.contactsPermissionStatus,
+      calendarPermissionStatus: event.calendarPermissionStatus,
+      baselineCreated: event.baselineCreated
+    },
+    baselineCompletedAt: event.baselineCreated ? now : undefined,
+    lastSuccessAt: now,
+    lastPermissionStatus: formatPermissionStatus(event.contactsPermissionStatus, event.calendarPermissionStatus),
+    now
+  });
+}
+
+function recordHistoryResetSensorState({
+  userId,
+  state,
+  event,
+  now
+}: {
+  userId: string;
+  state: RuntimeStateStore;
+  event: Extract<MacosSensorEvent, { type: "history_reset" }>;
+  now: string;
+}): void {
+  state.upsertSensorState({
+    userId,
+    sensorName: event.sensorName,
+    deviceId: event.deviceId,
+    stateJson: {
+      lastEventType: event.type,
+      runId: event.runId,
+      reason: event.reason,
+      detectedAt: event.detectedAt
+    },
+    lastErrorCode: `history_reset:${event.reason}`,
+    now
+  });
+}
+
+function recordSensorErrorState({
+  userId,
+  state,
+  event,
+  now
+}: {
+  userId: string;
+  state: RuntimeStateStore;
+  event: Extract<MacosSensorEvent, { type: "permission_error" | "fatal_error" }>;
+  now: string;
+}): void {
+  state.upsertSensorState({
+    userId,
+    sensorName: event.sensorName,
+    deviceId: event.deviceId,
+    stateJson: {
+      lastEventType: event.type,
+      runId: event.runId,
+      code: event.code,
+      retryable: event.retryable
+    },
+    lastErrorCode: event.code,
+    lastPermissionStatus: event.type === "permission_error" ? event.code : undefined,
+    now
+  });
+}
+
+function recordContactAddedSensorState({
+  userId,
+  state,
+  event,
+  now
+}: {
+  userId: string;
+  state: RuntimeStateStore;
+  event: Extract<MacosSensorEvent, { type: "contact_added" }>;
+  now: string;
+}): void {
+  state.upsertSensorState({
+    userId,
+    sensorName: event.sensorName,
+    deviceId: event.deviceId,
+    stateJson: {
+      lastEventType: event.type,
+      runId: event.runId,
+      historyBatchId: event.historyBatchId,
+      historyBatchIndex: event.historyBatchIndex,
+      historyBatchSize: event.historyBatchSize,
+      lastContactEventId: event.eventId,
+      calendarPermissionStatus: event.calendarQuery.permissionStatus
+    },
+    lastSuccessAt: now,
+    now
+  });
+}
+
+function formatPermissionStatus(contactsStatus: string, calendarStatus: string): string {
+  return `contacts:${contactsStatus};calendar:${calendarStatus}`;
 }
 
 async function retryPromptForDuplicateContact({
@@ -407,6 +581,10 @@ function isPastCooldown(lastNotifiedAt: string | undefined, now: string): boolea
 
 function warningKey(userId: string, sensorName: string, warningCode: string): string {
   return `${userId}:${sensorName}:${warningCode}`;
+}
+
+function sensorStateKey(userId: string, sensorName: string, deviceId: string): string {
+  return `${userId}:${sensorName}:${deviceId}`;
 }
 
 function errorMessage(error: unknown): string {

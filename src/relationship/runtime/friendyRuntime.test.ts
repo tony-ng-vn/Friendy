@@ -102,6 +102,47 @@ describe("Friendy macOS sensor runtime", () => {
     expect(harness.prompts[0].text).toBe(
       "Friendy can still notice new contacts, but I need Calendar permission to guess where you met them."
     );
+    expect(harness.state.getSensorState("user_friendy", "macos_contacts_calendar", "mac_1")).toMatchObject({
+      userId: "user_friendy",
+      sensorName: "macos_contacts_calendar",
+      deviceId: "mac_1",
+      baselineCompletedAt: undefined,
+      lastSuccessAt: "2026-05-21T18:36:51.000Z",
+      lastPermissionStatus: "contacts:authorized;calendar:denied",
+      stateJson: {
+        lastEventType: "ready",
+        runId: "sensor_run_1",
+        contactsPermissionStatus: "authorized",
+        calendarPermissionStatus: "denied",
+        baselineCreated: false
+      }
+    });
+  });
+
+  it("records history reset in sensor state without creating prompts", async () => {
+    const harness = createHarness();
+
+    await harness.runtime.processLine(
+      JSON.stringify({
+        ...baseEvent("history_reset"),
+        idempotencyKey: "history_reset:mac_1:sensor_run_1:expired_token:2026-05-21T18:36:51Z",
+        reason: "expired_token",
+        detectedAt: "2026-05-21T18:36:51Z"
+      })
+    );
+
+    expect(harness.state.getSensorState("user_friendy", "macos_contacts_calendar", "mac_1")).toMatchObject({
+      userId: "user_friendy",
+      sensorName: "macos_contacts_calendar",
+      deviceId: "mac_1",
+      lastErrorCode: "history_reset:expired_token",
+      stateJson: {
+        lastEventType: "history_reset",
+        reason: "expired_token",
+        runId: "sensor_run_1"
+      }
+    });
+    expect(harness.prompts).toEqual([]);
   });
 
   it("creates one candidate, preserves stableId identity, scores events, and sends a prompt", async () => {
