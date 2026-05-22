@@ -1,6 +1,7 @@
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 import type {
   CalendarEvent,
+  CandidatePromptAttempt,
   ContactCandidate,
   ContactCandidateDetected,
   EventContextMatch,
@@ -15,6 +16,7 @@ export type RepositorySeed = {
   calendarEvents?: CalendarEvent[];
   candidates?: ContactCandidate[];
   eventMatches?: EventContextMatch[];
+  promptAttempts?: CandidatePromptAttempt[];
   memories?: RelationshipMemory[];
   interactions?: AgentInteraction[];
 };
@@ -37,6 +39,8 @@ export type RelationshipRepository = {
   listPendingCandidates(userId: string): ContactCandidate[];
   getCandidate(candidateId: string): ContactCandidate | undefined;
   listEventMatches(candidateId: string): EventContextMatch[];
+  recordPromptAttempt(attempt: CandidatePromptAttempt): CandidatePromptAttempt;
+  listCandidatePromptAttempts(candidateId: string): CandidatePromptAttempt[];
   markCandidatePrompted(
     candidateId: string,
     interactionId: string,
@@ -66,6 +70,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
   const calendarEvents = [...(seed.calendarEvents ?? [])];
   const candidates = [...(seed.candidates ?? [])];
   const eventMatches = [...(seed.eventMatches ?? [])];
+  const promptAttempts = [...(seed.promptAttempts ?? [])];
   const memories = [...(seed.memories ?? [])];
   const interactions = [...(seed.interactions ?? [])];
 
@@ -112,6 +117,20 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return eventMatches
         .filter((match) => match.candidateId === candidateId)
         .sort((a, b) => a.rank - b.rank);
+    },
+
+    recordPromptAttempt(attempt: CandidatePromptAttempt): CandidatePromptAttempt {
+      const existingIndex = promptAttempts.findIndex((item) => item.id === attempt.id);
+      if (existingIndex >= 0) {
+        promptAttempts[existingIndex] = attempt;
+      } else {
+        promptAttempts.push(attempt);
+      }
+      return attempt;
+    },
+
+    listCandidatePromptAttempts(candidateId: string): CandidatePromptAttempt[] {
+      return promptAttempts.filter((attempt) => attempt.candidateId === candidateId);
     },
 
     confirmCandidate(

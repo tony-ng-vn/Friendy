@@ -90,6 +90,20 @@ export type EventContextMatch = {
   rank: number;
 };
 
+export type CandidatePromptAttemptStatus = "send_started" | "send_succeeded" | "send_failed";
+
+/** Durable prompt delivery audit used to recover candidate prompts after process restarts. */
+export type CandidatePromptAttempt = {
+  id: string;
+  candidateId: string;
+  interactionId?: string;
+  spectrumSpaceId?: string;
+  status: CandidatePromptAttemptStatus;
+  errorCode?: string;
+  rawJson?: Record<string, unknown>;
+  createdAt: string;
+};
+
 /** User-approved memory that becomes searchable by vague relationship context. */
 export type RelationshipMemory = {
   id: string;

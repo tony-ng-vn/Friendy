@@ -229,6 +229,45 @@ describe("sqlite relationship repository", () => {
     expect(reopened.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
   });
 
+  it("persists candidate prompt attempts across repository instances", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.recordPromptAttempt({
+      id: "prompt_attempt_sqlite_1",
+      candidateId: candidate.id,
+      interactionId: "interaction_prompt_sqlite_1",
+      spectrumSpaceId: "imessage_space_sqlite_prompt",
+      status: "send_succeeded",
+      rawJson: {
+        route: "single"
+      },
+      createdAt: "2026-05-21T18:36:51.000Z"
+    });
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(reopened.listCandidatePromptAttempts(candidate.id)).toEqual([
+      expect.objectContaining({
+        id: "prompt_attempt_sqlite_1",
+        candidateId: candidate.id,
+        interactionId: "interaction_prompt_sqlite_1",
+        spectrumSpaceId: "imessage_space_sqlite_prompt",
+        status: "send_succeeded",
+        rawJson: {
+          route: "single"
+        },
+        createdAt: "2026-05-21T18:36:51.000Z"
+      })
+    ]);
+  });
+
   it("rejects confirming ignored or already confirmed candidates", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({

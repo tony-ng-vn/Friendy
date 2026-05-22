@@ -18,6 +18,7 @@ import {
 import type {
   AgentInteraction,
   CalendarEvent,
+  CandidatePromptAttempt,
   ContactCandidate,
   ContactCandidateDetected,
   EventContextMatch,
@@ -42,7 +43,13 @@ type RawJsonRow = {
   raw_json: string;
 };
 
-type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "memories" | "interactions";
+type InsertOrderedTable =
+  | "calendar_events"
+  | "candidates"
+  | "event_matches"
+  | "candidate_prompt_attempts"
+  | "memories"
+  | "interactions";
 
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
   const seed = options.seed;
@@ -117,6 +124,21 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     listEventMatches,
+
+    recordPromptAttempt(attempt: CandidatePromptAttempt): CandidatePromptAttempt {
+      upsertPromptAttempt(db, attempt);
+      return attempt;
+    },
+
+    listCandidatePromptAttempts(candidateId: string): CandidatePromptAttempt[] {
+      return readRows<CandidatePromptAttempt>(
+        db
+          .prepare(
+            "SELECT raw_json FROM candidate_prompt_attempts WHERE candidate_id = ? ORDER BY created_at, insert_order, id"
+          )
+          .all(candidateId)
+      );
+    },
 
     markCandidatePrompted(
       candidateId: string,
@@ -531,6 +553,21 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS event_matches_candidate_rank_idx
       ON event_matches(candidate_id, rank);
 
+    CREATE TABLE IF NOT EXISTS candidate_prompt_attempts (
+      id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
+      candidate_id TEXT NOT NULL,
+      interaction_id TEXT,
+      spectrum_space_id TEXT,
+      status TEXT NOT NULL,
+      error_code TEXT,
+      created_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS prompt_attempts_candidate_created_idx
+      ON candidate_prompt_attempts(candidate_id, created_at);
+
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       insert_order INTEGER NOT NULL,
@@ -630,6 +667,9 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
   }
   for (const match of seed.eventMatches ?? []) {
     upsertEventMatch(db, match);
+  }
+  for (const attempt of seed.promptAttempts ?? []) {
+    upsertPromptAttempt(db, attempt);
   }
   for (const memory of seed.memories ?? []) {
     insertMemory(db, memory);
@@ -733,6 +773,35 @@ function upsertEventMatch(db: DatabaseSync, match: EventContextMatch): void {
     match.confidence,
     match.rank,
     stringify(match)
+  );
+}
+
+function upsertPromptAttempt(db: DatabaseSync, attempt: CandidatePromptAttempt): void {
+  db.prepare(
+    `
+      INSERT INTO candidate_prompt_attempts (
+        id, insert_order, candidate_id, interaction_id, spectrum_space_id, status, error_code, created_at, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        candidate_id = excluded.candidate_id,
+        interaction_id = excluded.interaction_id,
+        spectrum_space_id = excluded.spectrum_space_id,
+        status = excluded.status,
+        error_code = excluded.error_code,
+        created_at = excluded.created_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    attempt.id,
+    nextInsertOrder(db, "candidate_prompt_attempts"),
+    attempt.candidateId,
+    attempt.interactionId ?? null,
+    attempt.spectrumSpaceId ?? null,
+    attempt.status,
+    attempt.errorCode ?? null,
+    attempt.createdAt,
+    stringify(attempt)
   );
 }
 

@@ -456,16 +456,52 @@ async function sendCandidatePrompt({
   promptedAt: string;
 }): Promise<void> {
   const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
+  repo.recordPromptAttempt({
+    id: createPromptAttemptId(candidate.id, "send_started", promptedAt),
+    candidateId: candidate.id,
+    status: "send_started",
+    rawJson: {
+      prompt
+    },
+    createdAt: promptedAt
+  });
   try {
     const result = await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
-    repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`, {
+    const interactionId = result.interactionId ?? `prompt_${candidate.id}`;
+    repo.recordPromptAttempt({
+      id: createPromptAttemptId(candidate.id, "send_succeeded", promptedAt),
+      candidateId: candidate.id,
+      interactionId,
+      spectrumSpaceId: result.spaceId,
+      status: "send_succeeded",
+      rawJson: {
+        prompt
+      },
+      createdAt: promptedAt
+    });
+    repo.markCandidatePrompted(candidate.id, interactionId, {
       spaceId: result.spaceId,
       promptedAt
     });
   } catch (error) {
+    repo.recordPromptAttempt({
+      id: createPromptAttemptId(candidate.id, "send_failed", promptedAt),
+      candidateId: candidate.id,
+      status: "send_failed",
+      errorCode: "prompt_send_failed",
+      rawJson: {
+        prompt,
+        error: errorMessage(error)
+      },
+      createdAt: promptedAt
+    });
     repo.markCandidatePromptFailed(candidate.id, "prompt_send_failed");
     logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);
   }
+}
+
+function createPromptAttemptId(candidateId: string, status: string, createdAt: string): string {
+  return `prompt_attempt_${candidateId}_${status}_${createdAt.replace(/[^0-9a-z]/gi, "")}`;
 }
 
 async function warnOwner({

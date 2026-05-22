@@ -178,6 +178,20 @@ describe("Friendy macOS sensor runtime", () => {
       status: "candidate_created",
       candidateId: candidate.id
     });
+    expect(harness.repo.listCandidatePromptAttempts(candidate.id)).toEqual([
+      expect.objectContaining({
+        candidateId: candidate.id,
+        status: "send_started",
+        createdAt: "2026-05-21T18:36:51.000Z"
+      }),
+      expect.objectContaining({
+        candidateId: candidate.id,
+        interactionId: "interaction_1",
+        spectrumSpaceId: "imessage_space_prompt_1",
+        status: "send_succeeded",
+        createdAt: "2026-05-21T18:36:51.000Z"
+      })
+    ]);
   });
 
   it("leaves a sensor-created candidate pending when proactive prompt delivery fails", async () => {
@@ -201,6 +215,19 @@ describe("Friendy macOS sensor runtime", () => {
       status: "candidate_created",
       candidateId: candidate.id
     });
+    expect(harness.repo.listCandidatePromptAttempts(candidate.id)).toEqual([
+      expect.objectContaining({
+        candidateId: candidate.id,
+        status: "send_started",
+        createdAt: "2026-05-21T18:36:51.000Z"
+      }),
+      expect.objectContaining({
+        candidateId: candidate.id,
+        status: "send_failed",
+        errorCode: "prompt_send_failed",
+        createdAt: "2026-05-21T18:36:51.000Z"
+      })
+    ]);
   });
 
   it("does not create duplicate candidates or prompts for replayed idempotency keys", async () => {
