@@ -4,5 +4,6 @@ export const behaviorContractCaseNames = [
   "ambiguous search asks for clarification",
   "follow-up clue narrows previous search",
   "broad related-contact recall reaches search",
+  "vague document recall reaches search",
   "unrelated request redirects to relationship memory scope"
 ] as const;

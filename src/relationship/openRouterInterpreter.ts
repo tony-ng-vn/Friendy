@@ -407,6 +407,11 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "find",
   "show",
   "list",
+  "did",
+  "i",
+  "save",
+  "saved",
+  "while",
   "was",
   "is",
   "the"

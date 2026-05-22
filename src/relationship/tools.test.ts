@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools, normalizeMemorySearchQuery } from "./tools";
@@ -110,6 +111,9 @@ describe("relationship tools", () => {
     expect(normalizeMemorySearchQuery("Who was from the Mac sensor debugging thing?")).toBe(
       "mac sensor debugging thing"
     );
+    expect(normalizeMemorySearchQuery("Who did I save while debugging the Mac contact watcher?")).toBe(
+      "debugging mac watcher"
+    );
     expect(normalizeMemorySearchQuery("friendy friendy")).toBe("friendy");
   });
 
@@ -142,6 +146,31 @@ describe("relationship tools", () => {
 
     expect(results.map((result) => result.memory.displayName)).toEqual(["Maya"]);
     expect(results[0].reason).toContain("document");
+  });
+
+  it("merges repository retrieval candidates with field-aware search results", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [memory("Maya", "Demo Prep", "met at the builder dinner")]
+    });
+    const searchMemoryDocuments = vi.fn(() => [
+      {
+        memoryId: "memory_maya",
+        source: "fts" as const,
+        score: 9,
+        matchedTerms: ["debugg", "week"]
+      }
+    ]);
+    const tools = createRelationshipTools({
+      ...repo,
+      searchMemoryDocuments
+    });
+
+    const results = tools.search_memories(fixtureUser.id, "debugging week");
+
+    expect(searchMemoryDocuments).toHaveBeenCalledWith(fixtureUser.id, "debugging week", ["debugg", "week"]);
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Maya"]);
+    expect(results[0].reason).toContain("fts");
   });
 
   it("updates a memory through a bounded tool and records a revision", () => {

@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createCandidateId } from "./eventMapper";
-import { buildMemorySearchDocument, scoreMemorySearchDocument } from "./memorySearchDocument";
+import { buildMemorySearchDocument, scoreMemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
@@ -31,6 +31,7 @@ type InternalMemorySearchResult = MemorySearchResult & {
   coverage: number;
   eventScore: number;
   specificScore: number;
+  matchedTerms: string[];
 };
 
 type CreateManualMemoryOptions = {
@@ -70,10 +71,13 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
       const queryAnalysis = analyzeSearchQuery(query);
+      const repositoryCandidates = groupRetrievalCandidates(
+        repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
+      );
 
       const scored = repo
         .listMemories(userId)
-        .map((memory) => scoreMemory(memory, queryAnalysis))
+        .map((memory) => mergeRepositoryCandidates(scoreMemory(memory, queryAnalysis), repositoryCandidates.get(memory.id) ?? [], queryAnalysis))
         .filter((result) => result.score > 0)
         .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
 
@@ -250,11 +254,76 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
     coverage,
     eventScore,
     specificScore,
+    matchedTerms: [...matched],
     reason:
       matched.size > 0
         ? [`Matched ${[...matched].join(", ")}.`, ...reasonParts].join(" ")
         : `No searchable field matched.`
   };
+}
+
+function mergeRepositoryCandidates(
+  result: InternalMemorySearchResult,
+  candidates: RetrievalCandidate[],
+  query: SearchQueryAnalysis
+): InternalMemorySearchResult {
+  if (candidates.length === 0) {
+    return result;
+  }
+
+  const matched = new Set(result.matchedTerms);
+  let score = result.score;
+  let specificScore = result.specificScore;
+  const reasonParts: string[] = [];
+
+  for (const candidate of candidates) {
+    const newTerms = candidate.matchedTerms.filter((term) => !matched.has(term));
+    if (newTerms.length === 0) {
+      continue;
+    }
+
+    const weightedScore = candidate.score * retrievalSourceWeight(candidate.source);
+    score += weightedScore;
+    specificScore += weightedScore;
+    for (const term of newTerms) {
+      matched.add(term);
+    }
+    reasonParts.push(`${candidate.source} matched ${newTerms.join(", ")}`);
+  }
+
+  if (reasonParts.length === 0) {
+    return result;
+  }
+
+  return {
+    ...result,
+    score,
+    specificScore,
+    coverage: query.terms.length === 0 ? 0 : matched.size / query.terms.length,
+    matchedTerms: [...matched],
+    reason: [result.reason, ...reasonParts].join(" ")
+  };
+}
+
+function groupRetrievalCandidates(candidates: RetrievalCandidate[]): Map<string, RetrievalCandidate[]> {
+  const grouped = new Map<string, RetrievalCandidate[]>();
+  for (const candidate of candidates) {
+    grouped.set(candidate.memoryId, [...(grouped.get(candidate.memoryId) ?? []), candidate]);
+  }
+  return grouped;
+}
+
+function retrievalSourceWeight(source: RetrievalCandidate["source"]): number {
+  if (source === "document_lexical") {
+    return 0.6;
+  }
+  if (source === "fts") {
+    return 0.8;
+  }
+  if (source === "embedding") {
+    return 0.7;
+  }
+  return 1;
 }
 
 function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
@@ -459,6 +528,11 @@ const GENERIC_MEMORY_QUERY_TERMS = new Set([
   "find",
   "show",
   "list",
+  "did",
+  "i",
+  "save",
+  "saved",
+  "while",
   "was",
   "is",
   "the"

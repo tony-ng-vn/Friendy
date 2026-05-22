@@ -205,6 +205,11 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "broad related-contact recall returns seeded contacts",
     "broad related-contact recall does not redirect"
   ]),
+  evalCase("hybrid-document-vague-recall", "interpreted", [
+    "vague document recall calls search",
+    "vague document recall returns matching seeded contact",
+    "vague document recall excludes unrelated contact"
+  ]),
   evalCase("friendy-doctor-setup-failure-copy", "deterministic", [
     "setup failure copy says what is broken and what to do next",
     "setup failure copy includes mock-mode fallback"
@@ -872,6 +877,35 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[29],
+    async run({ interpreter, now }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          {
+            ...memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy"),
+            dateContext: {
+              rawText: "during Mac contact watcher debugging week",
+              localDate: "2026-05-22",
+              startsAt: "2026-05-22T00:00:00.000Z",
+              timezone: "America/Los_Angeles"
+            }
+          },
+          memory("memory_nina_demo", "Nina Park", "Met at unrelated demo prep", "demo prep")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const result = await agent.handleMessage(interpretedInbound("Who did I save while debugging the Mac contact watcher?"));
+
+      return [
+        assertion("vague document recall calls search", "intent", result.toolCalls.includes("search_memories")),
+        assertion("vague document recall returns matching seeded contact", "searchRecall", result.outbound.text.includes("Testing 12")),
+        assertion("vague document recall excludes unrelated contact", "hallucination", !result.outbound.text.includes("Nina Park"))
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[30],
     async run() {
       const cwd = mkdtempSync(join(tmpdir(), "friendy-doctor-eval-"));
       try {
