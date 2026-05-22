@@ -53,7 +53,7 @@ describe("interpreted relationship agent", () => {
     );
 
     const memories = repo.listMemories(fixtureUser.id);
-    expect(result.outbound.text).toContain("Saved");
+    expect(result.outbound.text).toContain("Got it, saved");
     expect(memories[0]).toMatchObject({
       displayName: "Amaya",
       primaryContactLabel: "manual contact"

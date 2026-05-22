@@ -33,7 +33,7 @@ describe("spectrum transport", () => {
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
 
-    expect(result.replyText).toContain("Saved");
+    expect(result.replyText).toContain("Got it, saved");
     expect(result.log).toMatchObject({
       intent: "capture_memory",
       modelUsed: "rule-based-fallback",

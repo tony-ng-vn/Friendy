@@ -72,7 +72,7 @@ describe("relationship agent core", () => {
 
     expect(result.toolCalls).toContain("list_pending_candidates");
     expect(result.toolCalls).toContain("confirm_candidate");
-    expect(result.outbound.text).toContain("Saved");
+    expect(result.outbound.text).toContain("Got it, saved");
     expect(result.outbound.text).toContain("Maya Chen");
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
@@ -294,7 +294,7 @@ describe("relationship agent core", () => {
       receivedAt: "2026-05-20T12:03:00.000Z"
     });
 
-    expect(saveResult.outbound.text).toContain("Saved");
+    expect(saveResult.outbound.text).toContain("Got it, saved");
     expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({
       displayName: "Amaya"
     });
