@@ -43,4 +43,35 @@ describe("redacted runtime trace", () => {
     expect(serialized).not.toContain("rawName");
     expect(serialized).not.toContain("rawNote");
   });
+
+  it("records redacted route policy and tool status", () => {
+    const trace = buildRedactedInteractionTrace({
+      inboundText: "Anyone in my contacts related to friendy?",
+      interpretedIntentJson: {
+        intent: "search_memory",
+        confidence: 0.95,
+        domain: "relationship_memory",
+        search: {
+          mode: "list_related_people",
+          exactTerms: ["friendy"]
+        },
+        policyDecision: { decision: "allow" },
+        normalizedQuery: "friendy"
+      },
+      toolCalls: ["search_memories"],
+      outboundText: "I found Testing 1 and Testing 12.",
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(trace.route).toMatchObject({
+      domain: "relationship_memory",
+      intent: "search_memory",
+      confidence: 0.95,
+      searchMode: "list_related_people",
+      exactTerms: ["friendy"],
+      normalizedQuery: "friendy"
+    });
+    expect(trace.policy).toEqual({ decision: "allow" });
+    expect(trace.tools).toEqual([{ name: "search_memories", status: "called" }]);
+  });
 });

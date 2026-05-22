@@ -249,6 +249,17 @@ describe("interpreted relationship agent", () => {
         exactTerms: ["friendy"]
       }
     });
+    expect(result.interaction.redactedTraceJson).toMatchObject({
+      route: {
+        domain: "relationship_memory",
+        intent: "search_memory",
+        searchMode: "list_related_people",
+        exactTerms: ["friendy"],
+        normalizedQuery: "friendy"
+      },
+      policy: { decision: "allow" },
+      tools: [{ name: "search_memories", status: "called" }]
+    });
   });
 
   it("handles ignore without a pending candidate through the interpreted path", async () => {

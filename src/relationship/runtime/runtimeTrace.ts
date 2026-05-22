@@ -8,6 +8,17 @@ export type AgentTrace = {
   scopeDecision: string;
   interpretedIntent?: { intent: string; confidence?: number };
   toolCalls: Array<{ name: AgentToolCall; result: "success" | "error" | "blocked" }>;
+  hardBlock?: { blocked: boolean; reason?: string };
+  route?: {
+    domain?: string;
+    intent: string;
+    confidence?: number;
+    searchMode?: string;
+    exactTerms?: string[];
+    normalizedQuery?: string;
+  };
+  policy?: { decision: "allow" | "reject" | "clarify"; reason?: string };
+  tools: Array<{ name: AgentToolCall; status: "called" | "skipped" | "failed" }>;
   candidateIdsTouched: string[];
   memoryIdsTouched: string[];
   search?: {
@@ -46,6 +57,10 @@ export function buildRedactedInteractionTrace(input: TraceInput): AgentTrace {
     scopeDecision: scopeDecisionFromInterpretation(input.interpretedIntentJson),
     interpretedIntent: intentFromInterpretation(input.interpretedIntentJson),
     toolCalls: input.toolCalls.map((name) => ({ name, result: "success" })),
+    hardBlock: hardBlockFromInterpretation(input.interpretedIntentJson),
+    route: routeFromInterpretation(input.interpretedIntentJson),
+    policy: policyFromInterpretation(input.interpretedIntentJson),
+    tools: input.toolCalls.map((name) => ({ name, status: "called" })),
     candidateIdsTouched: input.candidateIdsTouched ?? [],
     memoryIdsTouched: input.memoryIdsTouched ?? [],
     search: redactSearch(input.search),
@@ -68,6 +83,74 @@ function redactSearch(search: TraceSearchInput | undefined): AgentTrace["search"
       reasons: match.reasons.map(() => "redacted_reason")
     })),
     outcome: search.outcome
+  };
+}
+
+function hardBlockFromInterpretation(value: unknown): AgentTrace["hardBlock"] {
+  if (typeof value !== "object" || value === null || !("scopeDecision" in value)) {
+    return undefined;
+  }
+
+  const scopeDecision = (value as { scopeDecision?: unknown }).scopeDecision;
+  if (typeof scopeDecision !== "object" || scopeDecision === null || !("scope" in scopeDecision)) {
+    return undefined;
+  }
+
+  const scope = String((scopeDecision as { scope: unknown }).scope);
+  if (scope !== "out_of_scope") {
+    return undefined;
+  }
+
+  return {
+    blocked: true,
+    reason: typeof (scopeDecision as { reason?: unknown }).reason === "string" ? (scopeDecision as { reason: string }).reason : undefined
+  };
+}
+
+function routeFromInterpretation(value: unknown): AgentTrace["route"] {
+  if (typeof value !== "object" || value === null || !("intent" in value)) {
+    return undefined;
+  }
+
+  const route = value as {
+    intent?: unknown;
+    confidence?: unknown;
+    domain?: unknown;
+    search?: { mode?: unknown; exactTerms?: unknown };
+    normalizedQuery?: unknown;
+  };
+
+  return {
+    domain: typeof route.domain === "string" ? route.domain : undefined,
+    intent: String(route.intent ?? "unknown"),
+    confidence: typeof route.confidence === "number" ? route.confidence : undefined,
+    searchMode: typeof route.search?.mode === "string" ? route.search.mode : undefined,
+    exactTerms: Array.isArray(route.search?.exactTerms) ? route.search.exactTerms.map(String) : undefined,
+    normalizedQuery: typeof route.normalizedQuery === "string" ? route.normalizedQuery : undefined
+  };
+}
+
+function policyFromInterpretation(value: unknown): AgentTrace["policy"] {
+  if (typeof value !== "object" || value === null || !("policyDecision" in value)) {
+    return undefined;
+  }
+
+  const policyDecision = (value as { policyDecision?: unknown }).policyDecision;
+  if (typeof policyDecision !== "object" || policyDecision === null || !("decision" in policyDecision)) {
+    return undefined;
+  }
+
+  const decision = String((policyDecision as { decision: unknown }).decision);
+  if (decision !== "allow" && decision !== "reject" && decision !== "clarify") {
+    return undefined;
+  }
+
+  return {
+    decision,
+    reason:
+      typeof (policyDecision as { reason?: unknown }).reason === "string"
+        ? (policyDecision as { reason: string }).reason
+        : undefined
   };
 }
 

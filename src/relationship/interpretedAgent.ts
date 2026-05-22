@@ -306,6 +306,8 @@ export function createInterpretedRelationshipAgent({
         message.text
       );
       const toolCalls: AgentToolCall[] = [];
+      const searchRequestForTrace =
+        interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
       const outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls);
       conversationContexts.set(
         message.userId,
@@ -316,10 +318,16 @@ export function createInterpretedRelationshipAgent({
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
         userId: message.userId,
         platform: message.platform,
-        spaceId: message.spaceId,
-        inboundText: message.text,
-        interpretedIntentJson: { ...interpretation, scopeDecision, interpretation },
-        outboundText,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...interpretation,
+            scopeDecision,
+            interpretation,
+            policyDecision: { decision: "allow" },
+            normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined
+          },
+          outboundText,
         toolCalls,
         modelUsed: interpreted.modelUsed,
         confidence: interpretation.confidence,
