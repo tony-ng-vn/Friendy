@@ -19,7 +19,7 @@ import { runFriendyDoctor } from "../runtime/friendyDoctor";
 import { planCandidatePrompt } from "../runtime/promptPlanner";
 import { createRelationshipTools } from "../tools";
 import { createSpectrumFriendyRuntime } from "../transports/spectrumTransport";
-import type { CalendarEvent, ContactCandidateDetected, InboundAgentMessage } from "../types";
+import type { CalendarEvent, ContactCandidateDetected, InboundAgentMessage, RelationshipMemory } from "../types";
 
 export type AgentEvalMode = "deterministic" | "interpreted" | "spectrum";
 
@@ -199,6 +199,11 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   ]),
   evalCase("delete-removes-memory-from-search", "interpreted", [
     "delete memory removes it from search results"
+  ]),
+  evalCase("broad-related-contact-recall", "interpreted", [
+    "broad related-contact recall calls search",
+    "broad related-contact recall returns seeded contacts",
+    "broad related-contact recall does not redirect"
   ]),
   evalCase("friendy-doctor-setup-failure-copy", "deterministic", [
     "setup failure copy says what is broken and what to do next",
@@ -834,6 +839,39 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[28],
+    async run({ interpreter, now }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_testing_1", "Testing 1", "Testing Friendy", "testing Friendy"),
+          memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const result = await agent.handleMessage(interpretedInbound("Anyone in my contacts related to friendy?"));
+
+      return [
+        assertion(
+          "broad related-contact recall calls search",
+          "intent",
+          result.toolCalls.includes("search_memories")
+        ),
+        assertion(
+          "broad related-contact recall returns seeded contacts",
+          "searchRecall",
+          includesAll(result.outbound.text, ["Testing 1", "Testing 12"])
+        ),
+        assertion(
+          "broad related-contact recall does not redirect",
+          "scopeBoundary",
+          !result.outbound.text.includes("people you know")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[29],
     async run() {
       const cwd = mkdtempSync(join(tmpdir(), "friendy-doctor-eval-"));
       try {
@@ -1047,6 +1085,21 @@ function interpretedInboundAt(text: string, receivedAt: string): InboundAgentMes
   return {
     ...interpretedInbound(text),
     receivedAt
+  };
+}
+
+function memory(id: string, displayName: string, contextNote: string, eventTitle: string): RelationshipMemory {
+  return {
+    id,
+    userId: fixtureUser.id,
+    displayName,
+    primaryContactLabel: "contact saved",
+    eventTitle,
+    contextNote,
+    tags: contextNote.toLowerCase().split(/\s+/).filter(Boolean),
+    confidence: 0.8,
+    createdAt: "2026-05-20T12:00:00.000Z",
+    updatedAt: "2026-05-20T12:00:00.000Z"
   };
 }
 
