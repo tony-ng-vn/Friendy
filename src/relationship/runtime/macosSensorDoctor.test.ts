@@ -71,6 +71,65 @@ describe("macOS sensor doctor and build scaffold", () => {
     expect(output).toContain("Native Contacts/EventKit verification: requires macOS");
   });
 
+  it("reports TCC usage descriptions and entitlements required by packaged macOS runs", () => {
+    const cwd = tempDir();
+    writePackagingFiles(cwd, {
+      infoPlist: `
+        <plist><dict>
+          <key>NSContactsUsageDescription</key><string>Friendy detects newly added contacts.</string>
+          <key>NSCalendarsFullAccessUsageDescription</key><string>Friendy uses nearby calendar events as context.</string>
+          <key>NSCalendarsUsageDescription</key><string>Friendy uses nearby calendar events as context.</string>
+        </dict></plist>
+      `,
+      entitlements: `
+        <plist><dict>
+          <key>com.apple.security.personal-information.addressbook</key><true/>
+          <key>com.apple.security.personal-information.calendars</key><true/>
+        </dict></plist>
+      `
+    });
+
+    const report = runMacosSensorDoctor({
+      cwd,
+      platform: "linux",
+      execFileSync(command, args) {
+        if (command === "swift" && args[0] === "--version") {
+          return "Swift version 5.10";
+        }
+        throw new Error("unexpected command");
+      }
+    });
+
+    const output = report.lines.join("\n");
+    expect(output).toContain("TCC Info.plist: present");
+    expect(output).toContain("Contacts usage description: present");
+    expect(output).toContain("Calendar full-access usage description: present");
+    expect(output).toContain("Calendar legacy usage description: present");
+    expect(output).toContain("TCC entitlements: present");
+    expect(output).toContain("AddressBook entitlement: present");
+    expect(output).toContain("Calendar entitlement: present");
+  });
+
+  it("reports missing TCC packaging metadata clearly", () => {
+    const cwd = tempDir();
+    const report = runMacosSensorDoctor({
+      cwd,
+      platform: "linux",
+      execFileSync(command, args) {
+        if (command === "swift" && args[0] === "--version") {
+          return "Swift version 5.10";
+        }
+        throw new Error("unexpected command");
+      }
+    });
+
+    const output = report.lines.join("\n");
+    expect(output).toContain("TCC Info.plist: missing");
+    expect(output).toContain("Contacts usage description: missing");
+    expect(output).toContain("Calendar full-access usage description: missing");
+    expect(output).toContain("TCC entitlements: missing");
+  });
+
   it("reports missing Swift clearly when the toolchain is unavailable", () => {
     const cwd = tempDir();
     const report = runMacosSensorDoctor({
@@ -107,6 +166,13 @@ describe("macOS sensor doctor and build scaffold", () => {
     expect(report.lines.join("\n")).toContain("ad-hoc signed");
   });
 });
+
+function writePackagingFiles(cwd: string, input: { infoPlist: string; entitlements: string }): void {
+  const packagingDir = join(cwd, "swift/FriendyMacOSSensor/Packaging");
+  mkdirSync(packagingDir, { recursive: true });
+  writeFileSync(join(packagingDir, "Info.plist"), input.infoPlist);
+  writeFileSync(join(packagingDir, "FriendyMacOSSensor.entitlements"), input.entitlements);
+}
 
 function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "friendy-macos-doctor-"));

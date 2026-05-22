@@ -1,5 +1,5 @@
 import { execFileSync as defaultExecFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export type MacosSensorDoctorInput = {
@@ -26,6 +26,7 @@ export function runMacosSensorDoctor({
   lines.push(`Swift: ${readSwiftVersion(execFileSync)}`);
   lines.push(`Swift package: ${existsSync(join(cwd, "swift/FriendyMacOSSensor/Package.swift")) ? "present" : "missing"}`);
   lines.push(`Swift sources: ${requiredSwiftSourcesPresent(cwd) ? "present" : "missing"}`);
+  lines.push(...tccPackagingLines(cwd));
   lines.push(`Native Contacts/EventKit verification: ${platform === "darwin" ? "available on this host" : "requires macOS"}`);
 
   if (!existsSync(binaryPath)) {
@@ -62,6 +63,42 @@ function requiredSwiftSourcesPresent(cwd: string): boolean {
   return ["main.swift", "SensorCLI.swift", "SensorEvents.swift", "NativeMacosSensor.swift"].every((filename) =>
     existsSync(join(sourceRoot, filename))
   );
+}
+
+function tccPackagingLines(cwd: string): string[] {
+  const packagingRoot = join(cwd, "swift/FriendyMacOSSensor/Packaging");
+  const infoPlistPath = join(packagingRoot, "Info.plist");
+  const entitlementsPath = join(packagingRoot, "FriendyMacOSSensor.entitlements");
+  const infoPlist = readOptionalText(infoPlistPath);
+  const entitlements = readOptionalText(entitlementsPath);
+
+  return [
+    `TCC Info.plist: ${infoPlist ? "present" : "missing"}`,
+    `Contacts usage description: ${containsKey(infoPlist, "NSContactsUsageDescription") ? "present" : "missing"}`,
+    `Calendar full-access usage description: ${
+      containsKey(infoPlist, "NSCalendarsFullAccessUsageDescription") ? "present" : "missing"
+    }`,
+    `Calendar legacy usage description: ${containsKey(infoPlist, "NSCalendarsUsageDescription") ? "present" : "missing"}`,
+    `TCC entitlements: ${entitlements ? "present" : "missing"}`,
+    `AddressBook entitlement: ${
+      containsKey(entitlements, "com.apple.security.personal-information.addressbook") ? "present" : "missing"
+    }`,
+    `Calendar entitlement: ${
+      containsKey(entitlements, "com.apple.security.personal-information.calendars") ? "present" : "missing"
+    }`
+  ];
+}
+
+function readOptionalText(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function containsKey(text: string | undefined, key: string): boolean {
+  return Boolean(text?.includes(key));
 }
 
 function firstLine(value: string): string {

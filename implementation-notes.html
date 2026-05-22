@@ -85,6 +85,7 @@
       <li>Changed manual iMessage memory capture to create a synthetic <code>manual</code> candidate and immediately confirm it through the same candidate-to-memory path as sensor detections. This keeps saved relationship memories linked to candidate provenance while preserving the existing manual save tool surface.</li>
       <li>Added duplicate <code>contact_added</code> retry behavior for failed prompt delivery. If a sensor event replays after the candidate was persisted but prompt delivery failed, the runtime reuses the pending candidate and retries the prompt instead of blindly dropping the duplicate idempotency key.</li>
       <li>Hardened the Swift outbox replay contract so pending outbox batches reload their saved after-token, re-emit their events, emit <code>history_batch_complete</code>, then wait for Node's ack before advancing the Contacts history token and cleaning up the outbox token file.</li>
+      <li>Added Swift sensor TCC packaging metadata and doctor checks for Contacts/Calendar usage descriptions plus personal-information entitlements. These files make the expected permission shape auditable in-repo; actual TCC behavior still requires running the built sensor on macOS.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -165,6 +166,8 @@
       <li>Ran duplicate prompt retry final verification: <code>npm test</code> passed with 40 files and 194 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases, <code>npm run doctor:macos-sensor</code> passed with expected Linux/native verification guidance, <code>npm run agent:friendy:check</code> passed, and <code>git diff --check</code> passed.</li>
       <li>For Swift outbox replay hardening, first ran a RED source-contract test showing replay did not load <code>tokenAfterPath</code> or wait for ack before token advancement. After implementation, <code>npm test -- src/relationship/runtime/macosSensorSource.test.ts</code> passed with 6 tests.</li>
       <li>Ran Swift outbox replay final verification: <code>npm test</code> passed with 40 files and 196 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases, <code>npm run doctor:macos-sensor</code> passed with expected Linux/native verification guidance, <code>npm run agent:friendy:check</code> passed, and <code>git diff --check</code> passed.</li>
+      <li>For macOS TCC diagnostics, first ran RED doctor tests where usage-description and entitlement metadata was not reported. After implementation, <code>npm test -- src/relationship/runtime/macosSensorDoctor.test.ts</code> passed with 8 tests.</li>
+      <li>Ran macOS TCC diagnostics final verification: <code>npm test</code> passed with 40 files and 198 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases, <code>npm run doctor:macos-sensor</code> reported present TCC usage descriptions and entitlements, <code>npm run agent:friendy:check</code> passed, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>
