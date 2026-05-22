@@ -6,11 +6,28 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 const packagePath = join(repoRoot, "swift/FriendyMacOSSensor");
+const infoPlistPath = join(packagePath, "Packaging/Info.plist");
+const entitlementsPath = join(packagePath, "Packaging/FriendyMacOSSensor.entitlements");
 const builtBinaryPath = join(packagePath, ".build/release/friendy-macos-sensor");
 const outputBinaryPath = join(repoRoot, "bin/friendy-macos-sensor");
+const codesignIdentity = process.env.FRIENDY_CODESIGN_IDENTITY || "-";
 
 try {
-  execFileSync("swift", ["build", "-c", "release", "--package-path", packagePath], {
+  execFileSync("swift", [
+    "build",
+    "-c",
+    "release",
+    "--package-path",
+    packagePath,
+    "-Xlinker",
+    "-sectcreate",
+    "-Xlinker",
+    "__TEXT",
+    "-Xlinker",
+    "__info_plist",
+    "-Xlinker",
+    infoPlistPath
+  ], {
     stdio: "inherit"
   });
 
@@ -21,6 +38,22 @@ try {
   mkdirSync(dirname(outputBinaryPath), { recursive: true });
   copyFileSync(builtBinaryPath, outputBinaryPath);
   console.info(`Copied macOS sensor binary to ${outputBinaryPath}`);
+
+  if (process.platform === "darwin") {
+    execFileSync("codesign", [
+      "--force",
+      "--sign",
+      codesignIdentity,
+      "--entitlements",
+      entitlementsPath,
+      outputBinaryPath
+    ], {
+      stdio: "inherit"
+    });
+    console.info(`Signed macOS sensor binary with identity ${codesignIdentity}`);
+  } else {
+    console.info("Skipped codesign outside macOS.");
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   console.error("Build requires Swift Package Manager and is intended for local macOS sensor verification.");

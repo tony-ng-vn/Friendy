@@ -28,6 +28,23 @@ describe("macOS sensor doctor and build scaffold", () => {
     expect(script).not.toContain("swift run");
   });
 
+  it("build script embeds Info.plist and signs the copied binary with entitlements on macOS", () => {
+    const script = readFileSync("scripts/build-macos-sensor.mjs", "utf8");
+
+    expect(script).toContain("Packaging/Info.plist");
+    expect(script).toContain("-Xlinker");
+    expect(script).toContain("-sectcreate");
+    expect(script).toContain("__TEXT");
+    expect(script).toContain("__info_plist");
+    expect(script).toContain("Packaging/FriendyMacOSSensor.entitlements");
+    expect(script).toContain("FRIENDY_CODESIGN_IDENTITY");
+    expect(script).toContain("codesign");
+    expect(script).toContain("--entitlements");
+    expect(script).toContain("--force");
+    expect(script).toContain("--sign");
+    expect(script).toContain('process.platform === "darwin"');
+  });
+
   it("reports the expected binary path and clear missing-binary guidance", () => {
     const cwd = tempDir();
     const report = runMacosSensorDoctor({
