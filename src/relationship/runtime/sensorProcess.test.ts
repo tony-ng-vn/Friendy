@@ -9,7 +9,7 @@ describe("macOS sensor process wiring", () => {
     const processedLines: string[] = [];
 
     startSensorProcess({
-      launch: { command: "fake-sensor", args: ["--state-dir", ".friendy/state"] },
+      launch: { kind: "executable", command: "fake-sensor", args: ["--state-dir", ".friendy/state"] },
       spawnProcess() {
         return child;
       },
@@ -34,7 +34,7 @@ describe("macOS sensor process wiring", () => {
     const processedLines: string[] = [];
 
     startSensorProcess({
-      launch: { command: "fake-sensor", args: [] },
+      launch: { kind: "executable", command: "fake-sensor", args: [] },
       spawnProcess() {
         return child;
       },
@@ -59,7 +59,7 @@ describe("macOS sensor process wiring", () => {
 
     expect(() =>
       startSensorProcess({
-        launch: { command: "fake-sensor", args: [] },
+        launch: { kind: "executable", command: "fake-sensor", args: [] },
         spawnProcess() {
           return child;
         },

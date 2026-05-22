@@ -10,6 +10,15 @@ let package = Package(
         .executable(name: "friendy-macos-sensor", targets: ["FriendyMacOSSensor"])
     ],
     targets: [
-        .executableTarget(name: "FriendyMacOSSensor")
+        .target(
+            name: "ContactsHistoryBridge",
+            path: "Sources/ContactsHistoryBridge",
+            publicHeadersPath: "include"
+        ),
+        .executableTarget(
+            name: "FriendyMacOSSensor",
+            dependencies: ["ContactsHistoryBridge"],
+            path: "Sources/FriendyMacOSSensor"
+        )
     ]
 )

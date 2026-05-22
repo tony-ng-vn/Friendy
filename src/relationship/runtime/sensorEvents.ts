@@ -15,7 +15,16 @@ export const MACOS_SENSOR_NAME = "macos_contacts_calendar";
 /** Schema version enforced on every NDJSON line before type-specific parsing. */
 export const MACOS_SENSOR_SCHEMA_VERSION = 1;
 
-const permissionStatusSchema = z.enum(["authorized", "denied", "restricted", "notDetermined", "unavailable"]);
+const permissionStatusSchema = z.enum([
+  "authorized",
+  "fullAccess",
+  "writeOnly",
+  "denied",
+  "restricted",
+  "notDetermined",
+  "unavailable",
+  "limited"
+]);
 
 const commonEventSchema = z.object({
   schemaVersion: z.literal(MACOS_SENSOR_SCHEMA_VERSION),

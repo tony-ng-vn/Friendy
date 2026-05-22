@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
 import { resolveFriendyRuntimeConfig } from "./friendyRuntimeCli";
+import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
 export type FriendyDoctorCheck = {
   name: string;
@@ -102,7 +103,7 @@ function sensorCheck(cwd: string, env: Partial<NodeJS.ProcessEnv>): FriendyDocto
     return { name: "macos_sensor", ok: true, status: "mock_enabled" };
   }
 
-  const binaryPath = resolve(cwd, env.FRIENDY_SENSOR_BINARY_PATH || "bin/friendy-macos-sensor");
+  const binaryPath = resolveMacosSensorBinaryPath(cwd, env);
   const present = existsSync(binaryPath);
   return {
     name: "macos_sensor",

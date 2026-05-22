@@ -5,6 +5,7 @@ import Foundation
 
 #if os(macOS) && canImport(Contacts) && canImport(EventKit) && canImport(CryptoKit)
 import Contacts
+import ContactsHistoryBridge
 import CryptoKit
 import EventKit
 
@@ -63,6 +64,15 @@ final class NativeMacosSensor {
     private let contactStore: CNContactStore
     private let eventStore: EKEventStore
     private let fileManager: FileManager
+    private var contactsPollTimer: Timer?
+    private var contactEmitDebounceTimer: Timer?
+    private var isHandlingContactsChange = false
+    /// Contacts seen in history (add or update) but not emitted until they look saved (real name, not in-progress card).
+    private var pendingContactIdentifiers: Set<String> = []
+    private var pendingHistoryTokenAfter: Data?
+
+    /// Quiet period after the last add/update before re-fetching; mimics waiting until the user taps Done.
+    private static let contactEmitDebounceSeconds: TimeInterval = 5.0
 
     init(
         stateDir: String,
@@ -94,23 +104,40 @@ final class NativeMacosSensor {
     }
 
     func start() {
-        switch CNContactStore.authorizationStatus(for: .contacts) {
+        let status = CNContactStore.authorizationStatus(for: .contacts)
+        switch status {
         case .authorized:
             startAuthorized()
-        case .notDetermined:
-            contactStore.requestAccess(for: .contacts) { granted, _ in
-                if granted {
+        case .notDetermined, .limited:
+            requestContactsAccess { granted in
+                let resolved = CNContactStore.authorizationStatus(for: .contacts)
+                if granted || resolved == .authorized {
                     self.startAuthorized()
                 } else {
-                    emitContactsPermissionError(identity: self.identity)
+                    emitContactsPermissionError(identity: self.identity, status: resolved)
                     exit(1)
                 }
             }
         default:
-            emitContactsPermissionError(identity: identity)
+            emitContactsPermissionError(identity: identity, status: status)
             exit(1)
         }
         RunLoop.current.run()
+    }
+
+    private func requestContactsAccess(_ completion: @escaping (Bool) -> Void) {
+        let runRequest = {
+            prepareForSystemPermissionPrompt()
+            self.contactStore.requestAccess(for: .contacts) { granted, _ in
+                completion(granted)
+            }
+        }
+
+        if Thread.isMainThread {
+            runRequest()
+        } else {
+            DispatchQueue.main.async(execute: runRequest)
+        }
     }
 
     private func startAuthorized() {
@@ -137,8 +164,9 @@ final class NativeMacosSensor {
                 object: contactStore,
                 queue: nil
             ) { [weak self] _ in
-                self?.handleContactsChanged()
+                self?.scheduleContactsChanged()
             }
+            startContactsPolling()
         } catch {
             emitSensorEvent(fatalSensorEvent(code: "state_dir_unwritable", message: error.localizedDescription, identity: identity))
             exit(1)
@@ -154,7 +182,7 @@ final class NativeMacosSensor {
 
         if #available(macOS 14.0, *) {
             eventStore.requestFullAccessToEvents { granted, _ in
-                completion(granted ? "authorized" : calendarPermissionStatus(self.eventStore))
+                completion(granted ? "fullAccess" : calendarPermissionStatus(self.eventStore))
             }
         } else {
             eventStore.requestAccess(to: .event) { granted, _ in
@@ -164,12 +192,36 @@ final class NativeMacosSensor {
     }
 
     private func saveBaselineToken() throws {
-        let token = contactStore.currentHistoryToken
+        guard let token = contactStore.currentHistoryToken else {
+            return
+        }
         try token.write(to: tokenURL, options: .atomic)
     }
 
     private func loadHistoryToken() -> Data? {
         try? Data(contentsOf: tokenURL)
+    }
+
+    /// Headless `.app` launches often miss `CNContactStoreDidChange`; poll as a fallback.
+    private func startContactsPolling() {
+        contactsPollTimer?.invalidate()
+        contactsPollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            self?.scheduleContactsChanged()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            self?.scheduleContactsChanged()
+        }
+    }
+
+    private func scheduleContactsChanged() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.isHandlingContactsChange else {
+                return
+            }
+            self.isHandlingContactsChange = true
+            defer { self.isHandlingContactsChange = false }
+            self.handleContactsChanged()
+        }
     }
 
     private func handleContactsChanged() {
@@ -184,27 +236,92 @@ final class NativeMacosSensor {
         }
 
         do {
-            let batchId = "history_batch_\(UUID().uuidString)"
-            let tokenBeforeRef = "outbox:\(batchId):before"
-            let tokenAfterRef = "outbox:\(batchId):after"
-            let addedContacts = try fetchAddedContacts(startingToken: startingToken)
-            let tokenAfter = contactStore.currentHistoryToken
+            let historyFetch = try fetchContactHistoryChanges(startingToken: startingToken)
+            for identifier in historyFetch.touchedContactIds {
+                pendingContactIdentifiers.insert(identifier)
+            }
+            pendingHistoryTokenAfter = historyFetch.tokenAfter
+            try historyFetch.tokenAfter.write(to: tokenURL, options: .atomic)
 
-            guard !addedContacts.isEmpty else {
-                try tokenAfter.write(to: tokenURL, options: .atomic)
+            if !pendingContactIdentifiers.isEmpty {
+                schedulePendingContactEmit()
+            }
+        } catch {
+            do {
+                try saveBaselineToken()
+                emitSensorEvent(historyResetEvent(identity: identity, reason: "expired_token", detectedAt: nowString()))
+            } catch {
+                emitSensorEvent(fatalSensorEvent(code: "history_reset_failed", message: error.localizedDescription, identity: identity))
+            }
+        }
+    }
+
+    private struct ContactHistoryFetchResult {
+        let touchedContactIds: Set<String>
+        let tokenAfter: Data
+    }
+
+    private var contactKeyDescriptors: [CNKeyDescriptor] {
+        [
+            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+            CNContactEmailAddressesKey as CNKeyDescriptor,
+            CNContactIdentifierKey as CNKeyDescriptor
+        ]
+    }
+
+    private func schedulePendingContactEmit() {
+        contactEmitDebounceTimer?.invalidate()
+        contactEmitDebounceTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.contactEmitDebounceSeconds,
+            repeats: false
+        ) { [weak self] _ in
+            self?.flushPendingContactAdds()
+        }
+    }
+
+    /// Re-fetches queued contacts after debounce; emits only contacts that look saved (not in-progress cards).
+    private func flushPendingContactAdds() {
+        let identifiers = Array(pendingContactIdentifiers)
+        guard !identifiers.isEmpty else {
+            return
+        }
+
+        do {
+            let contacts = try fetchContacts(byIdentifiers: identifiers)
+            guard !contacts.isEmpty else {
+                pendingContactIdentifiers.removeAll()
                 return
             }
 
+            let readyContacts = contacts.filter { isReadyForFriendyPrompt($0) }
+            let stillWaiting = Set(contacts.filter { !isReadyForFriendyPrompt($0) }.map(\.identifier))
+            pendingContactIdentifiers = stillWaiting
+
+            guard !readyContacts.isEmpty else {
+                if !stillWaiting.isEmpty {
+                    schedulePendingContactEmit()
+                }
+                return
+            }
+
+            let batchId = "history_batch_\(UUID().uuidString)"
+            let tokenBeforeRef = "outbox:\(batchId):before"
+            let tokenAfterRef = "outbox:\(batchId):after"
+            let tokenAfter = pendingHistoryTokenAfter ?? (try? Data(contentsOf: tokenURL)) ?? Data()
+            pendingHistoryTokenAfter = nil
+
+            let detectedAt = Date()
             let observedAt = nowString()
-            let calendar = queryCalendarContext(detectedAt: Date())
-            let events = addedContacts.enumerated().map { index, contact in
+            let calendar = queryCalendarContext(detectedAt: detectedAt)
+            let events = readyContacts.enumerated().map { index, contact in
                 contactAddedEvent(
                     identity: identity,
                     eventId: "sensor_evt_contact_\(UUID().uuidString)",
                     idempotencyKey: "contacts:\(identity.deviceId):\(contact.identifier):add",
                     historyBatchId: batchId,
                     historyBatchIndex: index,
-                    historyBatchSize: addedContacts.count,
+                    historyBatchSize: readyContacts.count,
                     historyTokenBeforeRef: tokenBeforeRef,
                     historyTokenAfterRef: tokenAfterRef,
                     detectedAt: observedAt,
@@ -235,32 +352,45 @@ final class NativeMacosSensor {
                 tokenAfterPath: outboxDir.appendingPathComponent("\(batchId)-after-token.data").path
             )
         } catch {
-            do {
-                try saveBaselineToken()
-                emitSensorEvent(historyResetEvent(identity: identity, reason: "expired_token", detectedAt: nowString()))
-            } catch {
-                emitSensorEvent(fatalSensorEvent(code: "history_reset_failed", message: error.localizedDescription, identity: identity))
-            }
+            emitSensorEvent(fatalSensorEvent(code: "pending_contact_emit_failed", message: error.localizedDescription, identity: identity))
         }
     }
 
-    private func fetchAddedContacts(startingToken: Data) throws -> [CNContact] {
+    private func fetchContacts(byIdentifiers identifiers: [String]) throws -> [CNContact] {
+        guard !identifiers.isEmpty else {
+            return []
+        }
+
+        var contacts: [CNContact] = []
+        let request = CNContactFetchRequest(keysToFetch: contactKeyDescriptors)
+        request.predicate = CNContact.predicateForContacts(withIdentifiers: identifiers)
+        try contactStore.enumerateContacts(with: request) { contact, _ in
+            contacts.append(contact)
+        }
+        return contacts
+    }
+
+    private func fetchContactHistoryChanges(startingToken: Data) throws -> ContactHistoryFetchResult {
         let request = CNChangeHistoryFetchRequest()
         request.startingToken = startingToken
-        request.additionalContactKeyDescriptors = [
-            CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
-            CNContactPhoneNumbersKey as CNKeyDescriptor,
-            CNContactEmailAddressesKey as CNKeyDescriptor,
-            CNContactIdentifierKey as CNKeyDescriptor
-        ]
+        request.additionalContactKeyDescriptors = contactKeyDescriptors
 
-        var added: [CNContact] = []
-        try contactStore.enumerateChangeHistory(with: request) { event, _ in
+        let bridge = ContactsHistoryBridge(store: contactStore)
+        let fetchResult = try bridge.fetchChangeHistory(request)
+        let tokenAfter = fetchResult.currentHistoryToken
+
+        var touchedContactIds = Set<String>()
+        let enumerator = fetchResult.value
+        while let event = enumerator.nextObject() as? CNChangeHistoryEvent {
             if let add = event as? CNChangeHistoryAddContactEvent {
-                added.append(add.contact)
+                touchedContactIds.insert(add.contact.identifier)
+            }
+            if let update = event as? CNChangeHistoryUpdateContactEvent {
+                touchedContactIds.insert(update.contact.identifier)
             }
         }
-        return added
+
+        return ContactHistoryFetchResult(touchedContactIds: touchedContactIds, tokenAfter: tokenAfter)
     }
 
     private func writeHistoryBatchOutbox(historyBatchId: String, tokenAfter: Data, ackPath: String, events: [[String: Any]]) throws {
@@ -318,11 +448,21 @@ final class NativeMacosSensor {
     }
 
     /// Maps CNContact to the `contact` object: sha256 hashes plus last4/domain hints; no raw methods.
+    private func hasUsableDisplayName(_ contact: CNContact) -> Bool {
+        let name = CNContactFormatter.string(from: contact, style: .fullName)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return !name.isEmpty && name != "Unnamed Contact"
+    }
+
+    /// True when the contact card looks saved enough to prompt (real name; not an empty in-progress add).
+    private func isReadyForFriendyPrompt(_ contact: CNContact) -> Bool {
+        hasUsableDisplayName(contact)
+    }
+
     private func redactedContactPayload(_ contact: CNContact) -> [String: Any] {
         let phoneNumberHashes = contact.phoneNumbers.compactMap { normalizedPhoneHash($0.value.stringValue) }
         let emailHashes = contact.emailAddresses.compactMap { normalizedEmailHash(String($0.value)) }
 
-        [
+        return [
             "stableId": contact.identifier,
             "unifiedStableId": contact.identifier,
             "containerId": "unknown",
@@ -361,7 +501,7 @@ final class NativeMacosSensor {
         let end = Calendar.current.date(byAdding: .hour, value: 1, to: detectedAt) ?? detectedAt
         let permission = calendarPermissionStatus(eventStore)
 
-        guard permission == "authorized" else {
+        guard permission == "authorized" || permission == "fullAccess" else {
             return (
                 [
                     "startsAt": ISO8601DateFormatter().string(from: start),
@@ -437,6 +577,10 @@ func calendarPermissionStatus(_ eventStore: EKEventStore) -> String {
     switch EKEventStore.authorizationStatus(for: .event) {
     case .authorized:
         return "authorized"
+    case .fullAccess:
+        return "fullAccess"
+    case .writeOnly:
+        return "writeOnly"
     case .denied:
         return "denied"
     case .restricted:
@@ -448,13 +592,40 @@ func calendarPermissionStatus(_ eventStore: EKEventStore) -> String {
     }
 }
 
-func emitContactsPermissionError(identity: SensorIdentity) {
+func emitContactsPermissionError(identity: SensorIdentity, status: CNAuthorizationStatus) {
     var event = commonSensorEvent("permission_error", identity: identity)
     event["idempotencyKey"] = "permission_error:\(identity.deviceId):\(identity.runId):contacts_permission_denied"
     event["code"] = "contacts_permission_denied"
-    event["message"] = "Contacts permission denied by user."
+    let statusLabel = contactsAuthorizationStatusLabel(status)
+    var message =
+        "Contacts permission denied (status=\(statusLabel)). " +
+        "Enable \"Friendy macOS Sensor\" under System Settings → Privacy & Security → Contacts, then launch via " +
+        "`open -n \"bin/Friendy macOS Sensor.app\" --args --state-dir <path>` or `npm run agent:friendy` " +
+        "(do not run the .app/Contents/MacOS binary directly from Terminal)."
+    if status == .notDetermined {
+        message +=
+            " If no prompt appeared, run `bin/friendy-macos-sensor --state-dir .friendy/macos-sensor-state` from Terminal.app (not Cursor) and click Allow."
+    }
+    event["message"] = message
     event["retryable"] = true
     emitSensorEvent(event)
+}
+
+private func contactsAuthorizationStatusLabel(_ status: CNAuthorizationStatus) -> String {
+    switch status {
+    case .notDetermined:
+        return "notDetermined"
+    case .restricted:
+        return "restricted"
+    case .denied:
+        return "denied"
+    case .authorized:
+        return "authorized"
+    case .limited:
+        return "limited"
+    @unknown default:
+        return "unknown(\(status.rawValue))"
+    }
 }
 
 private func nowString() -> String {

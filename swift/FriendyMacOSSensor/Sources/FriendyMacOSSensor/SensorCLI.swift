@@ -6,6 +6,7 @@ import Foundation
 struct SensorCLIOptions {
     let stateDir: String
     let emitFixture: String?
+    let eventLogPath: String?
 }
 
 /// Entry: validates args, ensures state dir exists, then runs native sensor or prints fixture NDJSON.
@@ -37,6 +38,7 @@ func runSensorCLI(arguments: [String]) {
         return
     }
 
+    sensorEventLogPath = options.eventLogPath
     runNativeMacosSensor(stateDir: options.stateDir, identity: identity)
 }
 
@@ -47,7 +49,8 @@ func parseSensorCLIOptions(_ arguments: [String]) -> SensorCLIOptions? {
 
     return SensorCLIOptions(
         stateDir: stateDir,
-        emitFixture: valueAfter("--emit-fixture", in: arguments)
+        emitFixture: valueAfter("--emit-fixture", in: arguments),
+        eventLogPath: valueAfter("--event-log", in: arguments)
     )
 }
 

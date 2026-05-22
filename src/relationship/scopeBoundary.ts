@@ -66,15 +66,34 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
     return outOfScope("adversarial_general_assistant_request", DEFAULT_REDIRECT);
   }
 
+  if (hasPendingCandidate) {
+    if (isIgnoreCandidate(lower)) {
+      return inScope("candidate_ignore", "User is trying to ignore a pending relationship candidate.");
+    }
+
+    if (isPendingCandidateInquiry(lower)) {
+      return inScope("candidate_confirmation", "User is asking which contact the open prompt refers to.");
+    }
+
+    if (isCandidateConfirmation(lower)) {
+      return inScope("candidate_confirmation", "User is replying to a pending relationship candidate.");
+    }
+
+    if (isClearlyOffTopicWhilePending(lower)) {
+      return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
+    }
+
+    return inScope(
+      "candidate_confirmation",
+      "User is replying while a contact confirmation prompt is open; treat as meeting context."
+    );
+  }
+
   if (isIgnoreCandidate(lower)) {
     return inScope("candidate_ignore", "User is trying to ignore a pending relationship candidate.");
   }
 
   if (isCandidateConfirmation(lower)) {
-    if (hasPendingCandidate) {
-      return inScope("candidate_confirmation", "User is replying to a pending relationship candidate.");
-    }
-
     return clarify("confirmation_without_candidate", "Who should I attach that relationship context to?");
   }
 
@@ -104,10 +123,6 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
 
   if (isGeneralKnowledgeTask(lower) || isGenericAdviceTask(lower)) {
     return outOfScope("general_assistant_task", DEFAULT_REDIRECT);
-  }
-
-  if (hasPendingCandidate && isCandidateContextAnswer(lower)) {
-    return inScope("candidate_confirmation", "User is replying with context for a pending relationship candidate.");
   }
 
   if (isFollowupPlanning(lower)) {
@@ -147,6 +162,25 @@ function outOfScope(reason: string, redirect: string): ScopeDecision {
 
 function isIgnoreCandidate(text: string): boolean {
   return /^ignore\b/.test(text);
+}
+
+/** True when the user asks which contact an open confirmation prompt refers to. */
+export function isPendingCandidateInquiry(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+  return /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add|who are you asking about)\b/.test(
+    lower
+  );
+}
+
+function isClearlyOffTopicWhilePending(text: string): boolean {
+  return (
+    isAdversarialGeneralAssistantRequest(text) ||
+    isCodingTask(text) ||
+    isMathTask(text) ||
+    isGeneralKnowledgeTask(text) ||
+    isGenericAdviceTask(text) ||
+    isGenericRelationshipTheory(text)
+  );
 }
 
 function isCandidateConfirmation(text: string): boolean {

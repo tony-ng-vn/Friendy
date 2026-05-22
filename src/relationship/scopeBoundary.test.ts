@@ -48,17 +48,32 @@ describe("relationship agent scope boundary", () => {
     });
   });
 
-  it("allows short free-text context replies when a candidate is pending", () => {
+  it("routes open-prompt replies to candidate confirmation when a candidate is pending", () => {
     expect(decideMessageScope({ text: "coffee shop nearby", hasPendingCandidate: true })).toMatchObject({
       scope: "in_scope",
       capability: "candidate_confirmation"
     });
-    expect(decideMessageScope({ text: "Maya was cool from dinner", hasPendingCandidate: true })).toMatchObject({
-      scope: "out_of_scope"
+    expect(
+      decideMessageScope({ text: "This is the person I am using to test friendy", hasPendingCandidate: true })
+    ).toMatchObject({
+      scope: "in_scope",
+      capability: "candidate_confirmation"
+    });
+    expect(
+      decideMessageScope({ text: "Who did I add while testing for Friendy", hasPendingCandidate: true })
+    ).toMatchObject({
+      scope: "in_scope",
+      capability: "candidate_confirmation"
     });
     expect(decideMessageScope({ text: "coffee shop nearby", hasPendingCandidate: false })).toMatchObject({
       scope: "out_of_scope"
     });
+  });
+
+  it("still blocks coding tasks while a candidate prompt is open", () => {
+    expect(
+      decideMessageScope({ text: "write SQL for Maya", hasPendingCandidate: true })
+    ).toMatchObject({ scope: "out_of_scope" });
   });
 
   it("blocks adversarial general-assistant requests", () => {

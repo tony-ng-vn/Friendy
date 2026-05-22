@@ -15,12 +15,14 @@ import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
+import { isPendingCandidateInquiry } from "./scopeBoundary";
 import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
   composeIgnoreCandidateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
+  composePendingCandidateInquiryReply,
   composeOnboardingControlReply,
   composeSaveConfirmation,
   composeSearchReply
@@ -67,6 +69,17 @@ export function createRelationshipAgent(tools: RelationshipTools, { onboarding }
 
       if (scopeDecision.capability === "candidate_confirmation") {
         toolCalls.push("list_pending_candidates");
+        const pending = tools.list_pending_candidates(message.userId);
+        if (isPendingCandidateInquiry(normalized)) {
+          return reply(
+            message,
+            composePendingCandidateInquiryReply({
+              candidates: pending.map((candidate) => ({ displayName: candidate.displayName }))
+            }),
+            toolCalls
+          );
+        }
+
         const result = candidateIntake.resolveCandidateReply({
           scope: message,
           replyText: normalized

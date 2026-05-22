@@ -235,14 +235,6 @@ async function processEvent({
   getOnboardingState,
   now
 }: FriendySensorRuntimeContext & { event: MacosSensorEvent }): Promise<void> {
-  if (event.type === "contact_added") {
-    const onboardingState = getOnboardingState();
-    if (!isContactAutomationActive(onboardingState)) {
-      logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
-      return;
-    }
-  }
-
   const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
   if (processed) {
     if (event.type === "contact_added" && processed.candidateId) {
@@ -257,7 +249,7 @@ async function processEvent({
   if (event.type === "ready") {
     const eventNow = now();
     recordReadySensorState({ userId, state, event, now: eventNow });
-    if (event.calendarPermissionStatus !== "authorized") {
+    if (!isCalendarAccessGranted(event.calendarPermissionStatus)) {
       await warnOwner({
         userId,
         state,
@@ -310,6 +302,17 @@ async function processEvent({
   }
 
   if (event.type === "contact_added") {
+    const onboardingState = getOnboardingState();
+    if (!isContactAutomationActive(onboardingState)) {
+      const eventNow = now();
+      logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
+      // Before first `start`, mark ignored so the sensor history batch can ack and stop re-emitting backlog.
+      if (onboardingState === "ready_pending_user_start") {
+        recordProcessed(state, event, "ignored", eventNow);
+      }
+      return;
+    }
+
     const eventNow = now();
     const scoredEvents = scoreCalendarContext({
       detectedAt: event.detectedAt,
@@ -629,6 +632,11 @@ function toCalendarEvent(userId: string, scoredEvent: ScoredCalendarEvent): Cale
     calendarSource: "apple_calendar",
     eventKind: scoredEvent.snapshot.isAllDay ? "all_day" : durationMs > 6 * 60 * 60 * 1000 ? "long" : "short"
   };
+}
+
+/** EventKit on macOS 14+ reports calendar access as `fullAccess` instead of `authorized`. */
+function isCalendarAccessGranted(status: string): boolean {
+  return status === "authorized" || status === "fullAccess";
 }
 
 function warningText(warningCode: string): string {

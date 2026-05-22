@@ -8,8 +8,9 @@
 import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseSensorEventLine, type MacosContactAddedEvent, type MacosSensorEvent } from "./sensorEvents";
+import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
 type ExecFileSync = (
   command: string,
@@ -104,11 +105,7 @@ export function main(): void {
 }
 
 function resolveBinaryPath(cwd: string, env: Partial<NodeJS.ProcessEnv>): string {
-  const configured = env.FRIENDY_SENSOR_BINARY_PATH;
-  if (configured) {
-    return isAbsolute(configured) ? configured : resolve(cwd, configured);
-  }
-  return join(cwd, "bin/friendy-macos-sensor");
+  return resolveMacosSensorBinaryPath(cwd, env);
 }
 
 function parseFixtureOutput(stdout: string): { eventTypes: string[]; ackPath: string } {

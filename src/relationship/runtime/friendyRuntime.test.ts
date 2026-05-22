@@ -198,12 +198,11 @@ describe("Friendy macOS sensor runtime", () => {
     ]);
   });
 
-  it("holds contact events before user start and processes the replay after activation", async () => {
-    let onboardingState: OnboardingState = "ready_pending_user_start";
+  it("ignores contact events before user start so history batches can still ack", async () => {
     const harness = createHarness(
       {},
       {
-        getOnboardingState: () => onboardingState
+        getOnboardingState: () => "ready_pending_user_start" as OnboardingState
       }
     );
     const contactLine = JSON.stringify(contactAddedEvent());
@@ -219,16 +218,10 @@ describe("Friendy macOS sensor runtime", () => {
 
     expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
     expect(harness.prompts).toEqual([]);
-    expect(harness.acks).toEqual([]);
-    expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toBeUndefined();
-
-    onboardingState = "active";
-    await harness.runtime.processLine(contactLine);
-    await harness.runtime.processLine(batchLine);
-
-    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
-    expect(harness.prompts).toHaveLength(1);
     expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_1.ack"]);
+    expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
+      status: "ignored"
+    });
   });
 
   it("pauses contact automation without deleting pending state and resumes without duplicates", async () => {

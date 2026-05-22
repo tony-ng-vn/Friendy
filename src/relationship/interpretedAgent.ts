@@ -21,11 +21,12 @@ import {
   composeMemoryUpdateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
+  composePendingCandidateInquiryReply,
   composeOnboardingControlReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
-import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
+import { decideMessageScope, isPendingCandidateInquiry, type ScopeDecision } from "./scopeBoundary";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
@@ -254,7 +255,7 @@ export function createInterpretedRelationshipAgent({
 
       if (scopeDecision.capability === "candidate_confirmation") {
         const toolCalls: AgentToolCall[] = [];
-        const outboundText = confirmPendingCandidate(message, candidateIntake, toolCalls);
+        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls);
         const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -749,9 +750,17 @@ function searchMemories(
 function confirmPendingCandidate(
   message: InboundAgentMessage,
   candidateIntake: CandidateIntake,
+  tools: RelationshipTools,
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("list_pending_candidates");
+  const pending = tools.list_pending_candidates(message.userId);
+  if (isPendingCandidateInquiry(message.text)) {
+    return composePendingCandidateInquiryReply({
+      candidates: pending.map((candidate) => ({ displayName: candidate.displayName }))
+    });
+  }
+
   const result = candidateIntake.resolveCandidateReply({
     scope: message,
     replyText: message.text

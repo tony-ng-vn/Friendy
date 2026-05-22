@@ -8,6 +8,7 @@
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
 export type MacosSensorDoctorInput = {
   cwd?: string;
@@ -29,7 +30,7 @@ export function runMacosSensorDoctor({
   platform = process.platform,
   execFileSync = defaultExecFileSync
 }: MacosSensorDoctorInput = {}): MacosSensorDoctorReport {
-  const binaryPath = resolve(cwd, env.FRIENDY_SENSOR_BINARY_PATH || "bin/friendy-macos-sensor");
+  const binaryPath = resolveMacosSensorBinaryPath(cwd, env);
   const lines = [`Friendy macOS sensor doctor`, `Binary path: ${binaryPath}`, `Platform: ${platform}`];
   lines.push(`Swift: ${readSwiftVersion(execFileSync)}`);
   lines.push(`Swift package: ${existsSync(join(cwd, "swift/FriendyMacOSSensor/Package.swift")) ? "present" : "missing"}`);

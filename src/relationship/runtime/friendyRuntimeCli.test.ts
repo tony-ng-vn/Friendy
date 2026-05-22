@@ -36,8 +36,11 @@ describe("Friendy foreground runtime CLI configuration", () => {
     expect(config.sqlitePath).toBe(join(cwd, ".friendy/friendy.sqlite"));
     expect(config.sensorStateDir).toBe(join(cwd, ".friendy/macos-sensor-state"));
     expect(config.sensor.mode).toBe("real");
-    expect(config.sensor.command).toBe(join(cwd, "friendy-macos-sensor"));
-    expect(config.sensor.args).toEqual(["--state-dir", join(cwd, ".friendy/macos-sensor-state")]);
+    expect(config.sensor).toMatchObject({
+      kind: "executable",
+      command: join(cwd, "friendy-macos-sensor"),
+      args: ["--state-dir", join(cwd, ".friendy/macos-sensor-state")]
+    });
   });
 
   it("uses the fake sensor when FRIENDY_SENSOR_MOCK=1", () => {
@@ -90,15 +93,20 @@ describe("Friendy foreground runtime CLI configuration", () => {
 
     expect(started.repo.listPendingCandidates("user_friendy")).toEqual([]);
     expect(prompts).toEqual([]);
+    expect(started.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
+      status: "ignored"
+    });
 
     started.onboarding.applyControl("started");
-    await runtime?.processLine(JSON.stringify(contactAddedEvent()));
+    await runtime?.processLine(
+      JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2", stableId: "EFGH-5678" }))
+    );
 
     expect(started.repo.listPendingCandidates("user_friendy")[0]).toMatchObject({
       displayName: "Maya",
-      contactIdentifier: "ABCD-1234"
+      contactIdentifier: "EFGH-5678"
     });
-    expect(started.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
+    expect(started.state.getProcessedEvent("contacts:mac_1:EFGH-5678:add")).toMatchObject({
       status: "candidate_created"
     });
     expect(prompts[0].text).toContain("Photon Residency Dinner");
@@ -244,10 +252,12 @@ function fakeChildProcess(): SensorChildProcess {
   return child;
 }
 
-function contactAddedEvent() {
+function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = {}) {
+  const eventId = overrides.eventId ?? "sensor_evt_contact_1";
+  const stableId = overrides.stableId ?? "ABCD-1234";
   return {
     schemaVersion: 1,
-    eventId: "sensor_evt_contact_1",
+    eventId,
     type: "contact_added",
     sensorName: "macos_contacts_calendar",
     sensorVersion: "0.1.0",
@@ -255,7 +265,7 @@ function contactAddedEvent() {
     deviceId: "mac_1",
     emittedAt: "2026-05-21T18:36:51Z",
     observedAt: "2026-05-21T18:36:50Z",
-    idempotencyKey: "contacts:mac_1:ABCD-1234:add",
+    idempotencyKey: `contacts:mac_1:${stableId}:add`,
     historyBatchId: "history_batch_1",
     historyBatchIndex: 0,
     historyBatchSize: 1,
@@ -263,8 +273,8 @@ function contactAddedEvent() {
     historyTokenAfterRef: "outbox:history_batch_1:after",
     detectedAt: "2026-05-21T20:30:00-07:00",
     contact: {
-      stableId: "ABCD-1234",
-      unifiedStableId: "UNIFIED-ABCD-1234",
+      stableId,
+      unifiedStableId: `UNIFIED-${stableId}`,
       containerId: "icloud_container",
       displayName: "Maya",
       phoneNumberHashes: ["sha256:phone"],

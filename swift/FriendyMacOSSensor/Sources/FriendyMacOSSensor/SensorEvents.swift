@@ -8,6 +8,9 @@ import Foundation
 let friendySensorName = "macos_contacts_calendar"
 let friendySensorVersion = "0.1.0"
 
+/// When set, each NDJSON line is appended here (used when macOS launches the sensor via `.app` bundle).
+var sensorEventLogPath: String?
+
 /// Per-run identity fields included on every emitted event.
 struct SensorIdentity {
     let runId: String
@@ -32,6 +35,17 @@ func emitSensorEvent(_ event: [String: Any]) {
 
     print(line)
     fflush(stdout)
+
+    if let logPath = sensorEventLogPath, let data = (line + "\n").data(using: .utf8) {
+        if FileManager.default.fileExists(atPath: logPath),
+           let handle = FileHandle(forWritingAtPath: logPath) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else if !FileManager.default.createFile(atPath: logPath, contents: data) {
+            fputs("Failed to write sensor event log at \(logPath)\n", stderr)
+        }
+    }
 }
 
 /// Common envelope: schemaVersion, eventId, type, sensorName, sensorVersion, runId, deviceId, emittedAt.

@@ -51,6 +51,8 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain("CNChangeHistoryFetchRequest");
     expect(nativeSource).toContain("startingToken");
     expect(nativeSource).toContain("CNChangeHistoryAddContactEvent");
+    expect(nativeSource).toContain("CNChangeHistoryUpdateContactEvent");
+    expect(nativeSource).toContain("isReadyForFriendyPrompt");
     expect(nativeSource).toContain("writeHistoryBatchOutbox");
     expect(nativeSource).toContain("waitForAckAndAdvanceToken");
     expect(nativeSource).toContain("history_reset");

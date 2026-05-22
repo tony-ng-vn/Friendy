@@ -15,12 +15,20 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
 import { resolveConfiguredUserId } from "../identity";
 import { createOnboardingStateController, type OnboardingStateController } from "../onboardingState";
+import { composeRuntimeStartupReply } from "../responseComposer";
 import type { RelationshipRepository } from "../repository";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
 import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
 import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
 import { createLiveSpectrumPromptSender } from "../transports/spectrumPromptSender";
 import { startSpectrumFriendyAgent } from "../transports/spectrumTransport";
+import {
+  MACOS_SENSOR_EVENT_LOG_FILENAME,
+  resolveMacosSensorAppBundlePath,
+  resolveMacosSensorBinaryPath,
+  shouldLaunchMacosSensorViaAppBundle
+} from "./macosSensorBinaryPath";
+import type { SensorLaunchConfig } from "./sensorProcess";
 
 export type FriendyRuntimeConfigInput = {
   cwd?: string;
@@ -33,11 +41,9 @@ export type FriendySensorLaunchConfig =
       command: "tsx";
       args: string[];
     }
-  | {
+  | ({
       mode: "real";
-      command: string;
-      args: string[];
-    };
+    } & SensorLaunchConfig);
 
 /** Resolved local runtime paths and whether the sensor runs in mock or real mode. */
 export type FriendyRuntimeConfig = {
@@ -145,6 +151,7 @@ export async function startFriendyForegroundRuntime({
   logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
   const sensor = startSensor({ launch: config.sensor, runtime });
   logger.info("[friendy] watching for contact signals");
+  await notifyRuntimeStartup({ promptSender, userId, env, sensorMode: config.sensor.mode, logger });
 
   return {
     config,
@@ -159,6 +166,37 @@ export async function startFriendyForegroundRuntime({
       state.close();
     }
   };
+}
+
+async function notifyRuntimeStartup({
+  promptSender,
+  userId,
+  env,
+  sensorMode,
+  logger
+}: {
+  promptSender: RuntimePromptSender;
+  userId: string;
+  env: Partial<NodeJS.ProcessEnv>;
+  sensorMode: FriendySensorLaunchConfig["mode"];
+  logger: RuntimeLogger;
+}): Promise<void> {
+  if (env.FRIENDY_DISABLE_STARTUP_MESSAGE === "1") {
+    return;
+  }
+
+  const text = composeRuntimeStartupReply();
+  if (sensorMode === "mock" || promptSenderKind(promptSender) === "console") {
+    logger.info(`[friendy:startup_message] ${text}`);
+    return;
+  }
+
+  try {
+    await promptSender.sendPrompt({ userId, text });
+    logger.info("[friendy:startup_message] sent");
+  } catch (error) {
+    logger.warn(`[friendy:startup_message] failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function promptSenderKind(sender: RuntimePromptSender): string {
@@ -207,15 +245,28 @@ function resolveSensorLaunchConfig({
     };
   }
 
-  const sensorBinaryPath = resolve(cwd, env.FRIENDY_SENSOR_BINARY_PATH || "bin/friendy-macos-sensor");
-  if (!existsSync(sensorBinaryPath)) {
+  const appBundlePath = resolveMacosSensorAppBundlePath(cwd, env);
+  const sensorBinaryPath = resolveMacosSensorBinaryPath(cwd, env);
+  if (!existsSync(sensorBinaryPath) && !appBundlePath) {
     throw new Error(
       `Missing macOS sensor binary at ${sensorBinaryPath}. Run npm run build:macos-sensor, or set FRIENDY_SENSOR_MOCK=1 for the fake sensor.`
     );
   }
 
+  if (shouldLaunchMacosSensorViaAppBundle(cwd, env) && appBundlePath) {
+    const eventLogPath = resolve(sensorStateDir, MACOS_SENSOR_EVENT_LOG_FILENAME);
+    return {
+      mode: "real",
+      kind: "app_bundle",
+      appPath: appBundlePath,
+      args: ["--state-dir", sensorStateDir, "--event-log", eventLogPath],
+      eventLogPath
+    };
+  }
+
   return {
     mode: "real",
+    kind: "executable",
     command: sensorBinaryPath,
     args: ["--state-dir", sensorStateDir]
   };
@@ -243,13 +294,14 @@ function defaultStartSensor({
   launch: FriendySensorLaunchConfig;
   runtime: SensorRuntimeLineProcessor;
 }): StartedSensorProcess {
-  return startSensorProcess({
-    launch: {
-      command: launch.command,
-      args: launch.args
-    },
-    runtime
-  });
+  if (launch.mode === "mock") {
+    return startSensorProcess({
+      launch: { kind: "executable", command: launch.command, args: launch.args },
+      runtime
+    });
+  }
+
+  return startSensorProcess({ launch, runtime });
 }
 
 function defaultStartInboundAgent({

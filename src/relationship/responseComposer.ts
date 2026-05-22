@@ -108,6 +108,28 @@ export function composeNoPendingCandidateReply(): string {
   return "I do not see a pending contact to confirm.";
 }
 
+/** Explains which contact is waiting for meeting context when the user asks mid-prompt. */
+export function composePendingCandidateInquiryReply({
+  candidates
+}: {
+  candidates: Array<{ displayName: string }>;
+}): string {
+  if (candidates.length === 0) {
+    return composeNoPendingCandidateReply();
+  }
+
+  if (candidates.length > 1) {
+    return composeCandidateAmbiguityReply({ candidates });
+  }
+
+  const name = candidates[0].displayName;
+  if (name === "Unnamed Contact") {
+    return "I'm asking about a new contact you just added — Contacts hasn't given me the name yet. Where did you meet them?";
+  }
+
+  return `I'm asking about ${name}, the contact you just added. Where did you meet them?`;
+}
+
 /** Keeps model-provided or deterministic clarification questions short and chat-native. */
 export function composeClarificationReply(question?: string): string {
   return question?.trim() || "What do you remember about them?";
@@ -131,6 +153,11 @@ export function composeMemoryUpdateReply({ memory }: MemoryMutationReplyInput): 
 /** Formats explicit user-requested memory deletes without exposing storage internals. */
 export function composeMemoryDeleteReply({ memory }: MemoryMutationReplyInput): string {
   return `Deleted ${memory.displayName} from Friendy memory.`;
+}
+
+/** Sent when `agent:friendy` comes online so the owner knows the Mac runtime is listening. */
+export function composeRuntimeStartupReply(): string {
+  return "Friendy is running on your Mac. Reply start when you want me to watch for new contacts and ask before saving anything.";
 }
 
 /** Formats start/pause/resume setup controls without exposing internal runtime state. */

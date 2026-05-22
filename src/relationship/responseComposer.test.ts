@@ -3,6 +3,7 @@ import {
   composeClarificationReply,
   composeIgnoreCandidateReply,
   composeOnboardingControlReply,
+  composeRuntimeStartupReply,
   composeNoMatchReply,
   composeSaveConfirmation,
   composeSearchReply
@@ -82,6 +83,11 @@ describe("relationship response composer", () => {
     expect(noPendingIgnore).toMatch(/don't see a pending contact/i);
 
     [saved, noMatch, clarification, ignored, noPendingIgnore].forEach(expectNoInternalLanguage);
+  });
+
+  it("formats the foreground runtime startup message without technical language", () => {
+    expect(composeRuntimeStartupReply()).toContain("Reply start");
+    expect(composeRuntimeStartupReply()).not.toMatch(/sqlite|sensor|runtime/i);
   });
 
   it("formats start, pause, and resume control replies without technical language", () => {

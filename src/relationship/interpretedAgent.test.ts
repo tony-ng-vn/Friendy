@@ -325,6 +325,65 @@ describe("interpreted relationship agent", () => {
     expect(memory.contextNote).toContain("recruiting agents");
   });
 
+  it("confirms a pending contact from open-prompt test context without calling the interpreter", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Unnamed Contact"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for open-prompt replies");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("This is the person I am using to test friendy"));
+
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toContain("test friendy");
+  });
+
+  it("explains which contact is pending when the user asks who they added", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 4"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for pending-contact inquiry");
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inbound("Who did I add while testing for Friendy"));
+
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(result.outbound.text).toContain("Testing 4");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
+  });
+
   it("confirms a pending contact from free-text context before calling the interpreter", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
