@@ -193,11 +193,13 @@ function captureMemories(
 ): string {
   const memories = interpretation.people.map((person, index) => {
     const note = buildMemoryNote(interpretation, person);
+    const idempotencyKey = manualMemoryIdempotencyKey(message, person.name, index);
     toolCalls.push("create_manual_memory");
     return tools.create_manual_memory(message.userId, person.name, note, "manual contact", {
       eventTitle: interpretation.event.name || undefined,
       dateContext: interpretation.dateContext,
-      idempotencyKey: manualMemoryIdempotencyKey(message, person.name, index)
+      idempotencyKey,
+      createdFromInteractionId: message.interactionId ?? idempotencyKey.replace(/^manual_imessage:/, "")
     });
   });
 
@@ -209,6 +211,10 @@ function captureMemories(
 }
 
 function manualMemoryIdempotencyKey(message: InboundAgentMessage, personName: string, index: number): string {
+  if (message.interactionId) {
+    return `manual_imessage:${message.interactionId}`;
+  }
+
   const hash = createHash("sha256")
     .update([message.platform, message.userId, message.spaceId ?? "", message.receivedAt, personName, index, message.text].join("\0"))
     .digest("hex")

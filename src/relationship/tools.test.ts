@@ -82,6 +82,8 @@ describe("relationship tools", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([first]);
     expect(repo.getCandidate(first.candidateId!)).toMatchObject({
       source: "manual_imessage",
+      manualIdempotencyKey: "manual_imessage:interaction_123",
+      createdFromInteractionId: "interaction_123",
       status: "confirmed"
     });
   });

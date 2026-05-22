@@ -49,6 +49,7 @@ describe("spectrum transport", () => {
     });
     const inbound = {
       userId: fixtureUser.id,
+      interactionId: "spectrum_inbound_retry_1",
       text: "I met Amaya at Photon Residency II, recruiting agents founder",
       spaceId: "space_retry",
       receivedAt: "2026-05-20T12:00:00.000Z"
@@ -62,6 +63,11 @@ describe("spectrum transport", () => {
     expect(memories[0]).toMatchObject({
       displayName: "Amaya",
       candidateId: expect.any(String)
+    });
+    expect(runtime.repo.getCandidate(memories[0].candidateId!)).toMatchObject({
+      source: "manual_imessage",
+      manualIdempotencyKey: "manual_imessage:spectrum_inbound_retry_1",
+      createdFromInteractionId: "spectrum_inbound_retry_1"
     });
   });
 

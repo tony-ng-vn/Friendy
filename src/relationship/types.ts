@@ -43,6 +43,7 @@ export type ContactCandidateDetected = {
   source: ContactCandidateSource;
   sensorEventId?: string;
   manualIdempotencyKey?: string;
+  createdFromInteractionId?: string;
   contactIdentifier?: string;
   unifiedContactIdentifier?: string;
   containerIdentifier?: string;
@@ -143,6 +144,7 @@ export type AgentInteraction = {
 
 /** Transport-normalized inbound message consumed by the relationship agent core. */
 export type InboundAgentMessage = {
+  interactionId?: string;
   userId: string;
   platform: AgentPlatform;
   spaceId?: string;

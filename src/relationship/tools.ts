@@ -25,6 +25,7 @@ type CreateManualMemoryOptions = {
   eventTitle?: string;
   dateContext?: RelationshipDateContext;
   idempotencyKey?: string;
+  createdFromInteractionId?: string;
 };
 
 /**
@@ -112,6 +113,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
         detectedAt: new Date(Date.now()).toISOString(),
         source,
         manualIdempotencyKey: options.idempotencyKey,
+        createdFromInteractionId: options.createdFromInteractionId ?? interactionIdFromManualKey(options.idempotencyKey),
         contactIdentifier
       };
       const candidateId = createCandidateId(candidateInput);
@@ -127,6 +129,11 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       });
     }
   };
+}
+
+function interactionIdFromManualKey(idempotencyKey: string | undefined): string | undefined {
+  const prefix = "manual_imessage:";
+  return idempotencyKey?.startsWith(prefix) ? idempotencyKey.slice(prefix.length) : undefined;
 }
 
 /**

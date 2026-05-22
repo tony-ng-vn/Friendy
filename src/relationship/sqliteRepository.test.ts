@@ -761,6 +761,8 @@ describe("sqlite relationship repository", () => {
     expect(secondRepo.listMemories(userId)).toEqual([first]);
     expect(secondRepo.getCandidate(first.candidateId!)).toMatchObject({
       source: "manual_imessage",
+      manualIdempotencyKey: "manual_imessage:interaction_retry_1",
+      createdFromInteractionId: "interaction_retry_1",
       status: "confirmed"
     });
   });

@@ -18,6 +18,7 @@ type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
 /** Small transport input shape so Spectrum specifics do not leak into the agent core. */
 export type SpectrumInboundInput = {
+  interactionId?: string;
   userId?: string;
   text: string;
   spaceId?: string;
@@ -56,6 +57,7 @@ export type CompactInteractionLog = {
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
 export function toInboundAgentMessage(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv> = {}): InboundAgentMessage {
   return {
+    interactionId: input.interactionId,
     userId: resolveSpectrumUserId(input, env),
     platform: "imessage",
     spaceId: input.spaceId,
