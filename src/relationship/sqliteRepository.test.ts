@@ -176,12 +176,17 @@ describe("sqlite relationship repository", () => {
     }));
 
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sqlite_1");
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sqlite_1", {
+      spaceId: "imessage_space_sqlite_prompt",
+      promptedAt: "2026-05-21T18:36:51.000Z"
+    });
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
     expect(reopened.getCandidate(candidate.id)).toMatchObject({
       status: "prompted",
-      promptInteractionId: "interaction_prompt_sqlite_1"
+      promptInteractionId: "interaction_prompt_sqlite_1",
+      promptSpaceId: "imessage_space_sqlite_prompt",
+      promptedAt: "2026-05-21T18:36:51.000Z"
     });
     expect(reopened.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
   });

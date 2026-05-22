@@ -105,7 +105,15 @@ describe("Friendy macOS sensor runtime", () => {
   });
 
   it("creates one candidate, preserves stableId identity, scores events, and sends a prompt", async () => {
-    const harness = createHarness();
+    const harness = createHarness({
+      async sendPrompt(input) {
+        harness.prompts.push(input);
+        return {
+          interactionId: "interaction_1",
+          spaceId: "imessage_space_prompt_1"
+        };
+      }
+    });
 
     await harness.runtime.processLine(JSON.stringify(contactAddedEvent()));
 
@@ -115,7 +123,9 @@ describe("Friendy macOS sensor runtime", () => {
       contactIdentifier: "ABCD-1234",
       sensorEventId: "sensor_evt_contact_1",
       status: "prompted",
-      promptInteractionId: "interaction_1"
+      promptInteractionId: "interaction_1",
+      promptSpaceId: "imessage_space_prompt_1",
+      promptedAt: "2026-05-21T18:36:51.000Z"
     });
     expect(harness.prompts).toHaveLength(1);
     expect(harness.prompts[0]).toMatchObject({

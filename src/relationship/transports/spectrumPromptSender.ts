@@ -9,7 +9,12 @@ export type SpectrumPromptSender = RuntimePromptSender & {
 
 export type SpectrumImessageClient = {
   user(phoneNumber: string): Promise<unknown> | unknown;
-  space(user: unknown): Promise<{ send(text: string): Promise<unknown> | unknown }> | { send(text: string): Promise<unknown> | unknown };
+  space(user: unknown): Promise<SpectrumPromptSpace> | SpectrumPromptSpace;
+};
+
+type SpectrumPromptSpace = {
+  id?: string;
+  send(text: string): Promise<unknown> | unknown;
 };
 
 export type CreateSpectrumPromptSenderInput = {
@@ -46,12 +51,13 @@ export function createSpectrumPromptSender({
       await space.send(input.text);
 
       return {
-        interactionId: `spectrum_prompt_${sanitizeInteractionTime(now())}_${input.candidateId ?? "warning"}`
+        interactionId: `spectrum_prompt_${sanitizeInteractionTime(now())}_${input.candidateId ?? "warning"}`,
+        spaceId: typeof space.id === "string" ? space.id : undefined
       };
     }
   };
 
-  async function resolveSpace(): Promise<{ send(text: string): Promise<unknown> | unknown }> {
+  async function resolveSpace(): Promise<SpectrumPromptSpace> {
     if (!spacePromise) {
       spacePromise = Promise.resolve(imessageClient.user(toPhone)).then((user) => imessageClient.space(user));
     }

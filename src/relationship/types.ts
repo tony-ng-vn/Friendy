@@ -61,6 +61,8 @@ export type ContactCandidate = ContactCandidateDetected & {
   id: string;
   status: ContactCandidateStatus;
   promptInteractionId?: string;
+  promptSpaceId?: string;
+  promptedAt?: string;
   statusReason?: string;
 };
 

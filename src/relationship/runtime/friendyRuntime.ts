@@ -4,8 +4,13 @@ import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer
 import { planCandidatePrompt } from "./promptPlanner";
 import { parseSensorEventLine, type MacosSensorEvent } from "./sensorEvents";
 
+export type RuntimePromptSendResult = {
+  interactionId?: string;
+  spaceId?: string;
+};
+
 export type RuntimePromptSender = {
-  sendPrompt(input: { userId: string; candidateId?: string; text: string }): Promise<{ interactionId?: string }> | { interactionId?: string };
+  sendPrompt(input: { userId: string; candidateId?: string; text: string }): Promise<RuntimePromptSendResult> | RuntimePromptSendResult;
 };
 
 export type RuntimeAckWriter = {
@@ -157,7 +162,7 @@ async function processEvent({
   const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
   if (processed) {
     if (event.type === "contact_added" && processed.candidateId) {
-      await retryPromptForDuplicateContact({ event, processed, userId, repo, sender, logger });
+      await retryPromptForDuplicateContact({ event, processed, userId, repo, sender, logger, now });
       return;
     }
 
@@ -223,7 +228,7 @@ async function processEvent({
     const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
     recordProcessed(state, event, "candidate_created", now(), { candidateId: candidate.id });
 
-    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents });
+    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: now() });
     return;
   }
 }
@@ -234,7 +239,8 @@ async function retryPromptForDuplicateContact({
   userId,
   repo,
   sender,
-  logger
+  logger,
+  now
 }: {
   event: Extract<MacosSensorEvent, { type: "contact_added" }>;
   processed: ProcessedSensorEvent;
@@ -242,6 +248,7 @@ async function retryPromptForDuplicateContact({
   repo: RelationshipRepository;
   sender: RuntimePromptSender;
   logger: RuntimeLogger;
+  now: () => string;
 }): Promise<void> {
   const candidate = repo.getCandidate(processed.candidateId!);
   if (!candidate || candidate.status !== "pending") {
@@ -254,7 +261,7 @@ async function retryPromptForDuplicateContact({
     detectedAt: event.detectedAt,
     calendarMatches: event.calendarMatches
   });
-  await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents });
+  await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: now() });
 }
 
 async function sendCandidatePrompt({
@@ -263,7 +270,8 @@ async function sendCandidatePrompt({
   sender,
   logger,
   candidate,
-  scoredEvents
+  scoredEvents,
+  promptedAt
 }: {
   userId: string;
   repo: RelationshipRepository;
@@ -271,11 +279,15 @@ async function sendCandidatePrompt({
   logger: RuntimeLogger;
   candidate: ContactCandidate;
   scoredEvents: ScoredCalendarEvent[];
+  promptedAt: string;
 }): Promise<void> {
   const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
   try {
     const result = await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
-    repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`);
+    repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`, {
+      spaceId: result.spaceId,
+      promptedAt
+    });
   } catch (error) {
     repo.markCandidatePromptFailed(candidate.id, "prompt_send_failed");
     logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);

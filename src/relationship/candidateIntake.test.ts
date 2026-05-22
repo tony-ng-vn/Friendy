@@ -170,6 +170,48 @@ describe("candidate intake interface spec", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("uses the inbound space to resolve numbered replies against the matching prompted candidate", async () => {
+    const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
+    const maya = tools.create_contact_candidate(fixtureDetectedContact);
+    const nina = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      detectedAt: "2026-05-15T21:44:00-07:00",
+      phoneNumbers: ["+15550101021"],
+      emails: []
+    });
+    repo.markCandidatePrompted(maya.id, "interaction_maya_prompt", {
+      spaceId: "imessage_space_maya",
+      promptedAt: "2026-05-15T21:45:00.000Z"
+    });
+    repo.markCandidatePrompted(nina.id, "interaction_nina_prompt", {
+      spaceId: "imessage_space_nina",
+      promptedAt: "2026-05-15T21:46:00.000Z"
+    });
+
+    const result = intake.resolveCandidateReply({
+      scope: {
+        userId: fixtureUser.id,
+        spaceId: "imessage_space_nina"
+      },
+      replyText: "1"
+    });
+
+    expect(result).toMatchObject({
+      kind: "confirmed",
+      candidateId: nina.id,
+      memory: {
+        displayName: "Nina Park",
+        eventTitle: "Photon Residency Dinner",
+        contextNote: "met at Photon Residency Dinner"
+      }
+    });
+    expect(repo.getCandidate(maya.id)).toMatchObject({
+      status: "prompted",
+      promptSpaceId: "imessage_space_maya"
+    });
+  });
+
   it("uses a name fragment reply to select the matching pending candidate", async () => {
     const { intake, tools } = await createSubject({ calendarEvents: [fixtureShortEvent] });
     tools.create_contact_candidate({

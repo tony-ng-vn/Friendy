@@ -76,15 +76,17 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       }
 
       const selected = selectCandidate(candidates, input.replyText);
-      const onlyReviewable = selected ? undefined : selectOnlyCandidateWithEventGuess(candidates, input.scope.userId, tools);
-      if (!selected && !onlyReviewable && candidates.length > 1) {
+      const promptedForSpace = selected ? undefined : selectPromptedCandidateForSpace(candidates, input.scope.spaceId);
+      const onlyReviewable =
+        selected || promptedForSpace ? undefined : selectOnlyCandidateWithEventGuess(candidates, input.scope.userId, tools);
+      if (!selected && !promptedForSpace && !onlyReviewable && candidates.length > 1) {
         return {
           kind: "ambiguous",
           candidates: candidates.map(({ id, displayName }) => ({ id, displayName }))
         };
       }
 
-      const candidate = selected ?? onlyReviewable ?? candidates[0];
+      const candidate = selected ?? promptedForSpace ?? onlyReviewable ?? candidates[0];
       const eventMatches = tools.list_candidate_event_matches(input.scope.userId, candidate.id);
       const confirmation = resolveCandidateConfirmation(stripCandidateSelector(input.replyText, candidate), eventMatches);
       const memory = tools.confirm_candidate(
@@ -143,6 +145,33 @@ function selectCandidate(candidates: ContactCandidate[], text: string): ContactC
     const nameParts = candidate.displayName.toLowerCase().split(/\s+/).filter(Boolean);
     return nameParts.some((part) => normalized.includes(part));
   });
+}
+
+function selectPromptedCandidateForSpace(
+  candidates: ContactCandidate[],
+  spaceId?: string
+): ContactCandidate | undefined {
+  if (!spaceId) {
+    return undefined;
+  }
+
+  const matches = candidates
+    .filter((candidate) => candidate.status === "prompted" && candidate.promptSpaceId === spaceId)
+    .sort((a, b) => comparePromptedAtDesc(a.promptedAt, b.promptedAt));
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  if (matches.length > 1 && comparePromptedAtDesc(matches[0].promptedAt, matches[1].promptedAt) === 0) {
+    return undefined;
+  }
+
+  return matches[0];
+}
+
+function comparePromptedAtDesc(left?: string, right?: string): number {
+  return (right ?? "").localeCompare(left ?? "");
 }
 
 function selectOnlyCandidateWithEventGuess(

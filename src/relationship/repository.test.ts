@@ -84,12 +84,17 @@ describe("relationship repository", () => {
     });
 
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    const prompted = repo.markCandidatePrompted(candidate.id, "interaction_prompt_1");
+    const prompted = repo.markCandidatePrompted(candidate.id, "interaction_prompt_1", {
+      spaceId: "imessage_space_prompt_1",
+      promptedAt: "2026-05-21T18:36:51.000Z"
+    });
 
     expect(prompted).toMatchObject({
       id: candidate.id,
       status: "prompted",
-      promptInteractionId: "interaction_prompt_1"
+      promptInteractionId: "interaction_prompt_1",
+      promptSpaceId: "imessage_space_prompt_1",
+      promptedAt: "2026-05-21T18:36:51.000Z"
     });
     expect(repo.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
   });

@@ -25,6 +25,11 @@ export type ConfirmCandidateOptions = {
   dateContext?: RelationshipDateContext;
 };
 
+export type MarkCandidatePromptedOptions = {
+  spaceId?: string;
+  promptedAt?: string;
+};
+
 export type RelationshipRepository = {
   listCalendarEvents(userId: string): CalendarEvent[];
   addCalendarEvents(events: CalendarEvent[]): CalendarEvent[];
@@ -32,7 +37,11 @@ export type RelationshipRepository = {
   listPendingCandidates(userId: string): ContactCandidate[];
   getCandidate(candidateId: string): ContactCandidate | undefined;
   listEventMatches(candidateId: string): EventContextMatch[];
-  markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate;
+  markCandidatePrompted(
+    candidateId: string,
+    interactionId: string,
+    options?: MarkCandidatePromptedOptions
+  ): ContactCandidate;
   markCandidatePromptFailed(candidateId: string, reason: string): ContactCandidate;
   confirmCandidate(
     candidateId: string,
@@ -142,7 +151,11 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return memory;
     },
 
-    markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate {
+    markCandidatePrompted(
+      candidateId: string,
+      interactionId: string,
+      options: MarkCandidatePromptedOptions = {}
+    ): ContactCandidate {
       const candidate = candidates.find((item) => item.id === candidateId);
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
@@ -153,6 +166,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
       candidate.status = "prompted";
       candidate.promptInteractionId = interactionId;
+      candidate.promptSpaceId = options.spaceId;
+      candidate.promptedAt = options.promptedAt;
       delete candidate.statusReason;
       return candidate;
     },

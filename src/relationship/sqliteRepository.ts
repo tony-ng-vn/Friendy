@@ -6,6 +6,7 @@ import type { ProcessedSensorEvent, RuntimeStateStore, RuntimeWarningState } fro
 import {
   extractTags,
   type ConfirmCandidateOptions,
+  type MarkCandidatePromptedOptions,
   type RelationshipRepository,
   type RepositorySeed
 } from "./repository";
@@ -112,7 +113,11 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
     listEventMatches,
 
-    markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate {
+    markCandidatePrompted(
+      candidateId: string,
+      interactionId: string,
+      options: MarkCandidatePromptedOptions = {}
+    ): ContactCandidate {
       return runTransaction(db, () => {
         const candidate = readOptionalRow<ContactCandidate>(
           db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
@@ -128,6 +133,8 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           ...candidate,
           status: "prompted",
           promptInteractionId: interactionId,
+          promptSpaceId: options.spaceId,
+          promptedAt: options.promptedAt,
           statusReason: undefined
         };
         upsertCandidate(db, promptedCandidate);
