@@ -10,6 +10,7 @@ Current Mac-only MVP artifacts:
 Current routing/search correction artifacts:
 
 - [Relationship routing and query normalization design](specs/2026-05-22-relationship-routing-and-query-normalization-design.md)
+- [Relationship hybrid retrieval design](specs/2026-05-22-relationship-hybrid-retrieval-design.md)
 
 Original product-flow artifacts:
 

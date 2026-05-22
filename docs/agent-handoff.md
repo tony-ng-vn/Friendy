@@ -55,7 +55,7 @@ The Swift sensor called `schedulePendingContactEmit()` on **every poll** while c
 ### Known follow-ups (not blocking MVP use)
 
 - `npm run check:mac-mvp-e2e-state` may report **missing history batch ack file** even after a successful iMessage flow — investigate ack path if automating proof.
-- Broad relationship recall phrasing such as “Anyone in my contacts related to Friendy?” can still hit the generic scope redirect even when matching memories exist. Spec A is written at `docs/superpowers/specs/2026-05-22-relationship-routing-and-query-normalization-design.md`.
+- Broad relationship recall phrasing such as “Anyone in my contacts related to Friendy?” can still hit the generic scope redirect even when matching memories exist. Spec A is written at `docs/superpowers/specs/2026-05-22-relationship-routing-and-query-normalization-design.md`; later retrieval upgrades are scoped in Spec B at `docs/superpowers/specs/2026-05-22-relationship-hybrid-retrieval-design.md`.
 - Each `agent:friendy` restart requires texting **`start`** again (by design).
 - Only **net-new** contacts after `start` prompt; pre-start adds are ignored for idempotency.
 - Saving in Contacts ≠ Friendy memory until the user replies to the iMessage prompt.
