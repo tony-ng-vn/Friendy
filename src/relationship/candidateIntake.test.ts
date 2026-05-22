@@ -124,6 +124,26 @@ describe("candidate intake interface spec", () => {
     expect(result).not.toHaveProperty("replyText");
   });
 
+  it("maps a numbered event-option reply to the matching candidate event", async () => {
+    const { intake, tools } = await createSubject({ calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+
+    const result = intake.resolveCandidateReply({
+      scope: scope(),
+      replyText: "1"
+    });
+
+    expect(result).toMatchObject({
+      kind: "confirmed",
+      candidateId: candidate.id,
+      memory: {
+        displayName: "Maya Chen",
+        eventTitle: "Photon Residency Dinner",
+        contextNote: "met at Photon Residency Dinner"
+      }
+    });
+  });
+
   it("returns an ambiguous outcome for a bare yes with multiple pending candidates", async () => {
     const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
     const maya = tools.create_contact_candidate(fixtureDetectedContact);

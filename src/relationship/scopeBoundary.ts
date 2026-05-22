@@ -136,7 +136,7 @@ function isIgnoreCandidate(text: string): boolean {
 }
 
 function isCandidateConfirmation(text: string): boolean {
-  return /^(yes|yeah|yep|correct|confirm|save|that'?s right|the\s+\w+\s+one)\b/.test(text);
+  return /^(yes|yeah|yep|correct|confirm|save|that'?s right|the\s+\w+\s+one)\b/.test(text) || /^[1-3](?:\b|[,.])/.test(text);
 }
 
 function isExplicitRelationshipMemory(text: string): boolean {

@@ -15,7 +15,13 @@ export type CandidateConfirmationResolution = {
  */
 export function isConfirmationReply(value: string): boolean {
   const normalized = value.trim().toLowerCase();
-  return normalized === "yes" || normalized.startsWith("yes,") || normalized.startsWith("yep") || normalized.startsWith("yeah");
+  return (
+    normalized === "yes" ||
+    normalized.startsWith("yes,") ||
+    normalized.startsWith("yep") ||
+    normalized.startsWith("yeah") ||
+    /^[1-3](?:\b|[,.])/.test(normalized)
+  );
 }
 
 /**
@@ -29,6 +35,11 @@ export function resolveCandidateConfirmation(
   eventMatches: EventContextMatch[]
 ): CandidateConfirmationResolution {
   const cleaned = cleanConfirmationNote(value);
+  const numbered = resolveNumberedEventOption(cleaned, eventMatches);
+  if (numbered) {
+    return numbered;
+  }
+
   const extracted = extractEventCorrection(cleaned);
   const selectedMatch = extracted.eventTitle ? findEventMatch(extracted.eventTitle, eventMatches) : undefined;
   const contextNote = normalizeKnownPlaces(extracted.contextNote || cleaned || "met at event");
@@ -38,6 +49,30 @@ export function resolveCandidateConfirmation(
     relationshipContext: extractRelationshipBackstory(contextNote),
     eventId: selectedMatch?.calendarEventId,
     eventTitle: selectedMatch ? undefined : extracted.eventTitle
+  };
+}
+
+function resolveNumberedEventOption(
+  value: string,
+  eventMatches: EventContextMatch[]
+): CandidateConfirmationResolution | undefined {
+  const match = /^([1-3])(?:\b|[,.])\s*(.*)$/i.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+
+  const rank = Number(match[1]);
+  const selectedMatch = eventMatches.find((eventMatch) => eventMatch.rank === rank);
+  if (!selectedMatch) {
+    return undefined;
+  }
+
+  const note = match[2]?.trim();
+  const contextNote = normalizeKnownPlaces(note || `met at ${selectedMatch.eventTitle}`);
+  return {
+    contextNote,
+    relationshipContext: extractRelationshipBackstory(contextNote),
+    eventId: selectedMatch.calendarEventId
   };
 }
 

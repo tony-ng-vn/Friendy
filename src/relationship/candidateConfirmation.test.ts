@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { resolveCandidateConfirmation } from "./candidateConfirmation";
+import { isConfirmationReply, resolveCandidateConfirmation } from "./candidateConfirmation";
 
 describe("candidate confirmation parsing", () => {
+  it("treats numbered disambiguation replies as candidate confirmations", () => {
+    expect(isConfirmationReply("1")).toBe(true);
+    expect(isConfirmationReply("2, AI infra")).toBe(true);
+    expect(isConfirmationReply("4")).toBe(false);
+  });
+
   it("separates current event context from relationship backstory", () => {
     const result = resolveCandidateConfirmation(
       "yes, met abc at Photon Residency II after havent met him since high school in minnesota",

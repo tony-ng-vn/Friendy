@@ -101,6 +101,32 @@ describe("relationship agent core", () => {
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
 
+  it("confirms a pending candidate from a numbered event option reply", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: fixtureUser.id,
+      platform: "terminal",
+      text: "1",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(result.toolCalls).toContain("confirm_candidate");
+    expect(memory).toMatchObject({
+      displayName: "Maya Chen",
+      eventTitle: "Photon Residency Dinner",
+      contextNote: "met at Photon Residency Dinner"
+    });
+    expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
+  });
+
   it("saves a no-event candidate with event context supplied during confirmation", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
