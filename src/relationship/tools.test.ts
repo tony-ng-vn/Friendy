@@ -25,6 +25,40 @@ describe("relationship tools", () => {
     expect(tools.list_pending_candidates(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("does not let one user confirm another user's candidate", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+
+    expect(() =>
+      tools.confirm_candidate("user_other", candidate.id, "wrong user confirmation", fixtureShortEvent.id)
+    ).toThrow(`Candidate not found for user: ${candidate.id}`);
+    expect(repo.listMemories()).toEqual([]);
+  });
+
+  it("creates manual memories through confirmed synthetic candidates", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+
+    const memory = tools.create_manual_memory(
+      fixtureUser.id,
+      "Amaya",
+      "met at Photon Residency, recruiting agents founder",
+      "manual contact"
+    );
+
+    expect(memory.candidateId).toBeDefined();
+    expect(repo.getCandidate(memory.candidateId!)).toMatchObject({
+      displayName: "Amaya",
+      source: "manual",
+      status: "confirmed"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([memory]);
+  });
+
   it("searches memories by vague context", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

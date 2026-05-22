@@ -97,7 +97,9 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     listPendingCandidates(userId: string): ContactCandidate[] {
       return readRows<ContactCandidate>(
         db
-          .prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY insert_order, id")
+          .prepare(
+            "SELECT raw_json FROM candidates WHERE user_id = ? AND status IN ('pending', 'prompted') ORDER BY insert_order, id"
+          )
           .all(userId)
       );
     },
@@ -109,6 +111,28 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     listEventMatches,
+
+    markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+        if (candidate.status !== "pending") {
+          throw new Error(`Candidate is not promptable: ${candidateId}`);
+        }
+
+        const promptedCandidate: ContactCandidate = {
+          ...candidate,
+          status: "prompted",
+          promptInteractionId: interactionId
+        };
+        upsertCandidate(db, promptedCandidate);
+        return promptedCandidate;
+      });
+    },
 
     confirmCandidate(
       candidateId: string,
@@ -122,6 +146,9 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         );
         if (!candidate) {
           throw new Error(`Candidate not found: ${candidateId}`);
+        }
+        if (!isReviewableCandidateStatus(candidate.status)) {
+          throw new Error(`Candidate is not confirmable: ${candidateId}`);
         }
 
         const confirmedCandidate: ContactCandidate = { ...candidate, status: "confirmed" };
@@ -137,6 +164,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
           eventId: selectedMatch?.calendarEventId,
           eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
+          dateContext: options.dateContext,
           contextNote,
           relationshipContext: options.relationshipContext,
           tags: extractTags(contextNote),
@@ -156,6 +184,9 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       );
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      if (!isReviewableCandidateStatus(candidate.status)) {
+        throw new Error(`Candidate is not ignorable: ${candidateId}`);
       }
 
       upsertCandidate(db, { ...candidate, status: "ignored" });
@@ -463,6 +494,10 @@ function setupSchema(db: DatabaseSync): void {
 
     PRAGMA user_version = 1;
   `);
+}
+
+function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
+  return status === "pending" || status === "prompted";
 }
 
 function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {

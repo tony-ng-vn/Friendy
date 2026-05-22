@@ -7,7 +7,7 @@
 export type ContactCandidateSource = "contacts_delta" | "manual" | "simulated";
 
 /** Lifecycle for a newly detected contact before it becomes searchable memory. */
-export type ContactCandidateStatus = "pending" | "confirmed" | "ignored";
+export type ContactCandidateStatus = "pending" | "prompted" | "confirmed" | "ignored";
 
 export type CalendarSource = "apple_calendar" | "google_calendar" | "simulated";
 
@@ -40,7 +40,7 @@ export type ContactCandidateDetected = {
   phoneNumbers: string[];
   emails: string[];
   detectedAt: string;
-  source: "simulated" | "contacts_delta";
+  source: ContactCandidateSource;
   sensorEventId?: string;
   contactIdentifier?: string;
   unifiedContactIdentifier?: string;
@@ -60,6 +60,7 @@ export type ContactCandidateDetected = {
 export type ContactCandidate = ContactCandidateDetected & {
   id: string;
   status: ContactCandidateStatus;
+  promptInteractionId?: string;
 };
 
 /** Calendar window used to infer where a contact was probably met. */

@@ -83,7 +83,9 @@ describe("Friendy macOS sensor runtime", () => {
     expect(candidate).toMatchObject({
       displayName: "Maya",
       contactIdentifier: "ABCD-1234",
-      sensorEventId: "sensor_evt_contact_1"
+      sensorEventId: "sensor_evt_contact_1",
+      status: "prompted",
+      promptInteractionId: "interaction_1"
     });
     expect(harness.prompts).toHaveLength(1);
     expect(harness.prompts[0]).toMatchObject({
@@ -91,6 +93,28 @@ describe("Friendy macOS sensor runtime", () => {
       candidateId: candidate.id,
       text: "I noticed you added Maya during Photon Residency Dinner. Did you meet them there?"
     });
+    expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
+      status: "candidate_created",
+      candidateId: candidate.id
+    });
+  });
+
+  it("leaves a sensor-created candidate pending when proactive prompt delivery fails", async () => {
+    const harness = createHarness({
+      sendPrompt() {
+        throw new Error("Spectrum send failed");
+      }
+    });
+
+    await expect(harness.runtime.processLine(JSON.stringify(contactAddedEvent()))).resolves.toBeUndefined();
+
+    const [candidate] = harness.repo.listPendingCandidates("user_friendy");
+    expect(candidate).toMatchObject({
+      displayName: "Maya",
+      status: "pending"
+    });
+    expect(candidate).not.toHaveProperty("promptInteractionId");
+    expect(harness.logs.join("\n")).toContain("Failed to send candidate prompt");
     expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
       status: "candidate_created",
       candidateId: candidate.id
@@ -135,7 +159,7 @@ describe("Friendy macOS sensor runtime", () => {
   });
 });
 
-function createHarness() {
+function createHarness(overrides: Partial<RuntimePromptSender> = {}) {
   const repo = createRelationshipRepository();
   const state = createInMemoryRuntimeStateStore();
   const prompts: Array<{ userId: string; candidateId?: string; text: string }> = [];
@@ -145,7 +169,8 @@ function createHarness() {
     async sendPrompt(input) {
       prompts.push(input);
       return { interactionId: `interaction_${prompts.length}` };
-    }
+    },
+    ...overrides
   };
   const runtime = createFriendySensorRuntime({
     userId: "user_friendy",

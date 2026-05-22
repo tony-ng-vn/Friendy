@@ -5,6 +5,7 @@ import type {
   ContactCandidateDetected,
   EventContextMatch,
   AgentInteraction,
+  RelationshipDateContext,
   RelationshipMemory,
   User
 } from "./types";
@@ -21,6 +22,7 @@ export type RepositorySeed = {
 export type ConfirmCandidateOptions = {
   eventTitle?: string;
   relationshipContext?: string;
+  dateContext?: RelationshipDateContext;
 };
 
 export type RelationshipRepository = {
@@ -30,6 +32,7 @@ export type RelationshipRepository = {
   listPendingCandidates(userId: string): ContactCandidate[];
   getCandidate(candidateId: string): ContactCandidate | undefined;
   listEventMatches(candidateId: string): EventContextMatch[];
+  markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate;
   confirmCandidate(
     candidateId: string,
     contextNote: string,
@@ -88,7 +91,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     },
 
     listPendingCandidates(userId: string): ContactCandidate[] {
-      return candidates.filter((candidate) => candidate.userId === userId && candidate.status === "pending");
+      return candidates.filter((candidate) => candidate.userId === userId && isReviewableCandidateStatus(candidate.status));
     },
 
     getCandidate(candidateId: string): ContactCandidate | undefined {
@@ -111,6 +114,9 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      if (!isReviewableCandidateStatus(candidate.status)) {
+        throw new Error(`Candidate is not confirmable: ${candidateId}`);
+      }
 
       candidate.status = "confirmed";
       const selectedMatch = options.eventTitle && !eventId ? undefined : selectEventMatch(eventMatches, candidateId, eventId);
@@ -122,6 +128,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
         primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
         eventId: selectedMatch?.calendarEventId,
         eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
+        dateContext: options.dateContext,
         contextNote,
         relationshipContext: options.relationshipContext,
         tags: extractTags(contextNote),
@@ -134,10 +141,27 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return memory;
     },
 
+    markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate {
+      const candidate = candidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      if (candidate.status !== "pending") {
+        throw new Error(`Candidate is not promptable: ${candidateId}`);
+      }
+
+      candidate.status = "prompted";
+      candidate.promptInteractionId = interactionId;
+      return candidate;
+    },
+
     ignoreCandidate(candidateId: string): void {
       const candidate = candidates.find((item) => item.id === candidateId);
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      if (!isReviewableCandidateStatus(candidate.status)) {
+        throw new Error(`Candidate is not ignorable: ${candidateId}`);
       }
       candidate.status = "ignored";
     },
@@ -160,6 +184,10 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return userId ? interactions.filter((interaction) => interaction.userId === userId) : [...interactions];
     }
   };
+}
+
+function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
+  return status === "pending" || status === "prompted";
 }
 
 /**

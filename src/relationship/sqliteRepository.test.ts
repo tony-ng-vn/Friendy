@@ -165,6 +165,56 @@ describe("sqlite relationship repository", () => {
     expect(reopened.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("persists prompted candidates as reviewable across repository instances", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sqlite_1");
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(reopened.getCandidate(candidate.id)).toMatchObject({
+      status: "prompted",
+      promptInteractionId: "interaction_prompt_sqlite_1"
+    });
+    expect(reopened.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
+  });
+
+  it("rejects confirming ignored or already confirmed candidates", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const ignored = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const confirmed = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      phoneNumbers: ["+15550101021"],
+      detectedAt: "2026-05-15T21:44:00-07:00"
+    });
+
+    repo.ignoreCandidate(ignored.id);
+    repo.confirmCandidate(confirmed.id, "designer building notes", fixtureShortEvent.id);
+
+    expect(() => repo.confirmCandidate(ignored.id, "should not save", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(() => repo.confirmCandidate(confirmed.id, "should not save twice", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Nina Park"]);
+  });
+
   it("accepts writes for unseeded users like the in-memory repository", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
@@ -459,6 +509,8 @@ describe("sqlite relationship repository", () => {
     const memories = repo.listMemories(userId);
     expect(memories.map((memory) => memory.displayName)).toEqual(["Amaya", "Sarah Fah"]);
     expect(new Set(memories.map((memory) => memory.id)).size).toBe(2);
+    expect(memories.every((memory) => Boolean(memory.candidateId))).toBe(true);
+    expect(memories.map((memory) => repo.getCandidate(memory.candidateId!)?.status)).toEqual(["confirmed", "confirmed"]);
   });
 
   it("sets schema version and stores explicit insert order columns", () => {

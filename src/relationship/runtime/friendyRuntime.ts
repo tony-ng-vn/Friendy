@@ -216,7 +216,12 @@ async function processEvent({
     recordProcessed(state, event, "candidate_created", now(), { candidateId: candidate.id });
 
     const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
-    await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
+    try {
+      const result = await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
+      repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`);
+    } catch (error) {
+      logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);
+    }
     return;
   }
 }
@@ -326,4 +331,8 @@ function isPastCooldown(lastNotifiedAt: string | undefined, now: string): boolea
 
 function warningKey(userId: string, sensorName: string, warningCode: string): string {
   return `${userId}:${sensorName}:${warningCode}`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

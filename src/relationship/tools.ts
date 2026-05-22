@@ -95,21 +95,21 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       contactMethod = "manual contact",
       options: { eventTitle?: string; dateContext?: RelationshipDateContext } = {}
     ) {
-      const memory: RelationshipMemory = {
-        id: `memory_manual_${randomUUID()}`,
+      const manualId = randomUUID();
+      const candidate = repo.createCandidateFromDetectedContact({
         userId,
         displayName: name,
-        primaryContactLabel: contactMethod,
-        eventTitle: options.eventTitle,
-        dateContext: options.dateContext,
-        contextNote,
-        tags: extractTags(contextNote),
-        confidence: 0.6,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+        phoneNumbers: [contactMethod],
+        emails: [],
+        detectedAt: new Date(Date.now()).toISOString(),
+        source: "manual",
+        contactIdentifier: `manual:${manualId}`
+      });
 
-      return repo.addMemory(memory);
+      return repo.confirmCandidate(candidate.id, contextNote, undefined, {
+        eventTitle: options.eventTitle,
+        dateContext: options.dateContext
+      });
     }
   };
 }

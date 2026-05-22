@@ -77,6 +77,48 @@ describe("relationship repository", () => {
     expect(memory.tags).toContain("piano");
   });
 
+  it("marks a prompted candidate while keeping it reviewable for replies", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const prompted = repo.markCandidatePrompted(candidate.id, "interaction_prompt_1");
+
+    expect(prompted).toMatchObject({
+      id: candidate.id,
+      status: "prompted",
+      promptInteractionId: "interaction_prompt_1"
+    });
+    expect(repo.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
+  });
+
+  it("rejects confirming ignored or already confirmed candidates", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const ignored = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const confirmed = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      phoneNumbers: ["+15550101021"],
+      detectedAt: "2026-05-15T21:44:00-07:00"
+    });
+
+    repo.ignoreCandidate(ignored.id);
+    repo.confirmCandidate(confirmed.id, "designer building notes", fixtureShortEvent.id);
+
+    expect(() => repo.confirmCandidate(ignored.id, "should not save", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(() => repo.confirmCandidate(confirmed.id, "should not save twice", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Nina Park"]);
+  });
+
   it("stores a corrected event title when confirmation chooses another event", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
