@@ -171,6 +171,25 @@ describe("openrouter message interpreter", () => {
     });
   });
 
+  it("routes list-all contact recall wording to search in fallback mode", async () => {
+    const interpreter = createRuleBasedInterpreter();
+
+    const result = await interpreter.interpret({
+      ...inbound,
+      text: "Just give me all the people in my contact so far"
+    });
+
+    expect(result.interpretation).toMatchObject({
+      intent: "search_memory",
+      domain: "relationship_memory",
+      search: {
+        mode: "list_people",
+        semanticQuery: "Just give me all the people in my contact so far"
+      }
+    });
+    expect(result.interpretation.search?.exactTerms).toEqual([]);
+  });
+
   it("reads OpenRouter config with a stable free default model", () => {
     expect(readOpenRouterConfig({ OPENROUTER_API_KEY: "key" })).toEqual({
       apiKey: "key",

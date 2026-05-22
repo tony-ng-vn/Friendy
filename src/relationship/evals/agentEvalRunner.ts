@@ -205,6 +205,12 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "broad related-contact recall returns seeded contacts",
     "broad related-contact recall does not redirect"
   ]),
+  evalCase("list-all-contact-recall", "interpreted", [
+    "list-all contact recall calls search",
+    "list-all contact recall returns saved people",
+    "list-all contact recall leaves pending candidate pending",
+    "list-all contact recall does not create unnamed memory"
+  ]),
   evalCase("hybrid-document-vague-recall", "interpreted", [
     "vague document recall calls search",
     "vague document recall returns matching seeded contact",
@@ -880,6 +886,39 @@ const executableEvalCases: ExecutableEvalCase[] = [
     async run({ interpreter, now }) {
       const repo = createRelationshipRepository({
         users: [fixtureUser],
+        memories: [memory("memory_testing_2", "Testing 2", "Met during testing friendy", "testing friendy")]
+      });
+      const tools = createRelationshipTools(repo);
+      tools.create_contact_candidate({
+        ...fixtureDetectedContact,
+        displayName: "Unnamed Contact",
+        phoneNumbers: ["+15550101033"],
+        emails: []
+      });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const result = await agent.handleMessage(interpretedInbound("Just give me all the people in my contact so far"));
+
+      return [
+        assertion("list-all contact recall calls search", "intent", result.toolCalls.includes("search_memories")),
+        assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
+        assertion(
+          "list-all contact recall leaves pending candidate pending",
+          "unsafeMutation",
+          repo.listPendingCandidates(fixtureUser.id).some((candidate) => candidate.displayName === "Unnamed Contact")
+        ),
+        assertion(
+          "list-all contact recall does not create unnamed memory",
+          "unsafeMutation",
+          !repo.listMemories(fixtureUser.id).some((memory) => memory.displayName === "Unnamed Contact")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[30],
+    async run({ interpreter, now }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
         memories: [
           {
             ...memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy"),
@@ -905,7 +944,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
     }
   },
   {
-    ...relationshipAgentEvalCases[30],
+    ...relationshipAgentEvalCases[31],
     async run() {
       const cwd = mkdtempSync(join(tmpdir(), "friendy-doctor-eval-"));
       try {

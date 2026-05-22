@@ -39,11 +39,12 @@ describe("relationship agent eval runner", () => {
       "multi-candidate-bare-yes-ambiguity",
       "delete-removes-memory-from-search",
       "broad-related-contact-recall",
+      "list-all-contact-recall",
       "hybrid-document-vague-recall",
       "friendy-doctor-setup-failure-copy"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(31);
+    expect(relationshipAgentEvalCases).toHaveLength(32);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -59,8 +60,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(31);
-    expect(summary.requiredTotal).toBe(31);
+    expect(summary.total).toBe(32);
+    expect(summary.requiredTotal).toBe(32);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);

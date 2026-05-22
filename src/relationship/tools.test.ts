@@ -128,6 +128,18 @@ describe("relationship tools", () => {
     expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 1", "Testing 12"]);
   });
 
+  it("returns all saved memories for list-all contact recall queries", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 2", "testing Friendy", "Met during testing friendy"),
+      memory("Maya", "Photon Residency", "building recruiting agents")
+    ]);
+
+    const results = tools.search_memories(fixtureUser.id, "Just give me all the people in my contact so far");
+
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 2", "Maya"]);
+    expect(results.every((result) => result.reason.includes("list-all"))).toBe(true);
+  });
+
   it("uses generated retrieval documents for accepted memory fields outside the old field scorer", () => {
     const tools = createToolsWithMemories([
       {

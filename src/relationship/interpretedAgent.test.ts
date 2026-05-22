@@ -452,6 +452,48 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("does not save list-all contact requests as pending-candidate context", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_manual_memory(fixtureUser.id, "Testing 2", "Met during testing friendy", "manual contact");
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Unnamed Contact",
+      phoneNumbers: ["+15550101033"],
+      emails: []
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Just give me all the people in my contact so far"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("Testing 2");
+    expect(result.outbound.text).not.toContain("Unnamed Contact");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 2"]);
+    expect(repo.listPendingCandidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
+      "Unnamed Contact"
+    ]);
+  });
+
+  it("answers list-all contact requests with an empty-list response when nothing is saved", async () => {
+    const { agent, repo } = createTestAgent();
+
+    const result = await agent.handleMessage(inbound("What person do I know so far?"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("don't have any saved people");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
+  });
+
   it("confirms a pending contact from free-text context before calling the interpreter", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

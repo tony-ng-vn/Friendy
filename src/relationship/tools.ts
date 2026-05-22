@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createCandidateId } from "./eventMapper";
+import { isListPeopleRecall } from "./listPeopleRecall";
 import { buildMemorySearchDocument, scoreMemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
@@ -25,6 +26,7 @@ export type MemorySearchResult = {
 type SearchQueryAnalysis = {
   terms: string[];
   isEventWide: boolean;
+  isListAll: boolean;
 };
 
 type InternalMemorySearchResult = MemorySearchResult & {
@@ -71,6 +73,14 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
       const queryAnalysis = analyzeSearchQuery(query);
+      if (queryAnalysis.isListAll) {
+        return repo.listMemories(userId).map((memory) => ({
+          memory,
+          score: 1,
+          reason: "list-all relationship recall"
+        }));
+      }
+
       const repositoryCandidates = groupRetrievalCandidates(
         repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
       );
@@ -335,7 +345,8 @@ function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
 
   return {
     terms,
-    isEventWide: /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery)
+    isEventWide: /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery),
+    isListAll: isListPeopleRecall(rawQuery)
   };
 }
 
@@ -526,12 +537,24 @@ const GENERIC_MEMORY_QUERY_TERMS = new Set([
   "who",
   "which",
   "find",
+  "give",
   "show",
   "list",
+  "tell",
   "did",
   "i",
+  "me",
   "save",
   "saved",
+  "have",
+  "know",
+  "all",
+  "every",
+  "everyone",
+  "everybody",
+  "just",
+  "so",
+  "far",
   "while",
   "was",
   "is",

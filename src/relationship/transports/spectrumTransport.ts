@@ -75,6 +75,16 @@ export type CompactInteractionLog = {
   createdAt: string;
 };
 
+/** Optional verbose local-server turn log with raw inbound text and sent reply. */
+export type AgentTurnLog = {
+  userId: string;
+  platform: string;
+  spaceId?: string;
+  userText: string;
+  agentReply: string;
+  createdAt: string;
+};
+
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
 export function toInboundAgentMessage(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv> = {}): InboundAgentMessage {
   return {
@@ -114,11 +124,13 @@ export function createSpectrumFriendyRuntime({
   return {
     repo,
     async handleInboundText(input: SpectrumInboundInput) {
-      const result = await agent.handleMessage(toInboundAgentMessage(input, env));
+      const inbound = toInboundAgentMessage(input, env);
+      const result = await agent.handleMessage(inbound);
 
       return {
         replyText: result.outbound.text,
-        log: toCompactInteractionLog(result.interaction)
+        log: toCompactInteractionLog(result.interaction),
+        turnLog: toAgentTurnLog(inbound, result.outbound.text, result.interaction.createdAt)
       };
     }
   };
@@ -164,10 +176,22 @@ export async function startSpectrumFriendyAgent({
         spaceId: space.id,
         receivedAt: new Date().toISOString()
       });
+      console.info("[friendy:agent_turn]", JSON.stringify(result.turnLog));
       console.info("[friendy:agent_interaction]", JSON.stringify(result.log));
       await message.reply(result.replyText);
     });
   }
+}
+
+function toAgentTurnLog(inbound: InboundAgentMessage, agentReply: string, createdAt: string): AgentTurnLog {
+  return {
+    userId: inbound.userId,
+    platform: inbound.platform,
+    spaceId: inbound.spaceId,
+    userText: inbound.text,
+    agentReply,
+    createdAt
+  };
 }
 
 function resolveSpectrumUserId(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv>): string {

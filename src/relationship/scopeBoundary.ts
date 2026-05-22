@@ -1,3 +1,5 @@
+import { isListPeopleRecall } from "./listPeopleRecall";
+
 /**
  * Pre-tool scope gate: blocks general-assistant requests before relationship tools run.
  *
@@ -253,6 +255,10 @@ function isPendingPromptContextReply(text: string): boolean {
     return false;
   }
 
+  if (isListPeopleRecall(text)) {
+    return false;
+  }
+
   if (/^(who|what|where|when|why|how|should|can|could|would|write|debug|explain|calculate|remember)\b/.test(text)) {
     return false;
   }
@@ -277,6 +283,7 @@ function isSocialReasoning(text: string): boolean {
 
 function isRelationshipRecall(text: string): boolean {
   return (
+    isListPeopleRecall(text) ||
     /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved|contact|contacts)\b/.test(text) ||
     /\bdo i know\b/.test(text) ||
     /\bwho (likes|works|goes|is|was)\b/.test(text) ||

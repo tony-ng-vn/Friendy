@@ -47,6 +47,14 @@ describe("spectrum transport", () => {
     expect(JSON.stringify(result.log)).not.toContain("Amaya");
     expect(JSON.stringify(result.log)).not.toContain("Photon Residency II");
     expect(JSON.stringify(result.log)).not.toContain("sleep on the same bed");
+    expect(result.turnLog).toMatchObject({
+      userId: fixtureUser.id,
+      platform: "imessage",
+      spaceId: "space_123",
+      userText: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(",
+      agentReply: result.replyText,
+      createdAt: "2026-05-20T12:00:00.000Z"
+    });
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
   });
 

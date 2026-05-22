@@ -19,6 +19,7 @@ import {
   composeIgnoreCandidateReply,
   composeMemoryDeleteReply,
   composeMemoryUpdateReply,
+  composeListPeopleReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
   composePendingCandidateInquiryReply,
@@ -582,7 +583,15 @@ function updateSearchContext(
   }
 
   if (matches.length === 1) {
+    if (searchRequest.mode === "list_people") {
+      return { ...clearSearchContext(context), activeMemoryId: undefined };
+    }
+
     return { ...clearSearchContext(context), activeMemoryId: matches[0].memory.id };
+  }
+
+  if (searchRequest.mode === "list_people") {
+    return { ...clearSearchContext(context), activeMemoryId: undefined };
   }
 
   if (!isEventWideRecallQuery(message.text) && isAmbiguous(matches)) {
@@ -757,8 +766,13 @@ function searchMemories(
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("search_memories");
-  const query = effectiveMemorySearchQuery(buildMemorySearchRequest(message, interpretation));
+  const request = buildMemorySearchRequest(message, interpretation);
+  const query = effectiveMemorySearchQuery(request);
   const matches = tools.search_memories(message.userId, query);
+
+  if (request.mode === "list_people") {
+    return composeListPeopleReply({ matches });
+  }
 
   if (matches.length === 0) {
     return composeNoMatchReply();

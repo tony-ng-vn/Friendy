@@ -102,6 +102,25 @@ describe("relationship agent scope boundary", () => {
     });
   });
 
+  it("treats list-all people requests as recall even while a candidate prompt is pending", () => {
+    for (const text of [
+      "Just give me all the people in my contact so far",
+      "What person do I know so far?",
+      "What are the people I have in my contact so far?",
+      "List all my contacts so far",
+      "Show me everyone I know"
+    ]) {
+      expect(decideMessageScope({ text, hasPendingCandidate: true })).toMatchObject({
+        scope: "in_scope",
+        capability: "relationship_recall"
+      });
+      expect(decideMessageScope({ text, hasPendingCandidate: false })).toMatchObject({
+        scope: "in_scope",
+        capability: "relationship_recall"
+      });
+    }
+  });
+
   it("allows broad contact-related recall phrasing", () => {
     for (const text of [
       "Anyone in my contacts related to Friendy?",

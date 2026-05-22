@@ -92,6 +92,17 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
   return prefix;
 }
 
+/** Formats broad list-all people recall without implying the user meant one person. */
+export function composeListPeopleReply({ matches }: Pick<SearchReplyInput, "matches">): string {
+  if (matches.length === 0) {
+    return "I don't have any saved people in Friendy memory yet.";
+  }
+
+  const summaries = matches.map((match) => summarizeMatch(match.memory)).join("; ");
+  const noun = matches.length === 1 ? "person" : "people";
+  return `I have ${matches.length} saved ${noun}: ${summaries}.`;
+}
+
 /** Formats a no-match reply that asks for one more useful clue. */
 export function composeNoMatchReply(): string {
   return "I don't have enough to confidently find them yet. Give me a name, event, date, project, school, or another clue.";

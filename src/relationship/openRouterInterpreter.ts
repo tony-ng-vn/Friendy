@@ -12,6 +12,7 @@ import {
   validateMessageInterpretation
 } from "./interpretation";
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
+import { isListPeopleRecall } from "./listPeopleRecall";
 import type { InboundAgentMessage } from "./types";
 
 /** Default free-tier model when `OPENROUTER_MODEL` is unset. */
@@ -349,6 +350,7 @@ function inferTags(text: string): string[] {
 
 function looksLikeSearch(normalized: string): boolean {
   return (
+    isListPeopleRecall(normalized) ||
     normalized.includes("?") ||
     /^(who|find|show|where|what)\b/.test(normalized) ||
     normalized.includes("who i have met") ||
@@ -357,9 +359,15 @@ function looksLikeSearch(normalized: string): boolean {
 }
 
 function inferSearchMode(text: string): NonNullable<MessageInterpretation["search"]>["mode"] {
-  return /\b(anyone|anybody|people|contacts?)\b.*\b(related|connected|connection)\b/i.test(text)
-    ? "list_related_people"
-    : "semantic_recall";
+  if (isListPeopleRecall(text)) {
+    return "list_people";
+  }
+
+  if (/\b(anyone|anybody|people|contacts?)\b.*\b(related|connected|connection)\b/i.test(text)) {
+    return "list_related_people";
+  }
+
+  return "semantic_recall";
 }
 
 function inferExactSearchTerms(text: string, tags: string[]): string[] {
@@ -405,12 +413,24 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "who",
   "which",
   "find",
+  "give",
   "show",
   "list",
+  "tell",
   "did",
   "i",
+  "me",
   "save",
   "saved",
+  "have",
+  "know",
+  "all",
+  "every",
+  "everyone",
+  "everybody",
+  "just",
+  "so",
+  "far",
   "while",
   "was",
   "is",
