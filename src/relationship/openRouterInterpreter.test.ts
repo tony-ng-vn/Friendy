@@ -152,6 +152,25 @@ describe("openrouter message interpreter", () => {
     });
   });
 
+  it("adds route search fields for broad related-contact recall in fallback mode", async () => {
+    const interpreter = createRuleBasedInterpreter();
+
+    const result = await interpreter.interpret({
+      ...inbound,
+      text: "Anyone in my contacts related to friendy?"
+    });
+
+    expect(result.interpretation).toMatchObject({
+      intent: "search_memory",
+      domain: "relationship_memory",
+      search: {
+        mode: "list_related_people",
+        exactTerms: ["friendy"],
+        semanticQuery: "Anyone in my contacts related to friendy?"
+      }
+    });
+  });
+
   it("reads OpenRouter config with a stable free default model", () => {
     expect(readOpenRouterConfig({ OPENROUTER_API_KEY: "key" })).toEqual({
       apiKey: "key",

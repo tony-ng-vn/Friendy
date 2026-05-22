@@ -28,7 +28,7 @@ import {
 } from "./responseComposer";
 import { decideMessageScope, isPendingCandidateInquiry, type ScopeDecision } from "./scopeBoundary";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
-import type { MemorySearchResult, createRelationshipTools } from "./tools";
+import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage, RelationshipMemory } from "./types";
 
@@ -44,6 +44,17 @@ type SearchContext = {
   originalQuery: string;
   candidateMemoryIds: string[];
   lastQuestion: string;
+};
+type MemorySearchRequest = {
+  userId: string;
+  rawMessage: string;
+  interpretedQuery?: string;
+  normalizedQuery?: string;
+  exactTerms: string[];
+  semanticQuery?: string;
+  mode?: NonNullable<MessageInterpretation["search"]>["mode"];
+  filters?: NonNullable<MessageInterpretation["search"]>["filters"];
+  topK: number;
 };
 
 /** Injectable dependencies for the interpreted agent, including optional clock and timezone. */
@@ -555,7 +566,8 @@ function updateSearchContext(
     return context;
   }
 
-  const query = buildSearchQueryFromInterpretation(interpretation) || message.text;
+  const searchRequest = buildMemorySearchRequest(message, interpretation);
+  const query = effectiveMemorySearchQuery(searchRequest);
   const matches = tools.search_memories(message.userId, query);
   if (matches.length === 0) {
     return { ...clearSearchContext(context), activeMemoryId: undefined };
@@ -737,7 +749,7 @@ function searchMemories(
   toolCalls: AgentToolCall[]
 ): string {
   toolCalls.push("search_memories");
-  const query = buildSearchQueryFromInterpretation(interpretation) || message.text;
+  const query = effectiveMemorySearchQuery(buildMemorySearchRequest(message, interpretation));
   const matches = tools.search_memories(message.userId, query);
 
   if (matches.length === 0) {
@@ -745,6 +757,26 @@ function searchMemories(
   }
 
   return composeSearchReply({ matches, ambiguous: !isEventWideRecallQuery(message.text) && isAmbiguous(matches) });
+}
+
+function buildMemorySearchRequest(message: InboundAgentMessage, interpretation: MessageInterpretation): MemorySearchRequest {
+  const interpretedQuery = buildSearchQueryFromInterpretation(interpretation) || message.text;
+  const normalizedQuery = normalizeMemorySearchQuery(interpretedQuery);
+  return {
+    userId: message.userId,
+    rawMessage: message.text,
+    interpretedQuery,
+    normalizedQuery,
+    exactTerms: interpretation.search?.exactTerms ?? [],
+    semanticQuery: interpretation.search?.semanticQuery,
+    mode: interpretation.search?.mode,
+    filters: interpretation.search?.filters,
+    topK: interpretation.search?.topK ?? 10
+  };
+}
+
+function effectiveMemorySearchQuery(request: MemorySearchRequest): string {
+  return request.interpretedQuery || request.normalizedQuery || request.rawMessage;
 }
 
 function confirmPendingCandidate(

@@ -183,12 +183,21 @@ function ruleBasedInterpret(text: string): MessageInterpretation {
   }
 
   if (looksLikeSearch(normalized)) {
+    const tags = inferTags(text);
     return baseInterpretation({
       intent: "search_memory",
       confidence: 0.72,
+      domain: "relationship_memory",
       query: text,
       event: inferEvent(text),
-      tags: inferTags(text)
+      tags,
+      search: {
+        mode: inferSearchMode(text),
+        semanticQuery: text,
+        exactTerms: inferExactSearchTerms(text, tags),
+        filters: tags.length > 0 ? { tags } : undefined,
+        topK: 10
+      }
     });
   }
 
@@ -347,9 +356,61 @@ function looksLikeSearch(normalized: string): boolean {
   );
 }
 
+function inferSearchMode(text: string): NonNullable<MessageInterpretation["search"]>["mode"] {
+  return /\b(anyone|anybody|people|contacts?)\b.*\b(related|connected|connection)\b/i.test(text)
+    ? "list_related_people"
+    : "semantic_recall";
+}
+
+function inferExactSearchTerms(text: string, tags: string[]): string[] {
+  const terms = new Set(tags.map((tag) => tag.toLowerCase()));
+  for (const token of text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)) {
+    if (!FALLBACK_SEARCH_FILLER_TERMS.has(token)) {
+      terms.add(token);
+    }
+  }
+  return [...terms];
+}
+
 function isVagueReference(normalized: string): boolean {
   return normalized.trim() === "that person from the thing" || /\b(person|someone)\b.*\b(thing|stuff)\b/.test(normalized);
 }
+
+const FALLBACK_SEARCH_FILLER_TERMS = new Set([
+  "anyone",
+  "anybody",
+  "any",
+  "people",
+  "person",
+  "someone",
+  "somebody",
+  "contact",
+  "contacts",
+  "related",
+  "connected",
+  "connection",
+  "about",
+  "relevant",
+  "my",
+  "mine",
+  "in",
+  "to",
+  "with",
+  "from",
+  "who",
+  "which",
+  "find",
+  "show",
+  "list",
+  "was",
+  "is",
+  "the"
+]);
 
 function capitalize(value: string): string {
   return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);

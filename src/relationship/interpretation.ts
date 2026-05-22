@@ -23,6 +23,43 @@ export const messageInterpretationJsonSchema = {
       maximum: 1,
       description: "Model confidence in the interpretation, from 0 to 1."
     },
+    domain: {
+      type: "string",
+      enum: [
+        "relationship_memory",
+        "relationship_drafting",
+        "lifecycle_control",
+        "general_assistant",
+        "unsafe_or_adversarial"
+      ],
+      description: "High-level route domain for policy validation."
+    },
+    search: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["lookup_person", "list_people", "list_related_people", "event_recall", "semantic_recall"]
+        },
+        semanticQuery: { type: "string" },
+        exactTerms: { type: "array", items: { type: "string" } },
+        filters: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            personName: { type: "string" },
+            eventName: { type: "string" },
+            topic: { type: "string" },
+            companyOrSchool: { type: "string" },
+            dateText: { type: "string" },
+            tags: { type: "array", items: { type: "string" } }
+          }
+        },
+        topK: { type: "number", minimum: 1, maximum: 20 }
+      },
+      required: ["mode", "semanticQuery", "exactTerms"]
+    },
     people: {
       type: "array",
       description: "People mentioned by the user. Empty for pure search or clarification messages.",
@@ -117,11 +154,41 @@ const eventInterpretationSchema = z
   })
   .strict();
 
+const routeDomainSchema = z.enum([
+  "relationship_memory",
+  "relationship_drafting",
+  "lifecycle_control",
+  "general_assistant",
+  "unsafe_or_adversarial"
+]);
+
+const searchPlanSchema = z
+  .object({
+    mode: z.enum(["lookup_person", "list_people", "list_related_people", "event_recall", "semantic_recall"]),
+    semanticQuery: z.string().default(""),
+    exactTerms: z.array(z.string()).default([]),
+    filters: z
+      .object({
+        personName: z.string().optional(),
+        eventName: z.string().optional(),
+        topic: z.string().optional(),
+        companyOrSchool: z.string().optional(),
+        dateText: z.string().optional(),
+        tags: z.array(z.string()).optional()
+      })
+      .strict()
+      .optional(),
+    topK: z.number().int().positive().max(20).optional()
+  })
+  .strict();
+
 /** Zod schema mirroring `messageInterpretationJsonSchema` for runtime validation. */
 export const messageInterpretationSchema = z
   .object({
     intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
     confidence: z.number().min(0).max(1),
+    domain: routeDomainSchema.optional(),
+    search: searchPlanSchema.nullable().optional().transform((value) => value ?? undefined),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),
     dateContext: z
@@ -160,6 +227,8 @@ export const messageInterpretationSchema = z
 
 /** Runtime-validated interpretation produced by the LLM layer or deterministic fallback. */
 export type MessageInterpretation = z.infer<typeof messageInterpretationSchema>;
+export type RouteDomain = z.infer<typeof routeDomainSchema>;
+export type SearchPlan = z.infer<typeof searchPlanSchema>;
 
 /**
  * Parses and validates raw model output against `messageInterpretationSchema`.
@@ -183,7 +252,8 @@ export function validateMessageInterpretation(value: unknown): MessageInterpreta
 export function buildSearchQueryFromInterpretation(interpretation: MessageInterpretation): string {
   const seen = new Set<string>();
 
-  return [interpretation.query, interpretation.event.name, ...interpretation.tags]
+  return [interpretation.search?.exactTerms ?? [], interpretation.query, interpretation.event.name, ...interpretation.tags]
+    .flat()
     .map((part) => part.trim())
     .filter((part) => {
       if (part.length === 0) {

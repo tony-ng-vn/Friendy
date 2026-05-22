@@ -241,6 +241,14 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Testing 1");
     expect(result.outbound.text).toContain("Testing 12");
     expect(result.outbound.text).not.toContain("people you know");
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      intent: "search_memory",
+      domain: "relationship_memory",
+      search: {
+        mode: "list_related_people",
+        exactTerms: ["friendy"]
+      }
+    });
   });
 
   it("handles ignore without a pending candidate through the interpreted path", async () => {

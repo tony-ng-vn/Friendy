@@ -79,6 +79,33 @@ describe("message interpretation contract", () => {
     expect(buildSearchQueryFromInterpretation(interpretation)).toBe("people I met at the Residency Residency");
   });
 
+  it("accepts optional route domain and search plan", () => {
+    const interpretation = validateMessageInterpretation({
+      intent: "search_memory",
+      confidence: 0.95,
+      domain: "relationship_memory",
+      search: {
+        mode: "list_related_people",
+        semanticQuery: "people or contacts related to Friendy",
+        exactTerms: ["friendy"],
+        filters: { tags: ["friendy"] },
+        topK: 10
+      },
+      people: [],
+      event: { name: "", dateText: "", location: "" },
+      dateContext: null,
+      contextNote: "",
+      query: "Friendy",
+      tags: ["friendy"],
+      needsClarification: false,
+      clarificationQuestion: ""
+    });
+
+    expect(interpretation.domain).toBe("relationship_memory");
+    expect(interpretation.search?.mode).toBe("list_related_people");
+    expect(buildSearchQueryFromInterpretation(interpretation)).toBe("friendy");
+  });
+
   it("accepts nullable dateContext from strict structured model output", () => {
     const interpretation = validateMessageInterpretation({
       intent: "search_memory",
