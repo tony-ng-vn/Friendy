@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
@@ -168,6 +168,27 @@ describe("candidate intake interface spec", () => {
       ]
     });
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("treats stale prompted candidates as no longer pending for reply resolution", async () => {
+    const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    repo.markCandidatePrompted(candidate.id, "interaction_stale_prompt", {
+      spaceId: "imessage_space_candidate_intake",
+      promptedAt: "2026-05-15T21:45:00.000Z"
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-31T00:00:00.000Z"));
+
+      expect(intake.resolveCandidateReply({ scope: scope(), replyText: "yes" })).toEqual({ kind: "no_pending" });
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the inbound space to resolve numbered replies against the matching prompted candidate", async () => {

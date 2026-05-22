@@ -9,6 +9,8 @@ import type {
   RuntimeWarningState
 } from "./runtime/friendyRuntime";
 import {
+  calculateCandidateExpiresAt,
+  expireCandidateIfStale,
   extractTags,
   type ConfirmCandidateOptions,
   type MarkCandidatePromptedOptions,
@@ -93,7 +95,8 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         const candidate: ContactCandidate = {
           ...contact,
           id: createCandidateId(contact),
-          status: "pending"
+          status: "pending",
+          expiresAt: calculateCandidateExpiresAt(contact.detectedAt)
         };
 
         upsertCandidate(db, candidate);
@@ -108,6 +111,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     listPendingCandidates(userId: string): ContactCandidate[] {
+      expireStaleCandidates(db, userId);
       return readRows<ContactCandidate>(
         db
           .prepare(
@@ -152,12 +156,13 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         if (!candidate) {
           throw new Error(`Candidate not found: ${candidateId}`);
         }
-        if (candidate.status !== "pending") {
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (currentCandidate.status !== "pending") {
           throw new Error(`Candidate is not promptable: ${candidateId}`);
         }
 
         const promptedCandidate: ContactCandidate = {
-          ...candidate,
+          ...currentCandidate,
           status: "prompted",
           promptInteractionId: interactionId,
           promptSpaceId: options.spaceId,
@@ -177,12 +182,13 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         if (!candidate) {
           throw new Error(`Candidate not found: ${candidateId}`);
         }
-        if (candidate.status !== "pending") {
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (currentCandidate.status !== "pending") {
           throw new Error(`Candidate is not pending: ${candidateId}`);
         }
 
         const failedCandidate: ContactCandidate = {
-          ...candidate,
+          ...currentCandidate,
           statusReason: reason
         };
         upsertCandidate(db, failedCandidate);
@@ -203,21 +209,22 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         if (!candidate) {
           throw new Error(`Candidate not found: ${candidateId}`);
         }
-        if (!isReviewableCandidateStatus(candidate.status)) {
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (!isReviewableCandidateStatus(currentCandidate.status)) {
           throw new Error(`Candidate is not confirmable: ${candidateId}`);
         }
 
-        const confirmedCandidate: ContactCandidate = { ...candidate, status: "confirmed" };
+        const confirmedCandidate: ContactCandidate = { ...currentCandidate, status: "confirmed" };
         upsertCandidate(db, confirmedCandidate);
 
         const selectedMatch =
           options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
         const memory: RelationshipMemory = {
-          id: `memory_${candidate.id}`,
-          userId: candidate.userId,
-          candidateId: candidate.id,
-          displayName: candidate.displayName,
-          primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
+          id: `memory_${currentCandidate.id}`,
+          userId: currentCandidate.userId,
+          candidateId: currentCandidate.id,
+          displayName: currentCandidate.displayName,
+          primaryContactLabel: currentCandidate.phoneNumbers[0] ?? currentCandidate.emails[0] ?? "contact saved",
           eventId: selectedMatch?.calendarEventId,
           eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
           dateContext: options.dateContext,
@@ -241,11 +248,12 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
-      if (!isReviewableCandidateStatus(candidate.status)) {
+      const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+      if (!isReviewableCandidateStatus(currentCandidate.status)) {
         throw new Error(`Candidate is not ignorable: ${candidateId}`);
       }
 
-      upsertCandidate(db, { ...candidate, status: "ignored" });
+      upsertCandidate(db, { ...currentCandidate, status: "ignored" });
     },
 
     listMemories(userId?: string): RelationshipMemory[] {
@@ -664,6 +672,26 @@ function setupSchema(db: DatabaseSync): void {
 
     PRAGMA user_version = 1;
   `);
+}
+
+function expireStaleCandidates(db: DatabaseSync, userId: string): void {
+  const candidates = readRows<ContactCandidate>(
+    db.prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status IN ('pending', 'prompted')").all(userId)
+  );
+
+  for (const candidate of candidates) {
+    expireSqliteCandidateIfStale(db, candidate);
+  }
+}
+
+function expireSqliteCandidateIfStale(db: DatabaseSync, candidate: ContactCandidate): ContactCandidate {
+  const originalStatus = candidate.status;
+  const updatedCandidate = expireCandidateIfStale(candidate);
+  if (updatedCandidate.status !== originalStatus) {
+    upsertCandidate(db, updatedCandidate);
+  }
+
+  return updatedCandidate;
 }
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {

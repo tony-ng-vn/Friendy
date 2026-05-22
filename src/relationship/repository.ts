@@ -32,6 +32,8 @@ export type MarkCandidatePromptedOptions = {
   promptedAt?: string;
 };
 
+const CANDIDATE_EXPIRATION_DAYS = 14;
+
 export type RelationshipRepository = {
   listCalendarEvents(userId: string): CalendarEvent[];
   addCalendarEvents(events: CalendarEvent[]): CalendarEvent[];
@@ -96,7 +98,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       const candidate: ContactCandidate = {
         ...contact,
         id: createCandidateId(contact),
-        status: "pending"
+        status: "pending",
+        expiresAt: calculateCandidateExpiresAt(contact.detectedAt)
       };
 
       candidates.push(candidate);
@@ -106,7 +109,10 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     },
 
     listPendingCandidates(userId: string): ContactCandidate[] {
-      return candidates.filter((candidate) => candidate.userId === userId && isReviewableCandidateStatus(candidate.status));
+      return candidates.filter((candidate) => {
+        expireCandidateIfStale(candidate);
+        return candidate.userId === userId && isReviewableCandidateStatus(candidate.status);
+      });
     },
 
     getCandidate(candidateId: string): ContactCandidate | undefined {
@@ -143,6 +149,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      expireCandidateIfStale(candidate);
       if (!isReviewableCandidateStatus(candidate.status)) {
         throw new Error(`Candidate is not confirmable: ${candidateId}`);
       }
@@ -179,6 +186,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      expireCandidateIfStale(candidate);
       if (candidate.status !== "pending") {
         throw new Error(`Candidate is not promptable: ${candidateId}`);
       }
@@ -196,6 +204,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      expireCandidateIfStale(candidate);
       if (candidate.status !== "pending") {
         throw new Error(`Candidate is not pending: ${candidateId}`);
       }
@@ -209,6 +218,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      expireCandidateIfStale(candidate);
       if (!isReviewableCandidateStatus(candidate.status)) {
         throw new Error(`Candidate is not ignorable: ${candidateId}`);
       }
@@ -244,6 +254,22 @@ function assertMemoryHasConfirmedCandidate(memory: RelationshipMemory, candidate
   if (!candidate || candidate.userId !== memory.userId || candidate.status !== "confirmed") {
     throw new Error("Memory requires a confirmed candidate");
   }
+}
+
+export function calculateCandidateExpiresAt(detectedAt: string): string {
+  return new Date(Date.parse(detectedAt) + CANDIDATE_EXPIRATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function expireCandidateIfStale(candidate: ContactCandidate, now = new Date()): ContactCandidate {
+  if (
+    isReviewableCandidateStatus(candidate.status) &&
+    candidate.expiresAt &&
+    Date.parse(candidate.expiresAt) <= now.getTime()
+  ) {
+    candidate.status = "expired";
+  }
+
+  return candidate;
 }
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {

@@ -184,6 +184,39 @@ describe("sqlite relationship repository", () => {
     });
   });
 
+  it("persists candidate expiration and expires stale candidates on pending lookup", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+
+    expect(candidate).toMatchObject({
+      status: "pending",
+      expiresAt: "2026-05-30T04:42:00.000Z"
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-31T00:00:00.000Z"));
+
+      const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+      expect(reopened.listPendingCandidates(fixtureUser.id)).toEqual([]);
+      expect(reopened.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+      expect(() => reopened.confirmCandidate(candidate.id, "late reply", fixtureShortEvent.id)).toThrow(
+        "Candidate is not confirmable"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps ignored candidates out of later pending queues without creating memory", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({

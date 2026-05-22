@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import type { CalendarEvent } from "./types";
@@ -15,6 +16,54 @@ describe("relationship repository", () => {
     expect(candidate.status).toBe("pending");
     expect(candidate.displayName).toBe("Maya Chen");
     expect(matches[0].eventTitle).toBe("Photon Residency Dinner");
+  });
+
+  it("sets candidate expiration and expires stale candidates on pending lookup", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+
+    expect(candidate).toMatchObject({
+      status: "pending",
+      expiresAt: "2026-05-30T04:42:00.000Z"
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-31T00:00:00.000Z"));
+
+      expect(repo.listPendingCandidates(fixtureUser.id)).toEqual([]);
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+      expect(() => repo.confirmCandidate(candidate.id, "late reply", fixtureShortEvent.id)).toThrow(
+        "Candidate is not confirmable"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("expires candidates exactly at their expiration timestamp", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(candidate.expiresAt ?? ""));
+
+      expect(repo.listPendingCandidates(fixtureUser.id)).toEqual([]);
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("creates a pending contact candidate during one clear event", () => {

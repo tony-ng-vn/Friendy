@@ -7,7 +7,7 @@
 export type ContactCandidateSource = "contacts_delta" | "manual" | "simulated";
 
 /** Lifecycle for a newly detected contact before it becomes searchable memory. */
-export type ContactCandidateStatus = "pending" | "prompted" | "confirmed" | "ignored";
+export type ContactCandidateStatus = "pending" | "prompted" | "confirmed" | "ignored" | "expired" | "error";
 
 export type CalendarSource = "apple_calendar" | "google_calendar" | "simulated";
 
@@ -60,6 +60,7 @@ export type ContactCandidateDetected = {
 export type ContactCandidate = ContactCandidateDetected & {
   id: string;
   status: ContactCandidateStatus;
+  expiresAt?: string;
   promptInteractionId?: string;
   promptSpaceId?: string;
   promptedAt?: string;
