@@ -11,6 +11,7 @@ import {
   type MessageInterpretation,
   validateMessageInterpretation
 } from "./interpretation";
+import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
 import type { InboundAgentMessage } from "./types";
 
 /** Default free-tier model when `OPENROUTER_MODEL` is unset. */
@@ -143,13 +144,7 @@ async function callOpenRouter({
       messages: [
         {
           role: "system",
-          content: [
-            "You interpret Friendy relationship-memory text into JSON only.",
-            "Friendy is a personal relationship memory agent.",
-            "Do not execute actions. Do not invent people or contacts.",
-            "Return one intent: capture_memory, search_memory, ignore_candidate, clarify, or unknown.",
-            "Use clarify when the message is too vague to search or save safely."
-          ].join(" ")
+          content: [buildInterpreterSystemPrompt(), buildStructuredOutputInstructions()].join("\n\n")
         },
         { role: "user", content: message.text }
       ]

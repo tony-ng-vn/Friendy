@@ -54,3 +54,21 @@
 - `npm run agent:friendy:check`: passed and still verified replaying an unacked batch without duplicate prompt.
 - `npm run build`: passed.
 - `git diff --check`: passed.
+
+## Task 4 Red Tests
+
+- Date: 2026-05-22
+- Added `src/relationship/__tests__/behaviorContract.test.ts`.
+- Added response composer expectation for natural saved-memory wording.
+- Red runs: `npm test -- src/relationship/__tests__/behaviorContract.test.ts` failed because `../behaviorContract` did not exist, and `npm test -- src/relationship/responseComposer.test.ts` failed because saved replies still started with `Saved.`.
+
+## Task 4 Green Verification
+
+- Date: 2026-05-22
+- Added `docs/agent-behavior-contract.md`, `src/relationship/behaviorContract.ts`, and `src/relationship/evals/behavior-contract-cases.ts`.
+- Wired OpenRouter system prompt to combine behavior rules with structured-output instructions while keeping the JSON schema unchanged.
+- Updated save confirmation copy to the natural `Got it, saved... I'll remember...` pattern.
+- `npm test -- src/relationship/__tests__/behaviorContract.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/responseComposer.test.ts`: passed with 3 files and 10 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
+- `git diff --check`: passed.

@@ -66,6 +66,8 @@ describe("openrouter message interpreter", () => {
         strict: true
       }
     });
+    expect(body.messages[0].content).toContain("Calendar guesses are suggestions");
+    expect(body.messages[0].content).toContain("Return JSON that matches the provided schema");
   });
 
   it("retries invalid model output once before returning the valid interpretation", async () => {

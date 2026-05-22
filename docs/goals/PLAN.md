@@ -4,7 +4,7 @@
 - [x] Execute Task 1: pin Node version and add safe CI.
 - [x] Execute Task 2: add structured `doctor:friendy`.
 - [x] Execute Task 3: add inspectable runtime lifecycle logs.
-- [ ] Execute Task 4: add behavior contract artifacts.
+- [x] Execute Task 4: add behavior contract artifacts.
 - [ ] Execute Task 5: add event guess strength and prompt routing.
 - [ ] Execute Task 6: add candidate lifecycle timing fields.
 - [ ] Execute Task 7: add active start gate and pause/resume.

@@ -70,8 +70,10 @@ describe("relationship response composer", () => {
     const ignored = composeIgnoreCandidateReply({ candidateName: "Maya Chen" });
     const noPendingIgnore = composeIgnoreCandidateReply();
 
+    expect(saved).toContain("Got it, saved Sarah Fah from Photon Residency II.");
     expect(saved).toContain("Sarah Fah");
     expect(saved).toContain("Photon Residency II");
+    expect(saved).toContain("I'll remember they were the community lead.");
     expect(saved).not.toContain('"');
     expect(noMatch).toMatch(/I don't have enough/i);
     expect(clarification).toBe("What do you remember about them, like a name or event?");

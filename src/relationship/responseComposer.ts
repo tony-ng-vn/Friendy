@@ -44,21 +44,21 @@ export function composeSaveConfirmation({ memories }: SaveConfirmationInput): st
     const context = summarizeMemoryContext(memory);
 
     if (event && context) {
-      return `Saved. I'll remember ${memory.displayName} from ${event}: ${context}.`;
+      return `Got it, saved ${memory.displayName} from ${event}. I'll remember ${context}.`;
     }
 
     if (event) {
-      return `Saved. I'll remember ${memory.displayName} from ${event}.`;
+      return `Got it, saved ${memory.displayName} from ${event}.`;
     }
 
     if (context) {
-      return `Saved. I'll remember ${memory.displayName}: ${context}.`;
+      return `Got it, saved ${memory.displayName}. I'll remember ${context}.`;
     }
 
-    return `Saved. I'll remember ${memory.displayName}.`;
+    return `Got it, saved ${memory.displayName}.`;
   }
 
-  return `Saved. I'll remember ${memories.length} people: ${memories.map((memory) => memory.displayName).join(", ")}.`;
+  return `Got it, saved ${memories.length} people: ${memories.map((memory) => memory.displayName).join(", ")}.`;
 }
 
 /**
