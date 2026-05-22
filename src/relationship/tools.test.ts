@@ -124,6 +124,26 @@ describe("relationship tools", () => {
     expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 1", "Testing 12"]);
   });
 
+  it("uses generated retrieval documents for accepted memory fields outside the old field scorer", () => {
+    const tools = createToolsWithMemories([
+      {
+        ...memory("Maya", "Demo Prep", "met at the builder dinner"),
+        dateContext: {
+          rawText: "during Mac contact watcher debugging week",
+          localDate: "2026-05-22",
+          startsAt: "2026-05-22T00:00:00.000Z",
+          timezone: "America/Los_Angeles"
+        }
+      },
+      memory("Nina", "Demo Prep", "met at the builder dinner")
+    ]);
+
+    const results = tools.search_memories(fixtureUser.id, "debugging week");
+
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Maya"]);
+    expect(results[0].reason).toContain("document");
+  });
+
   it("updates a memory through a bounded tool and records a revision", () => {
     const { repo, tools, memory } = seededMemoryHarness("building recruiting agents");
 

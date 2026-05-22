@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createCandidateId } from "./eventMapper";
+import { buildMemorySearchDocument, scoreMemorySearchDocument } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
 
@@ -200,6 +201,7 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
   let score = 0;
   let eventScore = 0;
   let specificScore = 0;
+  const reasonParts: string[] = [];
 
   for (const term of query.terms) {
     const eventMatch = fieldIncludes(fields.event, term);
@@ -228,6 +230,18 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
     }
   }
 
+  const documentCandidate = scoreMemorySearchDocument(buildMemorySearchDocument(memory), query.terms);
+  const documentMatchedTerms = documentCandidate?.matchedTerms.filter((term) => !matched.has(term)) ?? [];
+  if (documentCandidate && documentMatchedTerms.length > 0) {
+    const documentScore = documentMatchedTerms.length * 3 * 0.6;
+    score += documentScore;
+    specificScore += documentScore;
+    for (const term of documentMatchedTerms) {
+      matched.add(term);
+    }
+    reasonParts.push(`document matched ${documentMatchedTerms.join(", ")}`);
+  }
+
   const coverage = query.terms.length === 0 ? 0 : matched.size / query.terms.length;
 
   return {
@@ -236,7 +250,10 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
     coverage,
     eventScore,
     specificScore,
-    reason: matched.size > 0 ? `Matched ${[...matched].join(", ")}.` : `No searchable field matched.`
+    reason:
+      matched.size > 0
+        ? [`Matched ${[...matched].join(", ")}.`, ...reasonParts].join(" ")
+        : `No searchable field matched.`
   };
 }
 
