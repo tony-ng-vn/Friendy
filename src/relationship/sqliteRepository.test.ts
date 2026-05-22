@@ -446,7 +446,9 @@ describe("sqlite relationship repository", () => {
     });
     expect(repo.listPendingCandidates(userId).map((item) => item.displayName)).toEqual(["Unseeded Person"]);
 
-    const memory = repo.confirmCandidate(candidate.id, "met at an unseeded runtime check");
+    const memory = repo.confirmCandidate(candidate.id, "met at an unseeded runtime check", undefined, {
+      confirmedAt: "2026-05-21T01:00:00.000Z"
+    });
     repo.addInteraction({
       id: "interaction_unseeded_1",
       userId,
@@ -462,7 +464,9 @@ describe("sqlite relationship repository", () => {
     expect(reopened.listMemories(userId)).toEqual([
       expect.objectContaining({
         id: memory.id,
-        displayName: "Unseeded Person"
+        displayName: "Unseeded Person",
+        createdAt: "2026-05-21T01:00:00.000Z",
+        updatedAt: "2026-05-21T01:00:00.000Z"
       })
     ]);
     expect(reopened.listInteractions(userId)).toEqual([

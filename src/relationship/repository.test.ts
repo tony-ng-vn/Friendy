@@ -118,12 +118,16 @@ describe("relationship repository", () => {
     });
 
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id, {
+      confirmedAt: "2026-05-21T20:15:00.000Z"
+    });
 
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
     expect(memory.displayName).toBe("Maya Chen");
     expect(memory.eventTitle).toBe("Photon Residency Dinner");
     expect(memory.tags).toContain("piano");
+    expect(memory.createdAt).toBe("2026-05-21T20:15:00.000Z");
+    expect(memory.updatedAt).toBe("2026-05-21T20:15:00.000Z");
   });
 
   it("rejects direct memory writes without a confirmed candidate", () => {

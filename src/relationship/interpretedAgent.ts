@@ -233,7 +233,8 @@ function captureMemories(
       eventTitle: interpretation.event.name || undefined,
       dateContext: interpretation.dateContext,
       idempotencyKey,
-      createdFromInteractionId: message.interactionId ?? idempotencyKey.replace(/^manual_imessage:/, "")
+      createdFromInteractionId: message.interactionId ?? idempotencyKey.replace(/^manual_imessage:/, ""),
+      confirmedAt: message.receivedAt
     });
   });
 

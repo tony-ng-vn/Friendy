@@ -25,6 +25,7 @@ export type ConfirmCandidateOptions = {
   eventTitle?: string;
   relationshipContext?: string;
   dateContext?: RelationshipDateContext;
+  confirmedAt?: string;
 };
 
 export type MarkCandidatePromptedOptions = {
@@ -162,6 +163,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
       candidate.status = "confirmed";
       const selectedMatch = options.eventTitle && !eventId ? undefined : selectEventMatch(eventMatches, candidateId, eventId);
+      const confirmedAt = options.confirmedAt ?? new Date().toISOString();
       const memory: RelationshipMemory = {
         id: `memory_${candidate.id}`,
         userId: candidate.userId,
@@ -175,8 +177,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
         relationshipContext: options.relationshipContext,
         tags: extractTags(contextNote),
         confidence: selectedMatch?.confidence ?? 0.5,
-        createdAt: "2026-05-20T12:00:00.000Z",
-        updatedAt: "2026-05-20T12:00:00.000Z"
+        createdAt: confirmedAt,
+        updatedAt: confirmedAt
       };
 
       memories.push(memory);
