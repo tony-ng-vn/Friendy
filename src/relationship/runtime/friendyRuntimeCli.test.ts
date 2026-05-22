@@ -99,6 +99,31 @@ describe("Friendy foreground runtime CLI configuration", () => {
     started.close();
   });
 
+  it("logs clear lifecycle states while starting", async () => {
+    const cwd = tempDir();
+    const logs: string[] = [];
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      startSensor() {
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger(logs)
+    });
+
+    expect(logs).toContain("[friendy] loading env");
+    expect(logs).toContain("[friendy] sqlite store ready");
+    expect(logs).toContain("[friendy] prompt transport ready: console");
+    expect(logs).toContain("[friendy] macos sensor launching: mock");
+    expect(logs).toContain("[friendy] watching for contact signals");
+    started.close();
+  });
+
   it("warns when the SQLite runtime path is under a common cloud-synced folder", async () => {
     const cwd = tempDir();
     const logs: string[] = [];

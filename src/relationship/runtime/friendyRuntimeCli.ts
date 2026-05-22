@@ -110,7 +110,9 @@ export async function startFriendyForegroundRuntime({
   startSensor = defaultStartSensor,
   startInboundAgent = defaultStartInboundAgent
 }: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
+  logger.info("[friendy] loading env");
   const config = resolveFriendyRuntimeConfig({ cwd, env });
+  logger.info("[friendy] config resolved");
   if (config.runtimeStore !== "sqlite") {
     throw new Error("agent:friendy requires FRIENDY_RUNTIME_STORE=sqlite for shared local runtime state.");
   }
@@ -119,7 +121,9 @@ export async function startFriendyForegroundRuntime({
   const userId = resolveConfiguredUserId(env, "local_friendy_user") ?? "local_friendy_user";
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
   const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
+  logger.info("[friendy] sqlite store ready");
   const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
+  logger.info(`[friendy] prompt transport ready: ${promptSenderKind(promptSender)}`);
   const runtime = createFriendySensorRuntime({
     userId,
     repo,
@@ -131,7 +135,9 @@ export async function startFriendyForegroundRuntime({
   const inboundAgent = shouldStartInboundAgent(config, env)
     ? startInboundAgent({ repo, userId, env, logger })
     : undefined;
+  logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
   const sensor = startSensor({ launch: config.sensor, runtime });
+  logger.info("[friendy] watching for contact signals");
 
   return {
     config,
@@ -145,6 +151,11 @@ export async function startFriendyForegroundRuntime({
       state.close();
     }
   };
+}
+
+function promptSenderKind(sender: RuntimePromptSender): string {
+  const kind = (sender as Partial<RuntimePromptSenderWithKind>).kind;
+  return kind ?? "custom";
 }
 
 /** Selects console or Spectrum prompt delivery from env and sensor mode. */

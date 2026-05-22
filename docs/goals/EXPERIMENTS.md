@@ -38,3 +38,19 @@
 - `FRIENDY_SENSOR_MOCK=1 FRIENDY_PROMPT_TRANSPORT=console npm run doctor:friendy`: passed and reported mock sensor, writable SQLite path, writable sensor state directory, console prompt transport, and native permission guidance.
 - `npm run build`: passed.
 - `git diff --check`: passed.
+
+## Task 3 Red Test
+
+- Date: 2026-05-22
+- Added lifecycle state expectations to `src/relationship/runtime/friendyRuntimeCli.test.ts`.
+- Red run: `npm test -- src/relationship/runtime/friendyRuntimeCli.test.ts` failed because the lifecycle log list was empty and did not contain `[friendy] loading env`.
+
+## Task 3 Green Verification
+
+- Date: 2026-05-22
+- Added lifecycle logs for env loading, config resolution, SQLite readiness, prompt transport readiness, sensor launch, and watching state.
+- `npm test -- src/relationship/runtime/friendyRuntimeCli.test.ts`: passed with 1 file and 10 tests.
+- `npm test -- src/relationship/runtime/friendyRuntimeCheck.test.ts`: passed with 1 file and 2 tests.
+- `npm run agent:friendy:check`: passed and still verified replaying an unacked batch without duplicate prompt.
+- `npm run build`: passed.
+- `git diff --check`: passed.
