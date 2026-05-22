@@ -6,7 +6,8 @@
  * This preserves event ordering and avoids concurrent writes to SQLite state.
  */
 import { spawn } from "node:child_process";
-import { closeSync, openSync, readSync, statSync, truncateSync, unwatchFile, watchFile } from "node:fs";
+import { closeSync, mkdirSync, openSync, readSync, statSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 import type { RuntimeLogger } from "./friendyRuntime";
@@ -149,7 +150,7 @@ function startAppBundleSensorProcess({
   logger: RuntimeLogger;
   spawnProcess: (command: string, args: string[]) => SensorChildProcess;
 }): StartedSensorProcess {
-  truncateSync(launch.eventLogPath, 0);
+  resetSensorEventLog(launch.eventLogPath);
 
   let stdoutBuffer = "";
   let processing = Promise.resolve();
@@ -179,11 +180,13 @@ function startAppBundleSensorProcess({
       fd = openSync(launch.eventLogPath, "r");
       const chunk = Buffer.alloc(size - readPosition);
       readSync(fd, chunk, 0, chunk.length, readPosition);
+      const newBytes = size - readPosition;
       readPosition = size;
       stdoutBuffer += chunk.toString("utf8");
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() ?? "";
-      for (const line of lines) {
+      const completeLines = lines.filter((line) => line.trim().length > 0);
+      for (const line of completeLines) {
         enqueueLine(line);
       }
     } catch {
@@ -210,8 +213,17 @@ function startAppBundleSensorProcess({
     if (trailing) {
       enqueueLine(trailing);
     }
-    logger.warn(`[friendy:macos_sensor:exit] code=${code} signal=${signal}`);
+    logger.error(
+      `[friendy:macos_sensor:fatal] macOS sensor app exited (code=${code} signal=${signal}). ` +
+        "sensor-events.ndjson will stop updating; restart with npm run agent:friendy"
+    );
   });
 
   return { child };
+}
+
+/** Creates or truncates the app-bundle NDJSON tail file so startup survives a deleted log path. */
+function resetSensorEventLog(eventLogPath: string): void {
+  mkdirSync(dirname(eventLogPath), { recursive: true });
+  writeFileSync(eventLogPath, "", "utf8");
 }

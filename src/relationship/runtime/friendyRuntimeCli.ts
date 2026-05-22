@@ -14,7 +14,13 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
 import { resolveConfiguredUserId } from "../identity";
-import { createOnboardingStateController, type OnboardingStateController } from "../onboardingState";
+import {
+  createOnboardingStateController,
+  type OnboardingControlAction,
+  type OnboardingStateController
+} from "../onboardingState";
+import { requestMacosSensorContactSnapshotReset } from "./macosSensorState";
+import { terminateExistingMacosSensorProcesses } from "./terminateMacosSensorProcesses";
 import { composeRuntimeStartupReply } from "../responseComposer";
 import type { RelationshipRepository } from "../repository";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
@@ -119,10 +125,26 @@ export async function startFriendyForegroundRuntime({
   ackWriter = createFileAckWriter(cwd),
   startSensor = defaultStartSensor,
   startInboundAgent = defaultStartInboundAgent,
-  onboarding = createOnboardingStateController()
+  onboarding
 }: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
   logger.info("[friendy] loading env");
   const config = resolveFriendyRuntimeConfig({ cwd, env });
+  const resolvedOnboarding =
+    onboarding ??
+    createOnboardingStateController("ready_pending_user_start", {
+      onControlApplied(action: OnboardingControlAction) {
+        if (action !== "started") {
+          return;
+        }
+
+        const reset = requestMacosSensorContactSnapshotReset(config.sensorStateDir);
+        logger.info(
+          reset.removedSnapshot
+            ? "[friendy] reset macOS contact identifier snapshot for post-start detection"
+            : "[friendy] requested macOS contact snapshot reset signal for post-start detection"
+        );
+      }
+    });
   logger.info("[friendy] config resolved");
   if (config.runtimeStore !== "sqlite") {
     throw new Error("agent:friendy requires FRIENDY_RUNTIME_STORE=sqlite for shared local runtime state.");
@@ -143,21 +165,29 @@ export async function startFriendyForegroundRuntime({
     sender: promptSender,
     ackWriter,
     logger,
-    getOnboardingState: () => onboarding.getState()
+    getOnboardingState: () => resolvedOnboarding.getState()
   });
   const inboundAgent = shouldStartInboundAgent(config, env)
-    ? startInboundAgent({ repo, userId, onboarding, env, logger })
+    ? startInboundAgent({ repo, userId, onboarding: resolvedOnboarding, env, logger })
     : undefined;
   logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
+  if (config.sensor.mode === "real") {
+    terminateExistingMacosSensorProcesses(logger);
+  }
   const sensor = startSensor({ launch: config.sensor, runtime });
   logger.info("[friendy] watching for contact signals");
+  if (config.sensor.mode === "real" && config.sensor.kind === "app_bundle") {
+    logger.info(
+      "[friendy:e2e] keep this terminal open → text start from your phone → add a NEW contact in Contacts"
+    );
+  }
   await notifyRuntimeStartup({ promptSender, userId, env, sensorMode: config.sensor.mode, logger });
 
   return {
     config,
     repo,
     state,
-    onboarding,
+    onboarding: resolvedOnboarding,
     sensor,
     inboundAgent,
     close() {
@@ -262,6 +292,13 @@ function resolveSensorLaunchConfig({
       args: ["--state-dir", sensorStateDir, "--event-log", eventLogPath],
       eventLogPath
     };
+  }
+
+  if (process.platform === "darwin" && appBundlePath) {
+    throw new Error(
+      "Refusing executable macOS sensor launch while Friendy macOS Sensor.app exists. " +
+        "Run npm run build:macos-sensor and leave FRIENDY_SENSOR_LAUNCH_VIA_APP_BUNDLE unset (or =1)."
+    );
   }
 
   return {

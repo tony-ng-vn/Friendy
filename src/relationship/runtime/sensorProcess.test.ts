@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { existsSync, mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { startSensorProcess, type SensorChildProcess } from "./sensorProcess";
@@ -78,6 +81,31 @@ describe("macOS sensor process wiring", () => {
 
     expect(logs).toContain("[friendy:macos_sensor:stderr] Contacts permission denied");
     expect(logs).toContain("[friendy:macos_sensor:exit] code=1 signal=null");
+  });
+
+  it("creates a missing app-bundle event log before tailing", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "friendy-sensor-"));
+    const eventLogPath = join(stateDir, "sensor-events.ndjson");
+    const child = createFakeChild();
+
+    startSensorProcess({
+      launch: {
+        kind: "app_bundle",
+        appPath: "/Applications/Friendy macOS Sensor.app",
+        args: ["--state-dir", stateDir],
+        eventLogPath
+      },
+      spawnProcess() {
+        return child;
+      },
+      runtime: {
+        async processLine() {}
+      },
+      logger: testLogger()
+    });
+
+    expect(existsSync(eventLogPath)).toBe(true);
+    child.emit("exit", 0, null);
   });
 });
 

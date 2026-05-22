@@ -72,6 +72,7 @@ final class NativeMacosSensor {
     private var pendingDiagnosticContactIdentifiers: Set<String> = []
     private var pendingHistoryTokenAfter: Data?
     private var lastNoChangeDiagnosticAt: Date?
+    private var contactsPollCount = 0
 
     /// Quiet period after the last add/update before re-fetching; mimics waiting until the user taps Done.
     private static let contactEmitDebounceSeconds: TimeInterval = 5.0
@@ -106,7 +107,21 @@ final class NativeMacosSensor {
         stateDir.appendingPathComponent("acks", isDirectory: true)
     }
 
+    /// Last seen contact identifiers; used when CNChangeHistory returns no add/update events.
+    private var contactSnapshotURL: URL {
+        stateDir.appendingPathComponent("contacts-identifier-snapshot.json")
+    }
+
+    /// Agent writes this file when the user texts `start` so a live sensor re-baselines immediately.
+    private var resetContactSnapshotSignalURL: URL {
+        stateDir.appendingPathComponent("reset-contact-snapshot.signal")
+    }
+
     func start() {
+        // APPL bundles must initialize NSApplication before RunLoop.run(); the notDetermined path
+        // already calls prepareForSystemPermissionPrompt(), but the authorized fast path did not.
+        prepareForSystemPermissionPrompt()
+
         let status = CNContactStore.authorizationStatus(for: .contacts)
         switch status {
         case .authorized:
@@ -115,7 +130,9 @@ final class NativeMacosSensor {
             requestContactsAccess { granted in
                 let resolved = CNContactStore.authorizationStatus(for: .contacts)
                 if granted || resolved == .authorized {
-                    self.startAuthorized()
+                    DispatchQueue.main.async {
+                        self.startAuthorized()
+                    }
                 } else {
                     emitContactsPermissionError(identity: self.identity, status: resolved)
                     exit(1)
@@ -145,11 +162,14 @@ final class NativeMacosSensor {
 
     private func startAuthorized() {
         requestCalendarPermissionIfNeeded { [weak self] calendarPermissionStatus in
-            self?.startMonitoring(calendarPermissionStatus: calendarPermissionStatus)
+            DispatchQueue.main.async {
+                self?.startMonitoring(calendarPermissionStatus: calendarPermissionStatus)
+            }
         }
     }
 
     private func startMonitoring(calendarPermissionStatus resolvedCalendarPermissionStatus: String) {
+        dispatchPrecondition(condition: .onQueue(.main))
         do {
             try fileManager.createDirectory(at: outboxDir, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: ackDir, withIntermediateDirectories: true)
@@ -169,6 +189,7 @@ final class NativeMacosSensor {
             ) { [weak self] _ in
                 self?.scheduleContactsChanged()
             }
+            establishContactIdentifierSnapshotIfNeeded()
             startContactsPolling()
         } catch {
             emitSensorEvent(fatalSensorEvent(code: "state_dir_unwritable", message: error.localizedDescription, identity: identity))
@@ -185,11 +206,17 @@ final class NativeMacosSensor {
 
         if #available(macOS 14.0, *) {
             eventStore.requestFullAccessToEvents { granted, _ in
-                completion(granted ? "fullAccess" : calendarPermissionStatus(self.eventStore))
+                let status = granted ? "fullAccess" : calendarPermissionStatus(self.eventStore)
+                DispatchQueue.main.async {
+                    completion(status)
+                }
             }
         } else {
             eventStore.requestAccess(to: .event) { granted, _ in
-                completion(granted ? "authorized" : calendarPermissionStatus(self.eventStore))
+                let status = granted ? "authorized" : calendarPermissionStatus(self.eventStore)
+                DispatchQueue.main.async {
+                    completion(status)
+                }
             }
         }
     }
@@ -207,13 +234,27 @@ final class NativeMacosSensor {
 
     /// Headless `.app` launches often miss `CNContactStoreDidChange`; poll as a fallback.
     private func startContactsPolling() {
+        dispatchPrecondition(condition: .onQueue(.main))
         contactsPollTimer?.invalidate()
-        contactsPollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 5.0, repeats: true) { [weak self] _ in
             self?.scheduleContactsChanged()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        contactsPollTimer = timer
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.scheduleContactsChanged()
         }
+    }
+
+    private func scheduleMainRunLoopTimer(
+        timeInterval: TimeInterval,
+        repeats: Bool,
+        block: @escaping (Timer) -> Void
+    ) -> Timer {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let timer = Timer(timeInterval: timeInterval, repeats: repeats, block: block)
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     private func scheduleContactsChanged() {
@@ -240,25 +281,44 @@ final class NativeMacosSensor {
 
         do {
             let historyFetch = try fetchContactHistoryChanges(startingToken: startingToken)
+            contactsPollCount += 1
+            var newlyQueuedContactIdentifiers = Set<String>()
             for identifier in historyFetch.touchedContactIds {
-                pendingContactIdentifiers.insert(identifier)
+                if pendingContactIdentifiers.insert(identifier).inserted {
+                    newlyQueuedContactIdentifiers.insert(identifier)
+                }
             }
             pendingHistoryTokenAfter = historyFetch.tokenAfter
             try historyFetch.tokenAfter.write(to: tokenURL, options: .atomic)
 
-            if historyFetch.touchedContactIds.isEmpty {
+            consumeContactSnapshotResetSignalIfPresent()
+            let snapshotDiff = try detectNewContactsFromSnapshot()
+            if !snapshotDiff.newIds.isEmpty {
+                for identifier in snapshotDiff.newIds {
+                    if pendingContactIdentifiers.insert(identifier).inserted {
+                        newlyQueuedContactIdentifiers.insert(identifier)
+                    }
+                }
+            }
+
+            if historyFetch.touchedContactIds.isEmpty && snapshotDiff.newIds.isEmpty {
                 emitNoChangeDiagnosticIfDue()
             } else {
                 lastNoChangeDiagnosticAt = nil
+                let pendingReason = !historyFetch.touchedContactIds.isEmpty
+                    ? "history_changes_queued"
+                    : "snapshot_diff_new_contacts"
                 emitSensorEvent(contactPendingEvent(
                     identity: identity,
-                    reason: "history_changes_queued",
+                    reason: pendingReason,
                     pendingContactCount: pendingContactIdentifiers.count,
                     nextCheckInSeconds: Int(Self.contactEmitDebounceSeconds)
                 ))
             }
 
-            if !pendingContactIdentifiers.isEmpty {
+            if !newlyQueuedContactIdentifiers.isEmpty {
+                schedulePendingContactEmit()
+            } else if !pendingContactIdentifiers.isEmpty, contactEmitDebounceTimer?.isValid != true {
                 schedulePendingContactEmit()
             }
         } catch {
@@ -274,6 +334,89 @@ final class NativeMacosSensor {
     private struct ContactHistoryFetchResult {
         let touchedContactIds: Set<String>
         let tokenAfter: Data
+        let addEventCount: Int
+        let updateEventCount: Int
+        let otherEventCount: Int
+    }
+
+    private func loadContactIdentifierSnapshot() -> Set<String> {
+        guard let data = try? Data(contentsOf: contactSnapshotURL),
+              let identifiers = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+            return []
+        }
+        return Set(identifiers)
+    }
+
+    private func saveContactIdentifierSnapshot(_ identifiers: Set<String>) {
+        let sorted = identifiers.sorted()
+        guard JSONSerialization.isValidJSONObject(sorted),
+              let data = try? JSONSerialization.data(withJSONObject: sorted, options: []) else {
+            return
+        }
+        try? data.write(to: contactSnapshotURL, options: .atomic)
+    }
+
+    private func consumeContactSnapshotResetSignalIfPresent() {
+        guard fileManager.fileExists(atPath: resetContactSnapshotSignalURL.path) else {
+            return
+        }
+
+        try? fileManager.removeItem(at: contactSnapshotURL)
+        try? fileManager.removeItem(at: resetContactSnapshotSignalURL)
+    }
+
+    private func fetchAllContactIdentifiers() throws -> Set<String> {
+        var identifiers = Set<String>()
+        let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
+        request.unifyResults = true
+        try contactStore.enumerateContacts(with: request) { contact, _ in
+            identifiers.insert(contact.identifier)
+        }
+        return identifiers
+    }
+
+    private func fetchRawContactIdentifierCount() throws -> Int {
+        var count = 0
+        let request = CNContactFetchRequest(keysToFetch: [CNContactIdentifierKey as CNKeyDescriptor])
+        request.unifyResults = false
+        try contactStore.enumerateContacts(with: request) { _, _ in
+            count += 1
+        }
+        return count
+    }
+
+    /// Seeds snapshot on first run; on later polls returns identifiers absent from the saved snapshot.
+    private func establishContactIdentifierSnapshotIfNeeded() {
+        guard loadContactIdentifierSnapshot().isEmpty else {
+            return
+        }
+        guard let current = try? fetchAllContactIdentifiers() else {
+            return
+        }
+        saveContactIdentifierSnapshot(current)
+    }
+
+    private struct ContactSnapshotDiff {
+        let newIds: Set<String>
+        let currentCount: Int
+        let baselineCount: Int
+    }
+
+    private func detectNewContactsFromSnapshot() throws -> ContactSnapshotDiff {
+        let current = try fetchAllContactIdentifiers()
+        let baseline = loadContactIdentifierSnapshot()
+        let currentCount = current.count
+        if baseline.isEmpty {
+            saveContactIdentifierSnapshot(current)
+            return ContactSnapshotDiff(newIds: [], currentCount: currentCount, baselineCount: 0)
+        }
+        let newIds = current.subtracting(baseline)
+        saveContactIdentifierSnapshot(current)
+        return ContactSnapshotDiff(
+            newIds: newIds,
+            currentCount: currentCount,
+            baselineCount: baseline.count
+        )
     }
 
     private func emitNoChangeDiagnosticIfDue(now: Date = Date()) {
@@ -301,9 +444,13 @@ final class NativeMacosSensor {
     }
 
     private func schedulePendingContactEmit() {
+        if contactEmitDebounceTimer?.isValid == true {
+            return
+        }
+
         contactEmitDebounceTimer?.invalidate()
-        contactEmitDebounceTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.contactEmitDebounceSeconds,
+        contactEmitDebounceTimer = scheduleMainRunLoopTimer(
+            timeInterval: Self.contactEmitDebounceSeconds,
             repeats: false
         ) { [weak self] _ in
             self?.flushPendingContactAdds()
@@ -431,17 +578,31 @@ final class NativeMacosSensor {
         let tokenAfter = fetchResult.currentHistoryToken
 
         var touchedContactIds = Set<String>()
+        var addEventCount = 0
+        var updateEventCount = 0
+        var otherEventCount = 0
         let enumerator = fetchResult.value
         while let event = enumerator.nextObject() as? CNChangeHistoryEvent {
             if let add = event as? CNChangeHistoryAddContactEvent {
+                addEventCount += 1
                 touchedContactIds.insert(add.contact.identifier)
+                continue
             }
             if let update = event as? CNChangeHistoryUpdateContactEvent {
+                updateEventCount += 1
                 touchedContactIds.insert(update.contact.identifier)
+                continue
             }
+            otherEventCount += 1
         }
 
-        return ContactHistoryFetchResult(touchedContactIds: touchedContactIds, tokenAfter: tokenAfter)
+        return ContactHistoryFetchResult(
+            touchedContactIds: touchedContactIds,
+            tokenAfter: tokenAfter,
+            addEventCount: addEventCount,
+            updateEventCount: updateEventCount,
+            otherEventCount: otherEventCount
+        )
     }
 
     private func writeHistoryBatchOutbox(historyBatchId: String, tokenAfter: Data, ackPath: String, events: [[String: Any]]) throws {

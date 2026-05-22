@@ -27,6 +27,10 @@ export type OnboardingEvent =
 
 export type OnboardingControlAction = "started" | "paused" | "resumed";
 
+export type OnboardingStateControllerOptions = {
+  onControlApplied?: (action: OnboardingControlAction, state: OnboardingState) => void;
+};
+
 export type OnboardingStateController = {
   getState(): OnboardingState;
   applyControl(action: OnboardingControlAction): OnboardingState;
@@ -71,7 +75,8 @@ export function reduceOnboardingState(current: OnboardingState, event: Onboardin
 
 /** Holds the per-process onboarding gate shared by chat controls and contact automation. */
 export function createOnboardingStateController(
-  initialState: OnboardingState = "ready_pending_user_start"
+  initialState: OnboardingState = "ready_pending_user_start",
+  options: OnboardingStateControllerOptions = {}
 ): OnboardingStateController {
   let state = initialState;
 
@@ -88,6 +93,7 @@ export function createOnboardingStateController(
         state = reduceOnboardingState(state, { type: "resume" });
       }
 
+      options.onControlApplied?.(action, state);
       return state;
     }
   };
