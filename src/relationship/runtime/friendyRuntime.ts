@@ -171,6 +171,7 @@ async function processEvent({
         userId,
         state,
         sender,
+        logger,
         sensorName: event.sensorName,
         warningCode: `calendar_permission_${event.calendarPermissionStatus}`,
         permissionStatus: event.calendarPermissionStatus,
@@ -192,6 +193,7 @@ async function processEvent({
       userId,
       state,
       sender,
+      logger,
       sensorName: event.sensorName,
       warningCode: event.code,
       permissionStatus: event.code,
@@ -284,6 +286,7 @@ async function warnOwner({
   userId,
   state,
   sender,
+  logger,
   sensorName,
   warningCode,
   permissionStatus,
@@ -292,6 +295,7 @@ async function warnOwner({
   userId: string;
   state: RuntimeStateStore;
   sender: RuntimePromptSender;
+  logger: RuntimeLogger;
   sensorName: string;
   warningCode: string;
   permissionStatus?: string;
@@ -299,11 +303,17 @@ async function warnOwner({
 }): Promise<boolean> {
   const existing = state.getWarning(userId, sensorName, warningCode);
   const shouldNotify = !existing || (existing.notificationCount < 3 && isPastCooldown(existing.lastNotifiedAt, now));
+  let notified = false;
   if (shouldNotify) {
-    await sender.sendPrompt({ userId, text: warningText(warningCode) });
+    try {
+      await sender.sendPrompt({ userId, text: warningText(warningCode) });
+      notified = true;
+    } catch (error) {
+      logger.warn(`Failed to send sensor warning ${warningCode}: ${errorMessage(error)}`);
+    }
   }
-  state.upsertWarning({ userId, sensorName, warningCode, permissionStatus, now, notified: shouldNotify });
-  return shouldNotify;
+  state.upsertWarning({ userId, sensorName, warningCode, permissionStatus, now, notified });
+  return notified;
 }
 
 function recordProcessed(

@@ -53,6 +53,36 @@ describe("Friendy macOS sensor runtime", () => {
     });
   });
 
+  it("keeps running and persists warning state if warning prompt delivery fails", async () => {
+    const harness = createHarness({
+      sendPrompt() {
+        throw new Error("Spectrum warning send failed");
+      }
+    });
+
+    await expect(
+      harness.runtime.processLine(
+        JSON.stringify({
+          ...baseEvent("permission_error"),
+          idempotencyKey: "permission_error:mac_1:sensor_run_1:contacts_permission_denied",
+          code: "contacts_permission_denied",
+          message: "Contacts permission denied by user.",
+          retryable: true
+        })
+      )
+    ).resolves.toBeUndefined();
+
+    expect(harness.state.getWarning("user_friendy", "macos_contacts_calendar", "contacts_permission_denied")).toMatchObject({
+      notificationCount: 0,
+      lastNotifiedAt: undefined
+    });
+    expect(harness.state.getProcessedEvent("permission_error:mac_1:sensor_run_1:contacts_permission_denied")).toMatchObject({
+      status: "ignored",
+      warningCode: "contacts_permission_denied"
+    });
+    expect(harness.logs.join("\n")).toContain("Failed to send sensor warning");
+  });
+
   it("records Calendar warning from ready but keeps running", async () => {
     const harness = createHarness();
 
