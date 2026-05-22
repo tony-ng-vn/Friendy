@@ -9,6 +9,7 @@ export type FriendyRuntimeCheckReport = {
   candidateCount: number;
   promptTexts: string[];
   ackPaths: string[];
+  replayedUnackedBatchAcked: boolean;
   lines: string[];
 };
 
@@ -25,8 +26,6 @@ export async function runFriendyRuntimeCheck({
   mkdirSync(tempRoot, { recursive: true });
   const tempDir = mkdtempSync(join(tempRoot, "run-"));
   const sqlitePath = join(tempDir, "friendy.sqlite");
-  const repo = createSqliteRelationshipRepository({ path: sqlitePath });
-  const state = createSqliteRuntimeStateStore({ path: sqlitePath });
   const promptTexts: string[] = [];
   const ackPaths: string[] = [];
   const lines = ["Friendy foreground runtime check", `SQLite runtime: ${sqlitePath}`];
@@ -38,58 +37,106 @@ export async function runFriendyRuntimeCheck({
   };
 
   try {
-    const runtime = createFriendySensorRuntime({
-      userId: "local_friendy_user",
-      repo,
-      state,
-      sender,
-      ackWriter: {
-        async writeAck(path) {
-          ackPaths.push(path);
-        }
-      },
-      logger: {
-        info(message) {
-          lines.push(message);
-        },
-        warn(message) {
-          lines.push(message);
-        },
-        error(message) {
-          lines.push(message);
-        }
-      },
-      now
-    });
-
-    for (const event of createFakeMacosSensorEvents({ mode: "contact_added", now: now() })) {
-      await runtime.processLine(JSON.stringify(event));
+    const events = createFakeMacosSensorEvents({ mode: "contact_added", now: now() });
+    const [readyEvent, contactEvent, batchEvent] = events;
+    if (!readyEvent || !contactEvent || !batchEvent) {
+      throw new Error("Fake macOS sensor did not emit the expected contact batch sequence.");
     }
 
-    const candidates = repo.listPendingCandidates("local_friendy_user");
-    const ok =
-      candidates.length === 1 &&
-      promptTexts.some((text) => text.includes("Photon Residency Dinner")) &&
-      ackPaths.some((path) => path.includes("history_batch_mock_1.ack"));
+    await withRuntime({ sqlitePath, ackPaths, lines, sender, now }, async (runtime) => {
+      await runtime.processLine(JSON.stringify(readyEvent));
+      await runtime.processLine(JSON.stringify(contactEvent));
+    });
 
+    let candidateCount = 0;
+    await withRuntime({ sqlitePath, ackPaths, lines, sender, now }, async (runtime, repo) => {
+      await runtime.processLine(JSON.stringify(contactEvent));
+      await runtime.processLine(JSON.stringify(batchEvent));
+      candidateCount = repo.listPendingCandidates("local_friendy_user").length;
+    });
+
+    const replayedUnackedBatchAcked =
+      candidateCount === 1 &&
+      promptTexts.length === 1 &&
+      ackPaths.some((path) => path.includes("history_batch_mock_1.ack"));
+    const ok =
+      candidateCount === 1 &&
+      promptTexts.some((text) => text.includes("Photon Residency Dinner")) &&
+      replayedUnackedBatchAcked;
+
+    if (replayedUnackedBatchAcked) {
+      lines.push("Replayed unacked history batch: acked without duplicate prompt");
+    }
     lines.push(ok ? "Friendy runtime check passed" : "Friendy runtime check failed");
 
     return {
       ok,
-      candidateCount: candidates.length,
+      candidateCount,
       promptTexts,
       ackPaths,
+      replayedUnackedBatchAcked,
       lines
     };
   } finally {
-    repo.close();
-    state.close();
     rmSync(tempDir, { recursive: true, force: true });
     try {
       rmdirSync(tempRoot);
     } catch {
       // The root may be shared by concurrent checks; only the per-run directory is owned here.
     }
+  }
+}
+
+async function withRuntime(
+  {
+    sqlitePath,
+    ackPaths,
+    lines,
+    sender,
+    now
+  }: {
+    sqlitePath: string;
+    ackPaths: string[];
+    lines: string[];
+    sender: RuntimePromptSender;
+    now: () => string;
+  },
+  callback: (
+    runtime: ReturnType<typeof createFriendySensorRuntime>,
+    repo: ReturnType<typeof createSqliteRelationshipRepository>
+  ) => Promise<void>
+): Promise<void> {
+  const repo = createSqliteRelationshipRepository({ path: sqlitePath });
+  const state = createSqliteRuntimeStateStore({ path: sqlitePath });
+  const runtime = createFriendySensorRuntime({
+    userId: "local_friendy_user",
+    repo,
+    state,
+    sender,
+    ackWriter: {
+      async writeAck(path) {
+        ackPaths.push(path);
+      }
+    },
+    logger: {
+      info(message) {
+        lines.push(message);
+      },
+      warn(message) {
+        lines.push(message);
+      },
+      error(message) {
+        lines.push(message);
+      }
+    },
+    now
+  });
+
+  try {
+    await callback(runtime, repo);
+  } finally {
+    repo.close();
+    state.close();
   }
 }
 

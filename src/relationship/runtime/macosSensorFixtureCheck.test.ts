@@ -63,12 +63,21 @@ describe("compiled macOS sensor fixture check", () => {
     writeFileSync(binaryPath, "");
 
     const calls: Array<{ command: string; args: string[] }> = [];
+    const fatalCodes = ["missing_state_dir", "unknown_fixture", "state_dir_unwritable"];
     const report = runMacosSensorFixtureCheck({
       cwd,
       platform: "darwin",
       execFileSync(command, args) {
         calls.push({ command, args });
-        return `${JSON.stringify(contactAddedFixture())}\n${JSON.stringify(historyBatchCompleteFixture())}\n`;
+        if (args.includes("contact_batch")) {
+          return `${JSON.stringify(contactAddedFixture())}\n${JSON.stringify(historyBatchCompleteFixture())}\n`;
+        }
+
+        const code = fatalCodes.shift();
+        if (!code) {
+          throw new Error(`unexpected fixture check call: ${args.join(" ")}`);
+        }
+        throw execFailureWithStdout(`${JSON.stringify(fatalFixture(code))}\n`);
       }
     });
 
@@ -76,14 +85,44 @@ describe("compiled macOS sensor fixture check", () => {
     expect(report.skipped).toBe(false);
     expect(report.eventTypes).toEqual(["contact_added", "history_batch_complete"]);
     expect(report.ackPath).toBe(".friendy/macos-sensor-state/acks/history_batch_fixture_1.ack");
-    expect(calls).toHaveLength(1);
+    expect(report.fatalEventCodes).toEqual(["missing_state_dir", "unknown_fixture", "state_dir_unwritable"]);
+    expect(calls).toHaveLength(4);
     expect(calls[0].command).toBe(binaryPath);
     expect(calls[0].args).toContain("--state-dir");
     expect(calls[0].args).toContain("--emit-fixture");
     expect(calls[0].args).toContain("contact_batch");
+    expect(calls[1].args).toEqual([]);
+    expect(calls[2].args).toContain("unknown_fixture");
+    expect(calls[3].args).toContain("--state-dir");
+    expect(calls[3].args).toContain("--emit-fixture");
     expect(report.lines.join("\n")).toContain("Fixture event types: contact_added, history_batch_complete");
     expect(report.lines.join("\n")).toContain("Fixture ack path: .friendy/macos-sensor-state/acks/history_batch_fixture_1.ack");
     expect(report.lines.join("\n")).toContain("Redacted contact methods: present");
+    expect(report.lines.join("\n")).toContain("Controlled fatal events: missing_state_dir, unknown_fixture, state_dir_unwritable");
+  });
+
+  it("fails when a controlled fatal fixture emits non-fatal output", () => {
+    const cwd = tempDir();
+    const binaryPath = join(cwd, "bin/friendy-macos-sensor");
+    mkdirSync(join(cwd, "bin"), { recursive: true });
+    writeFileSync(binaryPath, "");
+
+    const report = runMacosSensorFixtureCheck({
+      cwd,
+      platform: "darwin",
+      execFileSync(_command, args) {
+        if (args.includes("contact_batch")) {
+          return `${JSON.stringify(contactAddedFixture())}\n${JSON.stringify(historyBatchCompleteFixture())}\n`;
+        }
+
+        throw execFailureWithStdout(`${JSON.stringify({ ...fatalFixture("missing_state_dir"), type: "ready" })}\n`);
+      }
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.skipped).toBe(false);
+    expect(report.binaryPath).toBe(binaryPath);
+    expect(report.lines.join("\n")).toContain("Controlled fatal event check failed");
   });
 });
 
@@ -161,4 +200,27 @@ function historyBatchCompleteFixture(): Record<string, unknown> {
     contactEventIds: ["sensor_evt_fixture_contact_1"],
     ackPath: ".friendy/macos-sensor-state/acks/history_batch_fixture_1.ack"
   };
+}
+
+function fatalFixture(code: string): Record<string, unknown> {
+  return {
+    schemaVersion: MACOS_SENSOR_SCHEMA_VERSION,
+    eventId: `sensor_evt_fixture_${code}`,
+    type: "fatal_error",
+    sensorName: MACOS_SENSOR_NAME,
+    sensorVersion: "0.1.0",
+    runId: "sensor_run_fixture",
+    deviceId: "mac_fixture",
+    emittedAt: "2026-05-21T18:36:52Z",
+    idempotencyKey: `fatal_error:mac_fixture:sensor_run_fixture:${code}`,
+    code,
+    message: `Fixture ${code}`,
+    retryable: false
+  };
+}
+
+function execFailureWithStdout(stdout: string): Error {
+  const error = new Error("Command failed");
+  Object.assign(error, { stdout });
+  return error;
 }

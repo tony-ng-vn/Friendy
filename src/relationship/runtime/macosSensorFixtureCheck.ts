@@ -1,5 +1,5 @@
 import { execFileSync as nodeExecFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { parseSensorEventLine, type MacosContactAddedEvent, type MacosSensorEvent } from "./sensorEvents";
@@ -17,6 +17,7 @@ export type MacosSensorFixtureCheckReport = {
   skipped: boolean;
   binaryPath: string;
   eventTypes: string[];
+  fatalEventCodes: string[];
   ackPath?: string;
   lines: string[];
 };
@@ -39,12 +40,12 @@ export function runMacosSensorFixtureCheck({
     if (platform !== "darwin") {
       lines.push("Skipped compiled macOS sensor fixture check: requires macOS binary.");
       lines.push("Run npm run build:macos-sensor on macOS, then rerun npm run check:macos-sensor-fixture.");
-      return { ok: true, skipped: true, binaryPath, eventTypes: [], lines };
+      return { ok: true, skipped: true, binaryPath, eventTypes: [], fatalEventCodes: [], lines };
     }
 
     lines.push("Missing macOS sensor binary.");
     lines.push("Run npm run build:macos-sensor, then rerun npm run check:macos-sensor-fixture.");
-    return { ok: false, skipped: false, binaryPath, eventTypes: [], lines };
+    return { ok: false, skipped: false, binaryPath, eventTypes: [], fatalEventCodes: [], lines };
   }
 
   const stateDir = mkdtempSync(join(tmpdir(), "friendy-macos-sensor-fixture-state-"));
@@ -55,9 +56,11 @@ export function runMacosSensorFixtureCheck({
       })
     );
     const parsed = parseFixtureOutput(stdout);
+    const fatalEventCodes = validateControlledFatalEvents({ binaryPath, stateDir, execFileSync });
     lines.push(`Fixture event types: ${parsed.eventTypes.join(", ")}`);
     lines.push(`Fixture ack path: ${parsed.ackPath}`);
     lines.push("Redacted contact methods: present");
+    lines.push(`Controlled fatal events: ${fatalEventCodes.join(", ")}`);
     lines.push("Compiled macOS sensor fixture check passed.");
 
     return {
@@ -65,12 +68,18 @@ export function runMacosSensorFixtureCheck({
       skipped: false,
       binaryPath,
       eventTypes: parsed.eventTypes,
+      fatalEventCodes,
       ackPath: parsed.ackPath,
       lines
     };
   } catch (error) {
-    lines.push(`Compiled macOS sensor fixture check failed: ${errorMessage(error)}`);
-    return { ok: false, skipped: false, binaryPath, eventTypes: [], lines };
+    const message = errorMessage(error);
+    lines.push(
+      message.startsWith("Controlled fatal event")
+        ? message
+        : `Compiled macOS sensor fixture check failed: ${message}`
+    );
+    return { ok: false, skipped: false, binaryPath, eventTypes: [], fatalEventCodes: [], lines };
   } finally {
     rmSync(stateDir, { recursive: true, force: true });
   }
@@ -138,6 +147,81 @@ function assertRedactedContactMethods(event: MacosContactAddedEvent): void {
   if (!hasHashes && !hasHints) {
     throw new Error("contact_added fixture must include redacted contact method hashes or hints");
   }
+}
+
+function validateControlledFatalEvents({
+  binaryPath,
+  stateDir,
+  execFileSync
+}: {
+  binaryPath: string;
+  stateDir: string;
+  execFileSync: ExecFileSync;
+}): string[] {
+  const blockedStatePath = join(stateDir, "not-a-directory");
+  writeFileSync(blockedStatePath, "not a directory");
+
+  const fatalChecks = [
+    { expectedCode: "missing_state_dir", args: [] },
+    { expectedCode: "unknown_fixture", args: ["--state-dir", stateDir, "--emit-fixture", "unknown_fixture"] },
+    { expectedCode: "state_dir_unwritable", args: ["--state-dir", blockedStatePath, "--emit-fixture", "ready"] }
+  ];
+
+  return fatalChecks.map(({ expectedCode, args }) => {
+    const stdout = runExpectedFatalEvent(binaryPath, args, execFileSync);
+    const event = parseSingleFatalEvent(stdout, expectedCode);
+    return event.code;
+  });
+}
+
+function runExpectedFatalEvent(binaryPath: string, args: string[], execFileSync: ExecFileSync): string {
+  try {
+    execFileSync(binaryPath, args, { encoding: "utf8" });
+  } catch (error) {
+    return stdoutFromExecError(error);
+  }
+
+  throw new Error(`Controlled fatal event check failed: sensor succeeded for args ${args.join(" ") || "(none)"}`);
+}
+
+function parseSingleFatalEvent(stdout: string, expectedCode: string): Extract<MacosSensorEvent, { type: "fatal_error" }> {
+  const rawLines = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (rawLines.length !== 1) {
+    throw new Error(`Controlled fatal event check failed: expected one NDJSON line for ${expectedCode}`);
+  }
+
+  let event: MacosSensorEvent;
+  try {
+    event = parseSensorEventLine(rawLines[0]);
+  } catch (error) {
+    throw new Error(`Controlled fatal event check failed: ${errorMessage(error)}`);
+  }
+  if (event.type !== "fatal_error") {
+    throw new Error(`Controlled fatal event check failed: expected fatal_error for ${expectedCode}`);
+  }
+
+  if (event.code !== expectedCode) {
+    throw new Error(`Controlled fatal event check failed: expected ${expectedCode}, got ${event.code}`);
+  }
+
+  return event;
+}
+
+function stdoutFromExecError(error: unknown): string {
+  const stdout = (error as { stdout?: unknown }).stdout;
+  if (Buffer.isBuffer(stdout)) {
+    return stdout.toString("utf8");
+  }
+
+  if (typeof stdout === "string") {
+    return stdout;
+  }
+
+  throw new Error(`Controlled fatal event check failed: ${errorMessage(error)}`);
 }
 
 function errorMessage(error: unknown): string {
