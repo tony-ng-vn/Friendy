@@ -77,6 +77,7 @@
       <li>Added a proactive Spectrum/iMessage prompt sender for sensor-created prompts. Mock sensor runs still default to console prompt delivery for deterministic local checks; real sensor runs default to Spectrum prompt delivery and require <code>FRIENDY_PROMPT_TO_PHONE</code> or <code>FRIENDY_OWNER_PHONE</code>.</li>
       <li>Added the first Swift sensor package scaffold plus <code>build:macos-sensor</code> and <code>doctor:macos-sensor</code>. The Swift binary is intentionally still a scaffold: it validates <code>--state-dir</code> and emits controlled NDJSON fatal events until the live Contacts/EventKit implementation lands.</li>
       <li>Split the Swift sensor scaffold into a thin CLI entrypoint, NDJSON event helpers, fixture emission mode, and a macOS-only native source file. This keeps Linux CI source-contract checks useful while the real Contacts/EventKit behavior still requires macOS verification.</li>
+      <li>Expanded the TypeScript fake macOS sensor so <code>FRIENDY_SENSOR_MOCK_EVENT=contact_added</code> emits a full <code>ready</code>, <code>contact_added</code>, and <code>history_batch_complete</code> sequence. This gives <code>agent:friendy</code> a fresh end-to-end local smoke path without real macOS permissions.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -146,6 +147,7 @@
       <li>For proactive Spectrum prompt delivery, first ran RED tests where <code>spectrumPromptSender.ts</code> and <code>createRuntimePromptSender</code> were missing. After implementation, <code>npm test -- src/relationship/transports/spectrumPromptSender.test.ts src/relationship/runtime/friendyRuntimeCli.test.ts</code> passed with 2 files and 9 tests.</li>
       <li>For the Swift sensor scaffold, first ran a RED doctor test where <code>macosSensorDoctor.ts</code>, package scripts, and the build script were missing. After implementation, <code>npm test -- src/relationship/runtime/macosSensorDoctor.test.ts</code> passed with 4 tests, <code>npm run doctor:macos-sensor</code> reported the expected missing Linux binary guidance, and <code>npm run build</code> passed.</li>
       <li>For Swift sensor source structure, first ran a RED source-contract test where <code>SensorCLI.swift</code>, <code>SensorEvents.swift</code>, and <code>NativeMacosSensor.swift</code> were missing. After implementation, <code>npm test -- src/relationship/runtime/macosSensorSource.test.ts</code> passed with 3 tests.</li>
+      <li>For fake sensor contact fixtures, first ran a RED test where importing <code>fakeMacosSensor.ts</code> emitted stdout and exported no fixture helpers. After implementation, <code>npm test -- src/relationship/runtime/fakeMacosSensor.test.ts</code> passed with 3 tests.</li>
     </ul>
   </body>
 </html>
