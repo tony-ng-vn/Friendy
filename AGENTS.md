@@ -8,11 +8,17 @@ Prefer adding or updating scoped `AGENTS.md` files when a subdirectory needs dur
 
 When changing agent-navigation structure, follow `docs/agent-navigation.md`. The default pattern is one repo map plus small scoped rules, not a large always-loaded instruction file.
 
+## Session Handoff
+
+When resuming work or handing off to a new agent, read `docs/agent-handoff.md` after `REFERENCE.md`. That file holds current status, the active goal, and blockers.
+
+When you finish meaningful work or close a goal, update `docs/agent-handoff.md`, the active goal file under `docs/goals/`, and `implementation-notes.html`. See `docs/agent-handoff.md` for the required update rule.
+
 ## Implementation Notes
 
 When implementing a spec, keep a running `implementation-notes.html` file, or a Markdown equivalent if HTML is impractical.
 
-Use it to record decisions that were not in the spec, things that had to change, tradeoffs that had to be made, and anything else the user should know.
+Use it to record decisions that were not in the spec, things that had to change, tradeoffs that had to be made, and anything else the user should know. Do not use it as the only handoff doc — pair it with `docs/agent-handoff.md`.
 
 ## Commits
 

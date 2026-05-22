@@ -28,6 +28,7 @@ Transport message
 ## Start Here By Task
 
 - Product understanding: `docs/product-spec.md`, `docs/product-flow-plan.md`, `docs/handoff.md`
+- **Agent session handoff (read first on new session):** `docs/agent-handoff.md`
 - AI system architecture: `docs/ai-system-architecture.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
