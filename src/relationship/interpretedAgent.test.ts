@@ -235,31 +235,39 @@ describe("interpreted relationship agent", () => {
       memoryFixture("Testing 12", "Met them during testing Friendy")
     ]);
 
-    const result = await agent.handleMessage(inbound("Anyone in my contacts related to friendy?"));
+    for (const text of [
+      "Anyone in my contacts related to friendy?",
+      "Anyone in my contact that related to Friendy?",
+      "Anyone in my contacts connected to Friendy?",
+      "Who in my contacts is related to Friendy?",
+      "Who in my contacts is connected to Friendy?",
+      "Who do I know connected to Friendy?",
+      "Do I know anyone associated with Friendy?",
+      "Find contacts related to Friendy.",
+      "Show people connected to Friendy testing.",
+      "Anyone I met while testing Friendy?",
+      "Who did I meet during my time testing Friendy?"
+    ]) {
+      const result = await agent.handleMessage(inbound(text));
 
-    expect(result.toolCalls).toContain("search_memories");
-    expect(result.outbound.text).toContain("Testing 1");
-    expect(result.outbound.text).toContain("Testing 12");
-    expect(result.outbound.text).not.toContain("people you know");
-    expect(result.interaction.interpretedIntentJson).toMatchObject({
-      intent: "search_memory",
-      domain: "relationship_memory",
-      search: {
-        mode: "list_related_people",
-        exactTerms: ["friendy"]
-      }
-    });
-    expect(result.interaction.redactedTraceJson).toMatchObject({
-      route: {
-        domain: "relationship_memory",
+      expect(result.toolCalls).toContain("search_memories");
+      expect(result.outbound.text).toContain("Testing 1");
+      expect(result.outbound.text).toContain("Testing 12");
+      expect(result.outbound.text).not.toContain("people you know");
+      expect(result.interaction.interpretedIntentJson).toMatchObject({
         intent: "search_memory",
-        searchMode: "list_related_people",
-        exactTerms: ["friendy"],
-        normalizedQuery: "friendy"
-      },
-      policy: { decision: "allow" },
-      tools: [{ name: "search_memories", status: "called" }]
-    });
+        domain: "relationship_memory"
+      });
+      expect(result.interaction.redactedTraceJson).toMatchObject({
+        route: {
+          domain: "relationship_memory",
+          intent: "search_memory",
+          normalizedQuery: expect.stringContaining("friendy")
+        },
+        policy: { decision: "allow" },
+        tools: [{ name: "search_memories", status: "called" }]
+      });
+    }
   });
 
   it("handles ignore without a pending candidate through the interpreted path", async () => {

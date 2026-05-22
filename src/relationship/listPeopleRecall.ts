@@ -7,6 +7,9 @@
  */
 export function isListPeopleRecall(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/\bu\b/g, "you");
+  if (/\b(related|connected|connection|associated|association)\b/.test(normalized)) {
+    return false;
+  }
 
   return [
     /\b(give|show|list|tell)\b.*\b(all|every|everyone|everybody)\b.*\b(people|persons?|contacts?|network)\b/,

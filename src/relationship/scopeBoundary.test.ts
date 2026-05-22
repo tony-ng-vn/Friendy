@@ -125,9 +125,24 @@ describe("relationship agent scope boundary", () => {
     for (const text of [
       "Anyone in my contacts related to Friendy?",
       "Anyone in my contacts related to friendy?",
+      "Anyone in my contact that related to Friendy?",
+      "Anyone in my contacts connected to Friendy?",
       "Who is connected to Friendy?",
       "Any contacts connected to Friendy?",
-      "People related to Friendy?"
+      "People related to Friendy?",
+      "Who in my contacts is related to Friendy?",
+      "Who in my contacts is connected to Friendy?",
+      "Who do I know related to Friendy?",
+      "Who do I know connected to Friendy?",
+      "Do I know anyone related to Friendy?",
+      "Do I know anyone connected to Friendy?",
+      "Do I know anyone associated with Friendy?",
+      "Find contacts related to Friendy.",
+      "Find people connected to Friendy.",
+      "Show me contacts associated with Friendy.",
+      "Who did I add during Friendy testing?",
+      "Anyone I met while testing Friendy?",
+      "Who did I meet during my time testing Friendy?"
     ]) {
       expect(decideMessageScope({ text, hasPendingCandidate: false })).toMatchObject({
         scope: "in_scope",
@@ -141,6 +156,20 @@ describe("relationship agent scope boundary", () => {
       scope: "in_scope",
       capability: "relationship_recall"
     });
+  });
+
+  it("does not treat company-topic Friendy questions as memory recall without people wording", () => {
+    for (const text of [
+      "What is the weather today?",
+      "Can you write my resume?",
+      "Book me a flight to New York.",
+      "What is 2 + 2?",
+      "Tell me about Friendy as a company."
+    ]) {
+      expect(decideMessageScope({ text, hasPendingCandidate: false })).toMatchObject({
+        scope: "out_of_scope"
+      });
+    }
   });
 
   it("blocks adversarial general-assistant requests", () => {

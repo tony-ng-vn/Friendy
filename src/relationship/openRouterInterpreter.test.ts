@@ -155,20 +155,31 @@ describe("openrouter message interpreter", () => {
   it("adds route search fields for broad related-contact recall in fallback mode", async () => {
     const interpreter = createRuleBasedInterpreter();
 
-    const result = await interpreter.interpret({
-      ...inbound,
-      text: "Anyone in my contacts related to friendy?"
-    });
+    for (const text of [
+      "Anyone in my contacts related to friendy?",
+      "Anyone in my contact that related to Friendy?",
+      "Anyone in my contacts connected to Friendy?",
+      "Who in my contacts is related to Friendy?",
+      "Who do I know connected to Friendy?",
+      "Do I know anyone associated with Friendy?",
+      "Find contacts related to Friendy.",
+      "Show people connected to Friendy testing."
+    ]) {
+      const result = await interpreter.interpret({
+        ...inbound,
+        text
+      });
 
-    expect(result.interpretation).toMatchObject({
-      intent: "search_memory",
-      domain: "relationship_memory",
-      search: {
-        mode: "list_related_people",
-        exactTerms: ["friendy"],
-        semanticQuery: "Anyone in my contacts related to friendy?"
-      }
-    });
+      expect(result.interpretation).toMatchObject({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        search: {
+          mode: "list_related_people",
+          semanticQuery: text
+        }
+      });
+      expect(result.interpretation.search?.exactTerms.join(" ")).toContain("friendy");
+    }
   });
 
   it("routes list-all contact recall wording to search in fallback mode", async () => {

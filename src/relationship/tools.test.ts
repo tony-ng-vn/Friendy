@@ -106,7 +106,10 @@ describe("relationship tools", () => {
 
   it("normalizes broad relationship recall queries to useful clues", () => {
     expect(normalizeMemorySearchQuery("Anyone in my contacts related to friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("Anyone in my contact that related to Friendy?")).toBe("friendy");
     expect(normalizeMemorySearchQuery("Who is connected to Friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("Do I know anyone associated with Friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("Find people associated with Friendy testing")).toBe("friendy testing");
     expect(normalizeMemorySearchQuery("People related to Friendy?")).toBe("friendy");
     expect(normalizeMemorySearchQuery("Who was from the Mac sensor debugging thing?")).toBe(
       "mac sensor debugging thing"
@@ -123,9 +126,22 @@ describe("relationship tools", () => {
       memory("Testing 12", "testing Friendy", "Met them during testing Friendy")
     ]);
 
-    const results = tools.search_memories(fixtureUser.id, "Anyone in my contacts related to friendy?");
+    for (const query of [
+      "Anyone in my contacts related to friendy?",
+      "Anyone in my contact that related to Friendy?",
+      "Who in my contacts is related to Friendy?",
+      "Who in my contacts is connected to Friendy?",
+      "Who do I know connected to Friendy?",
+      "Do I know anyone associated with Friendy?",
+      "Find contacts related to Friendy.",
+      "Show people connected to Friendy testing.",
+      "Anyone I met while testing Friendy?",
+      "Who did I meet during my time testing Friendy?"
+    ]) {
+      const results = tools.search_memories(fixtureUser.id, query);
 
-    expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 1", "Testing 12"]);
+      expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 1", "Testing 12"]);
+    }
   });
 
   it("returns all saved memories for list-all contact recall queries", () => {

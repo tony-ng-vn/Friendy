@@ -359,15 +359,23 @@ function looksLikeSearch(normalized: string): boolean {
 }
 
 function inferSearchMode(text: string): NonNullable<MessageInterpretation["search"]>["mode"] {
+  if (looksLikeRelatedPeopleSearch(text)) {
+    return "list_related_people";
+  }
+
   if (isListPeopleRecall(text)) {
     return "list_people";
   }
 
-  if (/\b(anyone|anybody|people|contacts?)\b.*\b(related|connected|connection)\b/i.test(text)) {
-    return "list_related_people";
-  }
-
   return "semantic_recall";
+}
+
+function looksLikeRelatedPeopleSearch(text: string): boolean {
+  return (
+    /\b(anyone|anybody|people|person|someone|somebody|contacts?)\b.*\b(related|connected|connection|associated|association)\b/i.test(
+      text
+    ) || /\b(who|which|do i know)\b.*\b(related|connected|connection|associated|association)\b/i.test(text)
+  );
 }
 
 function inferExactSearchTerms(text: string, tags: string[]): string[] {
@@ -402,8 +410,12 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "related",
   "connected",
   "connection",
+  "associated",
+  "associate",
+  "association",
   "about",
   "relevant",
+  "that",
   "my",
   "mine",
   "in",
@@ -418,8 +430,11 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "list",
   "tell",
   "did",
+  "do",
   "i",
   "me",
+  "add",
+  "added",
   "save",
   "saved",
   "have",
@@ -432,6 +447,7 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "so",
   "far",
   "while",
+  "during",
   "was",
   "is",
   "the"

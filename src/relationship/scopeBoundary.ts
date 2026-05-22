@@ -206,6 +206,10 @@ function isCandidateConfirmation(text: string): boolean {
 }
 
 function isExplicitRelationshipMemory(text: string): boolean {
+  if (text.includes("?") || /^(who|anyone|anybody|what|where|when)\b/.test(text)) {
+    return false;
+  }
+
   return /^(remember|met|i met|i remember)\b/.test(text) || /\b(i also met|also met|i met)\b/.test(text);
 }
 
@@ -284,7 +288,7 @@ function isSocialReasoning(text: string): boolean {
 function isRelationshipRecall(text: string): boolean {
   return (
     isListPeopleRecall(text) ||
-    /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved|contact|contacts)\b/.test(text) ||
+    /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved|contact|contacts|add|added)\b/.test(text) ||
     /\bdo i know\b/.test(text) ||
     /\bwho (likes|works|goes|is|was)\b/.test(text) ||
     /\b(who|find|show|list)\b.*\b(slept|sleep|bed|room|lead|founder|project|making|made|goes|school|class|from|at)\b/.test(
@@ -296,9 +300,9 @@ function isRelationshipRecall(text: string): boolean {
 
 function isBroadRelatedPeopleRecall(text: string): boolean {
   return (
-    /\b(anyone|anybody|people|person|someone|somebody|contacts?)\b.*\b(related|connected|connection|about|from|at|met|know|saved)\b/.test(
+    /\b(anyone|anybody|people|person|someone|somebody|contacts?)\b.*\b(related|connected|connection|associated|association|about|from|at|met|know|saved)\b/.test(
       text
-    ) || /\b(who|which)\b.*\b(related|connected|connection)\b/.test(text)
+    ) || /\b(who|which)\b.*\b(related|connected|connection|associated|association)\b/.test(text)
   );
 }
 
