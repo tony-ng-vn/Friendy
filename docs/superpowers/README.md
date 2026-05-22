@@ -12,6 +12,7 @@ Current routing/search correction artifacts:
 - [Relationship routing and query normalization design](specs/2026-05-22-relationship-routing-and-query-normalization-design.md)
 - [Relationship routing and query normalization implementation plan](plans/2026-05-22-relationship-routing-and-query-normalization.md)
 - [Relationship hybrid retrieval design](specs/2026-05-22-relationship-hybrid-retrieval-design.md)
+- [Relationship hybrid retrieval implementation plan](plans/2026-05-22-relationship-hybrid-retrieval.md)
 
 Original product-flow artifacts:
 
