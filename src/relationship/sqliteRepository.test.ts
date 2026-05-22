@@ -11,7 +11,7 @@ import {
 } from "./sqliteRepository";
 import { createRelationshipTools } from "./tools";
 import type { SqliteRelationshipRepository } from "./sqliteRepository";
-import type { AgentInteraction, EventContextMatch, RelationshipMemory } from "./types";
+import type { AgentInteraction, ContactCandidate, EventContextMatch, RelationshipMemory } from "./types";
 
 const tempDirs: string[] = [];
 const repositories: SqliteRelationshipRepository[] = [];
@@ -297,6 +297,68 @@ describe("sqlite relationship repository", () => {
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Nina Park"]);
   });
 
+  it("rejects direct memory writes without a confirmed candidate", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+
+    expect(() =>
+      repo.addMemory({
+        id: "memory_without_candidate",
+        userId: fixtureUser.id,
+        displayName: "Unconfirmed Person",
+        primaryContactLabel: "manual contact",
+        contextNote: "should not bypass candidate confirmation",
+        tags: ["bypass"],
+        confidence: 0.5,
+        createdAt: "2026-05-21T06:00:00.000Z",
+        updatedAt: "2026-05-21T06:00:00.000Z"
+      })
+    ).toThrow("Memory requires a confirmed candidate");
+  });
+
+  it("rejects raw SQLite memory inserts without a confirmed candidate", () => {
+    const dbPath = tempDatabasePath();
+    trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const db = trackCloseable(new DatabaseSync(dbPath));
+
+    expect(() =>
+      db
+        .prepare(
+          `
+            INSERT INTO memories (
+              id, insert_order, user_id, candidate_id, display_name, event_id, event_title,
+              created_at, updated_at, raw_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          "memory_raw_without_candidate",
+          1,
+          fixtureUser.id,
+          null,
+          "Raw Insert Person",
+          null,
+          null,
+          "2026-05-21T06:00:00.000Z",
+          "2026-05-21T06:00:00.000Z",
+          JSON.stringify({ id: "memory_raw_without_candidate" })
+        )
+    ).toThrow("Memory requires a confirmed candidate");
+  });
+
   it("accepts writes for unseeded users like the in-memory repository", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
@@ -310,17 +372,7 @@ describe("sqlite relationship repository", () => {
     });
     expect(repo.listPendingCandidates(userId).map((item) => item.displayName)).toEqual(["Unseeded Person"]);
 
-    repo.addMemory({
-      id: "memory_unseeded_1",
-      userId,
-      displayName: "Unseeded Person",
-      primaryContactLabel: "+15550101020",
-      contextNote: "met at an unseeded runtime check",
-      tags: ["met", "unseeded", "runtime", "check"],
-      confidence: 0.7,
-      createdAt: "2026-05-21T01:00:00.000Z",
-      updatedAt: "2026-05-21T01:00:00.000Z"
-    });
+    const memory = repo.confirmCandidate(candidate.id, "met at an unseeded runtime check");
     repo.addInteraction({
       id: "interaction_unseeded_1",
       userId,
@@ -332,10 +384,10 @@ describe("sqlite relationship repository", () => {
     });
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
-    expect(reopened.listPendingCandidates(userId).map((item) => item.displayName)).toEqual(["Unseeded Person"]);
+    expect(reopened.listPendingCandidates(userId)).toEqual([]);
     expect(reopened.listMemories(userId)).toEqual([
       expect.objectContaining({
-        id: "memory_unseeded_1",
+        id: memory.id,
         displayName: "Unseeded Person"
       })
     ]);
@@ -347,9 +399,8 @@ describe("sqlite relationship repository", () => {
     ]);
   });
 
-  it("preserves orphan event match and memory seeds like the in-memory repository", () => {
+  it("preserves orphan event match seeds like the in-memory repository", () => {
     const dbPath = tempDatabasePath();
-    const userId = "user_orphan_seed";
     const orphanMatch: EventContextMatch = {
       id: "match_orphan_seed",
       candidateId: "candidate_missing",
@@ -359,30 +410,16 @@ describe("sqlite relationship repository", () => {
       reason: "Seeded without related rows.",
       rank: 1
     };
-    const orphanMemory: RelationshipMemory = {
-      id: "memory_orphan_seed",
-      userId,
-      candidateId: "candidate_missing",
-      displayName: "Orphan Seed Person",
-      primaryContactLabel: "seeded contact",
-      contextNote: "seeded memory with missing candidate",
-      tags: ["seeded", "missing", "candidate"],
-      confidence: 0.6,
-      createdAt: "2026-05-21T02:00:00.000Z",
-      updatedAt: "2026-05-21T02:00:00.000Z"
-    };
 
     trackRepository(createSqliteRelationshipRepository({
       path: dbPath,
       seed: {
-        eventMatches: [orphanMatch],
-        memories: [orphanMemory]
+        eventMatches: [orphanMatch]
       }
     }));
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
     expect(reopened.listEventMatches("candidate_missing")).toEqual([orphanMatch]);
-    expect(reopened.listMemories(userId)).toEqual([orphanMemory]);
   });
 
   it("preserves equal-rank event match seed order like the in-memory repository", () => {
@@ -424,6 +461,7 @@ describe("sqlite relationship repository", () => {
     const firstMemory: RelationshipMemory = {
       id: "memory_order_first",
       userId,
+      candidateId: "candidate_order_first",
       displayName: "First Inserted",
       primaryContactLabel: "first contact",
       contextNote: "inserted first with newer createdAt",
@@ -435,6 +473,7 @@ describe("sqlite relationship repository", () => {
     const secondMemory: RelationshipMemory = {
       id: "memory_order_second",
       userId,
+      candidateId: "candidate_order_second",
       displayName: "Second Inserted",
       primaryContactLabel: "second contact",
       contextNote: "inserted second with older createdAt",
@@ -465,6 +504,10 @@ describe("sqlite relationship repository", () => {
     trackRepository(createSqliteRelationshipRepository({
       path: dbPath,
       seed: {
+        candidates: [
+          confirmedCandidate({ id: "candidate_order_first", userId, displayName: "First Inserted" }),
+          confirmedCandidate({ id: "candidate_order_second", userId, displayName: "Second Inserted" })
+        ],
         memories: [firstMemory, secondMemory],
         interactions: [firstInteraction, secondInteraction]
       }
@@ -489,10 +532,18 @@ describe("sqlite relationship repository", () => {
       trackRepository(createSqliteRelationshipRepository({
         path: dbPath,
         seed: {
+          candidates: [
+            confirmedCandidate({
+              id: "candidate_before_failed_seed",
+              userId,
+              displayName: "Seed Transaction Person"
+            })
+          ],
           memories: [
             {
               id: "memory_before_failed_seed",
               userId,
+              candidateId: "candidate_before_failed_seed",
               displayName: "Seed Transaction Person",
               primaryContactLabel: "seeded contact",
               contextNote: "this should roll back",
@@ -526,6 +577,7 @@ describe("sqlite relationship repository", () => {
     const originalMemory: RelationshipMemory = {
       id: "memory_duplicate_insert",
       userId,
+      candidateId: "candidate_duplicate_insert",
       displayName: "Original Memory",
       primaryContactLabel: "original contact",
       contextNote: "original memory content",
@@ -558,7 +610,18 @@ describe("sqlite relationship repository", () => {
       createdAt: "2026-05-21T05:03:00.000Z"
     };
 
-    const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        candidates: [
+          confirmedCandidate({
+            id: "candidate_duplicate_insert",
+            userId,
+            displayName: "Original Memory"
+          })
+        ]
+      }
+    }));
 
     repo.addMemory(originalMemory);
     expect(() => repo.addMemory(duplicateMemory)).toThrow();
@@ -626,4 +689,25 @@ function trackRepository(repository: SqliteRelationshipRepository): SqliteRelati
 function trackCloseable<T extends { close: () => void }>(item: T): T {
   closeables.push(item);
   return item;
+}
+
+function confirmedCandidate({
+  id,
+  userId,
+  displayName
+}: {
+  id: string;
+  userId: string;
+  displayName: string;
+}): ContactCandidate {
+  return {
+    id,
+    userId,
+    displayName,
+    phoneNumbers: ["seeded contact"],
+    emails: [],
+    detectedAt: "2026-05-21T00:00:00.000Z",
+    source: "simulated",
+    status: "confirmed"
+  };
 }

@@ -77,6 +77,27 @@ describe("relationship repository", () => {
     expect(memory.tags).toContain("piano");
   });
 
+  it("rejects direct memory writes without a confirmed candidate", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+
+    expect(() =>
+      repo.addMemory({
+        id: "memory_without_candidate",
+        userId: fixtureUser.id,
+        displayName: "Unconfirmed Person",
+        primaryContactLabel: "manual contact",
+        contextNote: "should not bypass candidate confirmation",
+        tags: ["bypass"],
+        confidence: 0.5,
+        createdAt: "2026-05-21T06:00:00.000Z",
+        updatedAt: "2026-05-21T06:00:00.000Z"
+      })
+    ).toThrow("Memory requires a confirmed candidate");
+  });
+
   it("marks a prompted candidate while keeping it reviewable for replies", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

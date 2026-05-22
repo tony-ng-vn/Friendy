@@ -220,6 +220,10 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
+      assertMemoryHasConfirmedCandidate(memory, candidates);
+      if (memories.some((existing) => existing.id === memory.id)) {
+        throw new Error(`Memory already exists: ${memory.id}`);
+      }
       memories.push(memory);
       return memory;
     },
@@ -233,6 +237,13 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return userId ? interactions.filter((interaction) => interaction.userId === userId) : [...interactions];
     }
   };
+}
+
+function assertMemoryHasConfirmedCandidate(memory: RelationshipMemory, candidates: ContactCandidate[]): void {
+  const candidate = memory.candidateId ? candidates.find((item) => item.id === memory.candidateId) : undefined;
+  if (!candidate || candidate.userId !== memory.userId || candidate.status !== "confirmed") {
+    throw new Error("Memory requires a confirmed candidate");
+  }
 }
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {

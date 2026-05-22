@@ -259,6 +259,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
+      assertSqliteMemoryHasConfirmedCandidate(db, memory);
       insertMemory(db, memory);
       return memory;
     },
@@ -584,6 +585,20 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS memories_user_created_idx
       ON memories(user_id, created_at);
 
+    CREATE TRIGGER IF NOT EXISTS memory_requires_confirmed_candidate
+    BEFORE INSERT ON memories
+    FOR EACH ROW
+    WHEN NEW.candidate_id IS NULL OR NOT EXISTS (
+      SELECT 1
+      FROM candidates
+      WHERE id = NEW.candidate_id
+        AND user_id = NEW.user_id
+        AND status = 'confirmed'
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'Memory requires a confirmed candidate');
+    END;
+
     CREATE TABLE IF NOT EXISTS interactions (
       id TEXT PRIMARY KEY,
       insert_order INTEGER NOT NULL,
@@ -825,6 +840,19 @@ function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
     memory.updatedAt,
     stringify(memory)
   );
+}
+
+function assertSqliteMemoryHasConfirmedCandidate(db: DatabaseSync, memory: RelationshipMemory): void {
+  if (!memory.candidateId) {
+    throw new Error("Memory requires a confirmed candidate");
+  }
+
+  const row = db
+    .prepare("SELECT id FROM candidates WHERE id = ? AND user_id = ? AND status = 'confirmed'")
+    .get(memory.candidateId, memory.userId);
+  if (!row) {
+    throw new Error("Memory requires a confirmed candidate");
+  }
 }
 
 function insertInteraction(db: DatabaseSync, interaction: AgentInteraction): void {
