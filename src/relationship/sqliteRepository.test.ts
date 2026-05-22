@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import {
   createSqliteRelationshipRepository,
+  SqliteRepositoryBusyError,
   createSqliteRuntimeStateStore,
   openSqliteRuntimeDatabase
 } from "./sqliteRepository";
@@ -765,6 +766,42 @@ describe("sqlite relationship repository", () => {
       createdFromInteractionId: "interaction_retry_1",
       status: "confirmed"
     });
+  });
+
+  it("returns a controlled retryable error when another connection holds the write lock", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      },
+      busyTimeoutMs: 1
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const lockDb = trackCloseable(new DatabaseSync(dbPath));
+
+    lockDb.exec("BEGIN IMMEDIATE");
+    try {
+      expect(() => repo.confirmCandidate(candidate.id, "locked write", fixtureShortEvent.id)).toThrow(
+        SqliteRepositoryBusyError
+      );
+      try {
+        repo.confirmCandidate(candidate.id, "locked write", fixtureShortEvent.id);
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: "SQLITE_BUSY",
+          retryable: true
+        });
+      }
+    } finally {
+      lockDb.exec("ROLLBACK");
+    }
+
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      status: "pending"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
   it("sets schema version and stores explicit insert order columns", () => {

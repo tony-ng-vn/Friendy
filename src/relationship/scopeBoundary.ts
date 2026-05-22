@@ -96,6 +96,10 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
     return outOfScope("general_assistant_task", DEFAULT_REDIRECT);
   }
 
+  if (hasPendingCandidate && isCandidateContextAnswer(lower)) {
+    return inScope("candidate_confirmation", "User is replying with context for a pending relationship candidate.");
+  }
+
   if (isFollowupPlanning(lower)) {
     return inScope("followup_planning", "User is asking about follow-up decisions for relationships.");
   }
@@ -186,6 +190,26 @@ function isGeneralKnowledgeTask(text: string): boolean {
 
 function isGenericAdviceTask(text: string): boolean {
   return /\b(how do i|how can i|tips for)\b.*\b(charismatic|make friends|be popular|people like me)\b/.test(text);
+}
+
+function isCandidateContextAnswer(text: string): boolean {
+  if (text.includes("?") || text.length > 140) {
+    return false;
+  }
+
+  if (/^(who|what|where|when|why|how|should|can|could|would|write|debug|explain|calculate|remember)\b/.test(text)) {
+    return false;
+  }
+
+  if (/^\w+\s+(was|is|likes?|liked|hates?|loves?|works?|builds?|does|did|has|had)\b/.test(text)) {
+    return false;
+  }
+
+  return (
+    /^(somewhere else|elsewhere|neither|none of those|not those)\b/.test(text) ||
+    /^(met at|at|from|during)\s+\S+/.test(text) ||
+    /^(?:the\s+)?(coffee|cafe|dinner|lunch|meetup|party|residency|conference|school|office|bar)\b/.test(text)
+  );
 }
 
 function isFollowupPlanning(text: string): boolean {

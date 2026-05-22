@@ -280,6 +280,42 @@ describe("interpreted relationship agent", () => {
     expect(memory.contextNote).toContain("recruiting agents");
   });
 
+  it("confirms a pending contact from free-text context before calling the interpreter", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate(fixtureDetectedContact);
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for candidate context replies");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("coffee shop nearby"));
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(memory).toMatchObject({
+      displayName: "Maya Chen",
+      contextNote: "coffee shop nearby"
+    });
+  });
+
   it("answers no-match searches without leaking debug language", async () => {
     const { agent } = createTestAgent();
 

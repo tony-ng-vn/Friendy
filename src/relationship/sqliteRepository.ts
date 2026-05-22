@@ -31,6 +31,7 @@ import type {
 export type SqliteRelationshipRepositoryOptions = {
   path: string;
   seed?: RepositorySeed;
+  busyTimeoutMs?: number;
 };
 
 export type SqliteRelationshipRepository = RelationshipRepository & {
@@ -53,9 +54,21 @@ type InsertOrderedTable =
   | "memories"
   | "interactions";
 
+export class SqliteRepositoryBusyError extends Error {
+  readonly code = "SQLITE_BUSY";
+  readonly retryable = true;
+  readonly cause: unknown;
+
+  constructor(operation: string, cause: unknown) {
+    super(`SQLite database is busy during ${operation}`);
+    this.name = "SqliteRepositoryBusyError";
+    this.cause = cause;
+  }
+}
+
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
   const seed = options.seed;
-  const db = openSqliteRuntimeDatabase(options.path);
+  const db = openSqliteRuntimeDatabase(options.path, { busyTimeoutMs: options.busyTimeoutMs });
   try {
     if (seed) {
       runTransaction(db, () => seedRepository(db, seed));
@@ -301,17 +314,21 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
   };
 }
 
-export function openSqliteRuntimeDatabase(path: string): DatabaseSync {
+export function openSqliteRuntimeDatabase(
+  path: string,
+  options: { busyTimeoutMs?: number } = {}
+): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
+  const busyTimeoutMs = options.busyTimeoutMs ?? 5000;
   const db = new DatabaseSync(path, {
-    timeout: 5000,
+    timeout: busyTimeoutMs,
     enableForeignKeyConstraints: true
   });
 
   try {
     db.exec(`
       PRAGMA journal_mode = WAL;
-      PRAGMA busy_timeout = 5000;
+      PRAGMA busy_timeout = ${busyTimeoutMs};
       PRAGMA foreign_keys = ON;
       PRAGMA synchronous = NORMAL;
     `);
@@ -918,15 +935,44 @@ function insertInteraction(db: DatabaseSync, interaction: AgentInteraction): voi
 }
 
 function runTransaction<T>(db: DatabaseSync, callback: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+  } catch (error) {
+    throw normalizeSqliteError(error, "begin transaction");
+  }
+
   try {
     const result = callback();
     db.exec("COMMIT");
     return result;
   } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // If BEGIN failed or SQLite already unwound the transaction, preserve the original error.
+    }
+    throw normalizeSqliteError(error, "transaction");
   }
+}
+
+function normalizeSqliteError(error: unknown, operation: string): unknown {
+  if (isSqliteBusyError(error)) {
+    return new SqliteRepositoryBusyError(operation, error);
+  }
+  return error;
+}
+
+function isSqliteBusyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown };
+  return (
+    candidate.code === "SQLITE_BUSY" ||
+    (typeof candidate.message === "string" &&
+      (candidate.message.includes("SQLITE_BUSY") || candidate.message.includes("database is locked")))
+  );
 }
 
 function nextInsertOrder(db: DatabaseSync, table: InsertOrderedTable): number {

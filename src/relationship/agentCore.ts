@@ -42,6 +42,17 @@ export function createRelationshipAgent(tools: RelationshipTools) {
         return reply(message, composeClarificationReply(scopeDecision.question), toolCalls);
       }
 
+      if (scopeDecision.capability === "candidate_confirmation") {
+        toolCalls.push("list_pending_candidates");
+        const result = candidateIntake.resolveCandidateReply({
+          scope: message,
+          replyText: normalized
+        });
+        recordCandidateReplyToolCalls(result, toolCalls);
+
+        return reply(message, composeCandidateReply(result), toolCalls);
+      }
+
       if (isConfirmationReply(normalized)) {
         toolCalls.push("list_pending_candidates");
         const result = candidateIntake.resolveCandidateReply({

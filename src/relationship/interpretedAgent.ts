@@ -96,6 +96,40 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
+      if (scopeDecision.capability === "candidate_confirmation") {
+        const toolCalls: AgentToolCall[] = [];
+        const outboundText = confirmPendingCandidate(message, candidateIntake, toolCalls);
+        const interaction = repo.addInteraction({
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            scopeDecision,
+            intent: "candidate_confirmation",
+            confidence: 1
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction
+        };
+      }
+
       const interpreted = await interpreter.interpret(message);
       const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
       const interpretation = enrichInterpretationWithContext(

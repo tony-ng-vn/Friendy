@@ -180,6 +180,31 @@ describe("relationship agent core", () => {
     expect(memory.contextNote).toContain("building robots");
   });
 
+  it("confirms a pending candidate from a free-text somewhere-else reply", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    const agent = createRelationshipAgent(tools);
+
+    const result = agent.handleMessage({
+      userId: fixtureUser.id,
+      platform: "terminal",
+      text: "coffee shop nearby",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(result.toolCalls).toContain("confirm_candidate");
+    expect(memory).toMatchObject({
+      displayName: "Maya Chen",
+      contextNote: "coffee shop nearby"
+    });
+    expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
+  });
+
   it("ignores a pending candidate without saving memory", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
