@@ -668,7 +668,7 @@ function executeInterpretation(
   toolCalls: AgentToolCall[]
 ): string {
   if (isConfirmationReply(message.text)) {
-    return confirmPendingCandidate(message, candidateIntake, toolCalls);
+    return confirmPendingCandidate(message, candidateIntake, tools, toolCalls);
   }
 
   if (interpretation.needsClarification || interpretation.intent === "clarify") {

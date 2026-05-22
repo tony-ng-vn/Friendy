@@ -1,5 +1,51 @@
 # Mac-Only MVP Final Goal Experiments
 
+## Option B E2E Contact Detection Follow-Up Baseline
+
+- Date: 2026-05-22
+- Branch: `main`
+- Goal source: `docs/goals/mac-mvp-e2e-contact-detection-goal.md`.
+- Starting state: local `main` fast-forwarded from `c7d1008` to `39973a1`; worktree clean before edits.
+- Audit result: app-bundle launch, `fullAccess` schema, pre-start ignore/ack, startup message, open-prompt scope routing, and Swift add/update queue were present after fast-forward.
+- Remaining source-level gap: a real Mac add could be silent while the Swift sensor waits for `isReadyForFriendyPrompt`; the app-bundle event log had no parseable diagnostic event for queued/not-ready contacts.
+
+## Option B E2E Contact Detection Red Tests
+
+- Date: 2026-05-22
+- Added `contact_pending` expectations to `src/relationship/runtime/sensorEvents.test.ts`, `src/relationship/runtime/friendyRuntime.test.ts`, and `src/relationship/runtime/macosSensorSource.test.ts`.
+- Red run: `npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/macosSensorSource.test.ts` failed because the TypeScript sensor contract rejected `contact_pending`, runtime logged only the parse error, and Swift had no `contactPendingEvent` builder/emits.
+- Existing drift confirmed first: `npm test -- src/relationship/runtime/macosSensorSource.test.ts` failed because the test still expected Calendar access to guard only `authorized`, while the source now correctly accepts `authorized` or `fullAccess`.
+
+## Option B E2E Contact Detection Green Verification
+
+- Date: 2026-05-22
+- Added non-PII `contact_pending` events with reasons `history_changes_queued`, `waiting_for_saved_contact`, and `contact_not_found_after_history`.
+- Runtime logs `contact_pending` as `macOS sensor contact pending: ...` without creating candidates, prompts, processed events, or acks.
+- Swift emits `contact_pending` to the app-bundle event log when history changes queue contact ids and when the debounced re-fetch is still waiting for a saved card. Waiting diagnostics are de-duplicated per internal contact id so a company-only/blank card does not spam every poll.
+- Focused green run: `npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/macosSensorSource.test.ts` passed with 3 files and 29 tests.
+
+## Option B E2E Scope/Runtime Check Regression
+
+- Date: 2026-05-22
+- Full `npm test` exposed three regressions already present after the E2E fast-forward: normal recall text was routed as candidate confirmation when a prompt was open, `unsafe-save-guard` wrote memory for `Maya was cool from dinner`, and `agent:friendy:check` reused the same pre-start idempotency key after start.
+- Added a focused RED boundary test for `who was the recruiting agents person from Photon dinner?` while a candidate is pending.
+- Fix: pending-prompt routing now sends relationship recall questions to search, still sends direct pending inquiries like `Who did I add...` to the candidate inquiry path, and rejects person-comment statements such as `Maya was cool from dinner` instead of confirming them.
+- Fix: `agent:friendy:check` now proves pre-start contacts are recorded `ignored`, then uses a net-new post-start mock contact id for candidate creation and replay/ack verification.
+- Focused green run: `npm test -- src/relationship/scopeBoundary.test.ts src/relationship/ingestion/ingestionPipeline.test.ts src/relationship/runtime/friendyRuntimeCheck.test.ts src/relationship/evals/agentEvalRunner.test.ts` passed with 4 files and 21 tests.
+
+## Option B E2E Automated Verification
+
+- Date: 2026-05-22
+- `npm test`: passed with 48 files and 284 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 29/29 required cases with zero unsafe mutations and zero hallucinations.
+- `npm run agent:friendy:check`: passed; it proves pre-start contact idempotency is ignored, then a net-new post-start mock contact creates one candidate and acks the replayed batch.
+- `npm run check:mac-mvp-demo`: passed.
+- `npm run check:macos-sensor-fixture`: skipped successfully on Linux because the checked-in sensor binary is a macOS executable and this host is not macOS.
+- `npm run build:macos-sensor`: blocked on this host with `spawnSync swift ENOENT`; rerun on the user's Mac after pulling because Swift changed.
+- `git diff --check`: passed.
+- Manual real Mac E2E evidence is still required for goal completion: named iMessage prompt 5-15s after Done, confirmation creates a `memories` row, recall returns the person, and the terminal shows a new batch ack.
+
 ## Baseline
 
 - Date: 2026-05-22

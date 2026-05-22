@@ -265,6 +265,11 @@ async function processEvent({
     return;
   }
 
+  if (event.type === "contact_pending") {
+    logger.info(formatContactPendingLog(event));
+    return;
+  }
+
   if (event.type === "history_reset") {
     const eventNow = now();
     recordHistoryResetSensorState({ userId, state, event, now: eventNow });
@@ -326,6 +331,18 @@ async function processEvent({
     await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: eventNow });
     return;
   }
+}
+
+function formatContactPendingLog(event: Extract<MacosSensorEvent, { type: "contact_pending" }>): string {
+  const fields = [`pending=${event.pendingContactCount}`];
+  if (event.readyContactCount !== undefined) {
+    fields.push(`ready=${event.readyContactCount}`);
+  }
+  if (event.nextCheckInSeconds !== undefined) {
+    fields.push(`nextCheckInSeconds=${event.nextCheckInSeconds}`);
+  }
+
+  return `macOS sensor contact pending: ${event.reason} ${fields.join(" ")}`;
 }
 
 function recordReadySensorState({

@@ -53,26 +53,36 @@ export async function runFriendyRuntimeCheck({
     if (!readyEvent || !contactEvent || !batchEvent) {
       throw new Error("Fake macOS sensor did not emit the expected contact batch sequence.");
     }
+    const activeContactEvent = contactEventWithIdentity(contactEvent, {
+      eventId: "sensor_evt_mock_contact_2",
+      stableId: "fixture-contact-2",
+      idempotencyKey: "contacts:mac_mock:fixture-contact-2:add"
+    });
+    const activeBatchEvent = {
+      ...batchEvent,
+      contactEventIds: ["sensor_evt_mock_contact_2"]
+    };
 
     let startGateHeldBeforeStart = false;
     await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime, repo, state) => {
       await runtime.processLine(JSON.stringify(readyEvent));
       await runtime.processLine(JSON.stringify(contactEvent));
+      const preStartProcessed = state.getProcessedEvent("contacts:mac_mock:fixture-contact-1:add");
       startGateHeldBeforeStart =
         repo.listPendingCandidates("local_friendy_user").length === 0 &&
         promptTexts.length === 0 &&
-        !state.getProcessedEvent("contacts:mac_mock:fixture-contact-1:add");
+        preStartProcessed?.status === "ignored";
     });
 
     onboardingState = "active";
     await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime) => {
-      await runtime.processLine(JSON.stringify(contactEvent));
+      await runtime.processLine(JSON.stringify(activeContactEvent));
     });
 
     let candidateCount = 0;
     await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime, repo) => {
-      await runtime.processLine(JSON.stringify(contactEvent));
-      await runtime.processLine(JSON.stringify(batchEvent));
+      await runtime.processLine(JSON.stringify(activeContactEvent));
+      await runtime.processLine(JSON.stringify(activeBatchEvent));
       candidateCount = repo.listPendingCandidates("local_friendy_user").length;
     });
 
@@ -111,6 +121,29 @@ export async function runFriendyRuntimeCheck({
       // The root may be shared by concurrent checks; only the per-run directory is owned here.
     }
   }
+}
+
+function contactEventWithIdentity(
+  event: Record<string, unknown>,
+  {
+    eventId,
+    stableId,
+    idempotencyKey
+  }: {
+    eventId: string;
+    stableId: string;
+    idempotencyKey: string;
+  }
+): Record<string, unknown> {
+  const contact = event.contact && typeof event.contact === "object" && !Array.isArray(event.contact)
+    ? { ...(event.contact as Record<string, unknown>), stableId, unifiedStableId: stableId }
+    : event.contact;
+  return {
+    ...event,
+    eventId,
+    idempotencyKey,
+    contact
+  };
 }
 
 async function withRuntime(

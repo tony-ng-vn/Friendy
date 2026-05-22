@@ -69,6 +69,7 @@ final class NativeMacosSensor {
     private var isHandlingContactsChange = false
     /// Contacts seen in history (add or update) but not emitted until they look saved (real name, not in-progress card).
     private var pendingContactIdentifiers: Set<String> = []
+    private var pendingDiagnosticContactIdentifiers: Set<String> = []
     private var pendingHistoryTokenAfter: Data?
 
     /// Quiet period after the last add/update before re-fetching; mimics waiting until the user taps Done.
@@ -243,6 +244,15 @@ final class NativeMacosSensor {
             pendingHistoryTokenAfter = historyFetch.tokenAfter
             try historyFetch.tokenAfter.write(to: tokenURL, options: .atomic)
 
+            if !historyFetch.touchedContactIds.isEmpty {
+                emitSensorEvent(contactPendingEvent(
+                    identity: identity,
+                    reason: "history_changes_queued",
+                    pendingContactCount: pendingContactIdentifiers.count,
+                    nextCheckInSeconds: Int(Self.contactEmitDebounceSeconds)
+                ))
+            }
+
             if !pendingContactIdentifiers.isEmpty {
                 schedulePendingContactEmit()
             }
@@ -290,13 +300,34 @@ final class NativeMacosSensor {
         do {
             let contacts = try fetchContacts(byIdentifiers: identifiers)
             guard !contacts.isEmpty else {
+                emitSensorEvent(contactPendingEvent(
+                    identity: identity,
+                    reason: "contact_not_found_after_history",
+                    pendingContactCount: identifiers.count,
+                    readyContactCount: 0
+                ))
                 pendingContactIdentifiers.removeAll()
+                pendingDiagnosticContactIdentifiers.subtract(identifiers)
                 return
             }
 
             let readyContacts = contacts.filter { isReadyForFriendyPrompt($0) }
+            let readyContactIdentifiers = Set(readyContacts.map(\.identifier))
             let stillWaiting = Set(contacts.filter { !isReadyForFriendyPrompt($0) }.map(\.identifier))
             pendingContactIdentifiers = stillWaiting
+            pendingDiagnosticContactIdentifiers.subtract(readyContactIdentifiers)
+            let newlyWaiting = stillWaiting.subtracting(pendingDiagnosticContactIdentifiers)
+
+            if !newlyWaiting.isEmpty {
+                emitSensorEvent(contactPendingEvent(
+                    identity: identity,
+                    reason: "waiting_for_saved_contact",
+                    pendingContactCount: stillWaiting.count,
+                    readyContactCount: readyContacts.count,
+                    nextCheckInSeconds: Int(Self.contactEmitDebounceSeconds)
+                ))
+                pendingDiagnosticContactIdentifiers.formUnion(stillWaiting)
+            }
 
             guard !readyContacts.isEmpty else {
                 if !stillWaiting.isEmpty {

@@ -120,6 +120,26 @@ describe("Friendy macOS sensor runtime", () => {
     });
   });
 
+  it("logs contact_pending diagnostics without creating candidates or prompts", async () => {
+    const harness = createHarness();
+
+    await harness.runtime.processLine(
+      JSON.stringify({
+        ...baseEvent("contact_pending"),
+        reason: "waiting_for_saved_contact",
+        pendingContactCount: 1,
+        readyContactCount: 0,
+        nextCheckInSeconds: 5
+      })
+    );
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(harness.prompts).toEqual([]);
+    expect(harness.logs.join("\n")).toContain(
+      "macOS sensor contact pending: waiting_for_saved_contact pending=1 ready=0 nextCheckInSeconds=5"
+    );
+  });
+
   it("records history reset in sensor state without creating prompts", async () => {
     const harness = createHarness();
 

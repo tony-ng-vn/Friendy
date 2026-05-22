@@ -3,7 +3,8 @@
  *
  * Runs `friendy-macos-sensor --emit-fixture contact_batch`, validates NDJSON event
  * ordering and schema parity via `parseSensorEventLine`, and confirms contact methods
- * are redacted to hashes and hints. Skips gracefully on non-macOS hosts without a binary.
+ * are redacted to hashes and hints. Skips gracefully on non-macOS hosts because the checked-in
+ * or locally built sensor binary is a macOS executable.
  */
 import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -45,13 +46,13 @@ export function runMacosSensorFixtureCheck({
   const binaryPath = resolveBinaryPath(cwd, env);
   const lines = [`macOS sensor binary: ${binaryPath}`];
 
-  if (!existsSync(binaryPath)) {
-    if (platform !== "darwin") {
-      lines.push("Skipped compiled macOS sensor fixture check: requires macOS binary.");
-      lines.push("Run npm run build:macos-sensor on macOS, then rerun npm run check:macos-sensor-fixture.");
-      return { ok: true, skipped: true, binaryPath, eventTypes: [], fatalEventCodes: [], lines };
-    }
+  if (platform !== "darwin") {
+    lines.push("Skipped compiled macOS sensor fixture check: requires macOS host.");
+    lines.push("Run npm run build:macos-sensor on macOS, then rerun npm run check:macos-sensor-fixture.");
+    return { ok: true, skipped: true, binaryPath, eventTypes: [], fatalEventCodes: [], lines };
+  }
 
+  if (!existsSync(binaryPath)) {
     lines.push("Missing macOS sensor binary.");
     lines.push("Run npm run build:macos-sensor, then rerun npm run check:macos-sensor-fixture.");
     return { ok: false, skipped: false, binaryPath, eventTypes: [], fatalEventCodes: [], lines };

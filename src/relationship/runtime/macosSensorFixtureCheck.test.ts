@@ -39,6 +39,25 @@ describe("compiled macOS sensor fixture check", () => {
     expect(report.lines.join("\n")).toContain("Run npm run build:macos-sensor on macOS");
   });
 
+  it("skips cleanly on non-macOS workspaces even when a checked-in macOS binary exists", () => {
+    const cwd = tempDir();
+    mkdirSync(join(cwd, "bin/Friendy macOS Sensor.app/Contents/MacOS"), { recursive: true });
+    writeFileSync(join(cwd, "bin/Friendy macOS Sensor.app/Contents/MacOS/friendy-macos-sensor"), "");
+
+    const report = runMacosSensorFixtureCheck({
+      cwd,
+      platform: "linux",
+      execFileSync() {
+        throw new Error("non-macOS fixture check should skip before executing a Mach-O binary");
+      }
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.skipped).toBe(true);
+    expect(report.binaryPath).toBe(join(cwd, "bin/Friendy macOS Sensor.app/Contents/MacOS/friendy-macos-sensor"));
+    expect(report.lines.join("\n")).toContain("Skipped compiled macOS sensor fixture check");
+  });
+
   it("fails clearly on macOS when the compiled binary is missing", () => {
     const cwd = tempDir();
 

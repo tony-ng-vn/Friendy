@@ -83,10 +83,18 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
       return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
     }
 
-    return inScope(
-      "candidate_confirmation",
-      "User is replying while a contact confirmation prompt is open; treat as meeting context."
-    );
+    if (isRelationshipRecall(lower)) {
+      return inScope("relationship_recall", "User is asking Friendy to recall relationship memory.");
+    }
+
+    if (isPendingPromptContextReply(lower)) {
+      return inScope(
+        "candidate_confirmation",
+        "User is replying while a contact confirmation prompt is open; treat as meeting context."
+      );
+    }
+
+    return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
   }
 
   if (isIgnoreCandidate(lower)) {
@@ -236,9 +244,8 @@ function isGenericAdviceTask(text: string): boolean {
   return /\b(how do i|how can i|tips for)\b.*\b(charismatic|make friends|be popular|people like me)\b/.test(text);
 }
 
-// Treat short contextual replies as candidate confirmation only when a prompt is pending.
-function isCandidateContextAnswer(text: string): boolean {
-  if (text.includes("?") || text.length > 140) {
+function isPendingPromptContextReply(text: string): boolean {
+  if (text.includes("?") || text.length > 180) {
     return false;
   }
 
@@ -246,15 +253,14 @@ function isCandidateContextAnswer(text: string): boolean {
     return false;
   }
 
-  if (/^\w+\s+(was|is|likes?|liked|hates?|loves?|works?|builds?|does|did|has|had)\b/.test(text)) {
+  if (
+    /^\w+\s+(was|is|likes?|liked|hates?|loves?|works?|builds?|does|did|has|had)\b/.test(text) &&
+    !/^(this|that)\s+is\b/.test(text)
+  ) {
     return false;
   }
 
-  return (
-    /^(somewhere else|elsewhere|neither|none of those|not those)\b/.test(text) ||
-    /^(met at|at|from|during)\s+\S+/.test(text) ||
-    /^(?:the\s+)?(coffee|cafe|dinner|lunch|meetup|party|residency|conference|school|office|bar)\b/.test(text)
-  );
+  return true;
 }
 
 function isFollowupPlanning(text: string): boolean {

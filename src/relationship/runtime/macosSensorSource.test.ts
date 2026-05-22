@@ -53,11 +53,15 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain("CNChangeHistoryAddContactEvent");
     expect(nativeSource).toContain("CNChangeHistoryUpdateContactEvent");
     expect(nativeSource).toContain("isReadyForFriendyPrompt");
+    expect(nativeSource).toContain("contactPendingEvent");
+    expect(nativeSource).toContain('"waiting_for_saved_contact"');
+    expect(nativeSource).toContain('"history_changes_queued"');
     expect(nativeSource).toContain("writeHistoryBatchOutbox");
     expect(nativeSource).toContain("waitForAckAndAdvanceToken");
     expect(nativeSource).toContain("history_reset");
     expect(eventSource).toContain("historyBatchCompleteEvent");
     expect(eventSource).toContain("contactAddedEvent");
+    expect(eventSource).toContain('commonSensorEvent("contact_pending"');
   });
 
   it("replays pending outbox batches until Node acks and then advances the token", () => {
@@ -75,7 +79,7 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain("requestCalendarPermissionIfNeeded");
     expect(nativeSource).toContain("requestFullAccessToEvents");
     expect(nativeSource).toContain("requestAccess(to: .event");
-    expect(nativeSource).toContain('guard permission == "authorized" else');
+    expect(nativeSource).toContain('guard permission == "authorized" || permission == "fullAccess" else');
     expect(nativeSource).toContain('"permissionStatus": permission');
     expect(nativeSource).toContain("emitContactsPermissionError");
     expect(nativeSource).toContain("exit(1)");

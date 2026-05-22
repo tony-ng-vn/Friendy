@@ -159,6 +159,25 @@ func contactAddedEvent(
     return event
 }
 
+func contactPendingEvent(
+    identity: SensorIdentity,
+    reason: String,
+    pendingContactCount: Int,
+    readyContactCount: Int? = nil,
+    nextCheckInSeconds: Int? = nil
+) -> [String: Any] {
+    var event = commonSensorEvent("contact_pending", identity: identity)
+    event["reason"] = reason
+    event["pendingContactCount"] = pendingContactCount
+    if let readyContactCount {
+        event["readyContactCount"] = readyContactCount
+    }
+    if let nextCheckInSeconds {
+        event["nextCheckInSeconds"] = nextCheckInSeconds
+    }
+    return event
+}
+
 func historyBatchCompleteFixtureEvent(identity: SensorIdentity) -> [String: Any] {
     historyBatchCompleteEvent(
         identity: identity,

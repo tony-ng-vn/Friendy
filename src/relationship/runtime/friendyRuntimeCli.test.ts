@@ -54,6 +54,9 @@ describe("Friendy foreground runtime CLI configuration", () => {
     });
 
     expect(config.sensor.mode).toBe("mock");
+    if (config.sensor.mode !== "mock") {
+      throw new Error(`Expected mock sensor config, received ${config.sensor.mode}`);
+    }
     expect(config.sensor.command).toBe("tsx");
     expect(config.sensor.args).toEqual(["src/relationship/runtime/fakeMacosSensor.ts"]);
   });

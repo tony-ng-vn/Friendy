@@ -100,6 +100,20 @@ const contactAddedEventSchema = commonEventSchema.extend({
   calendarMatches: z.array(calendarMatchSchema).default([])
 });
 
+const contactPendingReasonSchema = z.enum([
+  "history_changes_queued",
+  "waiting_for_saved_contact",
+  "contact_not_found_after_history"
+]);
+
+const contactPendingEventSchema = commonEventSchema.extend({
+  type: z.literal("contact_pending"),
+  reason: contactPendingReasonSchema,
+  pendingContactCount: z.number().int().nonnegative(),
+  readyContactCount: z.number().int().nonnegative().optional(),
+  nextCheckInSeconds: z.number().nonnegative().optional()
+});
+
 const historyBatchCompleteEventSchema = commonEventSchema.extend({
   type: z.literal("history_batch_complete"),
   historyBatchId: z.string().min(1),
@@ -133,6 +147,7 @@ const fatalErrorEventSchema = commonEventSchema.extend({
 const sensorEventSchema = z.discriminatedUnion("type", [
   readyEventSchema,
   contactAddedEventSchema,
+  contactPendingEventSchema,
   historyBatchCompleteEventSchema,
   historyResetEventSchema,
   permissionErrorEventSchema,

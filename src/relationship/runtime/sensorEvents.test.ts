@@ -74,6 +74,27 @@ describe("macOS sensor event contract", () => {
     });
   });
 
+  it("parses non-PII contact_pending diagnostics while the native sensor waits for a saved card", () => {
+    const event = parseSensorEventLine(
+      JSON.stringify({
+        ...basePayload("contact_pending"),
+        reason: "waiting_for_saved_contact",
+        pendingContactCount: 1,
+        readyContactCount: 0,
+        nextCheckInSeconds: 5
+      })
+    );
+
+    expect(event).toMatchObject({
+      type: "contact_pending",
+      reason: "waiting_for_saved_contact",
+      pendingContactCount: 1,
+      readyContactCount: 0,
+      nextCheckInSeconds: 5
+    });
+    expect(JSON.stringify(event)).not.toMatch(/Testing|Maya|\+1555|@/);
+  });
+
   it("requires idempotency keys on durable outcome events", () => {
     const payload = contactAddedPayload();
     delete (payload as Record<string, unknown>).idempotencyKey;
