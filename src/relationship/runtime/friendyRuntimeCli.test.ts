@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
-import { resolveFriendyRuntimeConfig, startFriendyForegroundRuntime } from "./friendyRuntimeCli";
+import { createRuntimePromptSender, resolveFriendyRuntimeConfig, startFriendyForegroundRuntime } from "./friendyRuntimeCli";
 import type { SensorChildProcess, SensorRuntimeLineProcessor } from "./sensorProcess";
 
 const tempDirs: string[] = [];
@@ -97,6 +97,24 @@ describe("Friendy foreground runtime CLI configuration", () => {
     });
     expect(prompts[0].text).toContain("Photon Residency Dinner");
     started.close();
+  });
+
+  it("uses console prompt delivery for mock sensors by default", async () => {
+    const sender = await createRuntimePromptSender({
+      env: { FRIENDY_SENSOR_MOCK: "1" },
+      sensorMode: "mock"
+    });
+
+    expect(sender.kind).toBe("console");
+  });
+
+  it("requires Spectrum prompt delivery config for real sensors by default", async () => {
+    await expect(
+      createRuntimePromptSender({
+        env: {},
+        sensorMode: "real"
+      })
+    ).rejects.toThrow(/FRIENDY_OWNER_PHONE|FRIENDY_PROMPT_TO_PHONE/);
   });
 });
 

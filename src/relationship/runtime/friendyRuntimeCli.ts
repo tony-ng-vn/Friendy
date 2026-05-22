@@ -5,6 +5,7 @@ import { resolveConfiguredUserId } from "../identity";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
 import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
 import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
+import { createLiveSpectrumPromptSender } from "../transports/spectrumPromptSender";
 
 export type FriendyRuntimeConfigInput = {
   cwd?: string;
@@ -37,6 +38,10 @@ export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
   ackWriter?: RuntimeAckWriter;
 };
 
+export type RuntimePromptSenderWithKind = RuntimePromptSender & {
+  kind: "console" | "spectrum";
+};
+
 export type StartedFriendyForegroundRuntime = {
   config: FriendyRuntimeConfig;
   repo: SqliteRelationshipRepository;
@@ -66,7 +71,7 @@ export function resolveFriendyRuntimeConfig({
 export async function startFriendyForegroundRuntime({
   cwd = process.cwd(),
   env = process.env,
-  sender = createConsolePromptSender(),
+  sender,
   logger = console,
   ackWriter = createFileAckWriter(cwd),
   startSensor = defaultStartSensor
@@ -79,11 +84,12 @@ export async function startFriendyForegroundRuntime({
   const userId = resolveConfiguredUserId(env, "local_friendy_user") ?? "local_friendy_user";
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
   const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
+  const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
   const runtime = createFriendySensorRuntime({
     userId,
     repo,
     state,
-    sender,
+    sender: promptSender,
     ackWriter,
     logger
   });
@@ -99,6 +105,29 @@ export async function startFriendyForegroundRuntime({
       state.close();
     }
   };
+}
+
+export async function createRuntimePromptSender({
+  env = process.env,
+  sensorMode,
+  logger = console
+}: {
+  env?: Partial<NodeJS.ProcessEnv>;
+  sensorMode: FriendySensorLaunchConfig["mode"];
+  logger?: RuntimeLogger;
+}): Promise<RuntimePromptSenderWithKind> {
+  const mode = env.FRIENDY_PROMPT_TRANSPORT || (sensorMode === "mock" ? "console" : "spectrum");
+
+  if (mode === "console") {
+    return createConsolePromptSender();
+  }
+
+  if (mode === "spectrum") {
+    logger.info("[friendy:prompt_transport] spectrum");
+    return createLiveSpectrumPromptSender({ env });
+  }
+
+  throw new Error(`Unknown FRIENDY_PROMPT_TRANSPORT: ${mode}`);
 }
 
 function resolveSensorLaunchConfig({
@@ -162,8 +191,9 @@ function defaultStartSensor({
   });
 }
 
-function createConsolePromptSender(): RuntimePromptSender {
+function createConsolePromptSender(): RuntimePromptSenderWithKind {
   return {
+    kind: "console",
     async sendPrompt(input) {
       console.info("[friendy:prompt]", JSON.stringify(input));
       return {};
