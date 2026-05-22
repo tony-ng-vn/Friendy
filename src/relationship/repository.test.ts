@@ -160,6 +160,42 @@ describe("relationship repository", () => {
     expect(memory.tags).toContain("piano");
   });
 
+  it("records append-only revisions when a memory changes", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    const updated = repo.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    const revisions = repo.listMemoryRevisions(memory.id);
+    expect(updated.contextNote).toBe("working on hiring workflows");
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("working on hiring workflows");
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({
+      reason: "created",
+      memoryId: memory.id,
+      nextValue: {
+        contextNote: "building recruiting agents"
+      }
+    });
+    expect(revisions[1]).toMatchObject({
+      reason: "user_correction",
+      memoryId: memory.id,
+      previousValue: {
+        contextNote: "building recruiting agents"
+      },
+      nextValue: {
+        contextNote: "working on hiring workflows"
+      },
+      userText: "Actually Maya was working on hiring workflows."
+    });
+  });
+
   it("rejects direct memory writes without a confirmed candidate", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

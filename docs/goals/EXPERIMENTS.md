@@ -73,6 +73,25 @@
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `git diff --check`: passed.
 
+## Task 8 Red Tests
+
+- Date: 2026-05-22
+- Added in-memory repository coverage for memory creation revisions, update revisions, and current projection updates.
+- Added SQLite repository coverage for persisted revisions across repository instances and search over the latest projection.
+- Red run: `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts` failed because `updateMemory` and `listMemoryRevisions` do not exist yet.
+
+## Task 8 Green Verification
+
+- Date: 2026-05-22
+- Added `MemoryRevision` and `MemoryRevisionReason` domain types plus `updateMemory` and `listMemoryRevisions` repository methods.
+- In-memory and SQLite repositories now append a `created` revision when a memory is first saved.
+- Memory updates append a revision with previous/next values, reason, optional user text, and update the current memory projection used by search.
+- SQLite now creates `memory_revisions` with an index on `(memory_id, created_at, revision_id)` and writes memory/revision changes in one transaction.
+- `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts`: passed with 2 files and 39 tests.
+- `npm test`: passed with 45 files and 256 tests.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+
 ## Task 5 Red Tests
 
 - Date: 2026-05-22

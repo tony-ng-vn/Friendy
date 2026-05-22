@@ -27,7 +27,8 @@ import {
   type ConfirmCandidateOptions,
   type MarkCandidatePromptedOptions,
   type RelationshipRepository,
-  type RepositorySeed
+  type RepositorySeed,
+  type UpdateMemoryInput
 } from "./repository";
 import type {
   AgentInteraction,
@@ -36,6 +37,8 @@ import type {
   ContactCandidate,
   ContactCandidateDetected,
   EventContextMatch,
+  MemoryRevision,
+  MemoryRevisionReason,
   RelationshipMemory,
   User
 } from "./types";
@@ -280,6 +283,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         };
 
         insertMemory(db, memory);
+        insertMemoryRevision(db, createCreatedMemoryRevision(memory));
         return memory;
       });
     },
@@ -310,9 +314,42 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
-      assertSqliteMemoryHasConfirmedCandidate(db, memory);
-      insertMemory(db, memory);
-      return memory;
+      return runTransaction(db, () => {
+        assertSqliteMemoryHasConfirmedCandidate(db, memory);
+        insertMemory(db, memory);
+        insertMemoryRevision(db, createCreatedMemoryRevision(memory));
+        return memory;
+      });
+    },
+
+    updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory {
+      return runTransaction(db, () => {
+        const previous = readOptionalRow<RelationshipMemory>(
+          db.prepare("SELECT raw_json FROM memories WHERE id = ?").get(memoryId)
+        );
+        if (!previous) {
+          throw new Error(`Memory not found: ${memoryId}`);
+        }
+
+        const updated: RelationshipMemory = {
+          ...previous,
+          contextNote: updates.contextNote,
+          relationshipContext: updates.relationshipContext ?? previous.relationshipContext,
+          tags: extractTags([updates.contextNote, updates.relationshipContext ?? ""].join(" ")),
+          updatedAt: updates.updatedAt
+        };
+        updateMemoryRow(db, updated);
+        insertMemoryRevision(db, createUpdatedMemoryRevision(previous, updated, updates, countMemoryRevisions(db, memoryId) + 1));
+        return updated;
+      });
+    },
+
+    listMemoryRevisions(memoryId: string): MemoryRevision[] {
+      return readRows<MemoryRevision>(
+        db
+          .prepare("SELECT raw_json FROM memory_revisions WHERE memory_id = ? ORDER BY created_at, revision_id")
+          .all(memoryId)
+      );
     },
 
     addInteraction(interaction: AgentInteraction): AgentInteraction {
@@ -653,6 +690,18 @@ function setupSchema(db: DatabaseSync): void {
       ON memories(candidate_id)
       WHERE candidate_id IS NOT NULL;
 
+    CREATE TABLE IF NOT EXISTS memory_revisions (
+      revision_id TEXT PRIMARY KEY,
+      memory_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(memory_id) REFERENCES memories(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS memory_revisions_memory_created_idx
+      ON memory_revisions(memory_id, created_at, revision_id);
+
     -- Belt-and-suspenders guard: memories must point at a confirmed candidate for the same user.
     -- The app layer also checks this, but the trigger prevents duplicate or premature inserts if
     -- a future tool bypasses TypeScript helpers.
@@ -786,6 +835,7 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
   }
   for (const memory of seed.memories ?? []) {
     insertMemory(db, memory);
+    insertMemoryRevision(db, createCreatedMemoryRevision(memory));
   }
   for (const interaction of seed.interactions ?? []) {
     insertInteraction(db, interaction);
@@ -938,6 +988,82 @@ function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
     memory.updatedAt,
     stringify(memory)
   );
+}
+
+function updateMemoryRow(db: DatabaseSync, memory: RelationshipMemory): void {
+  db.prepare(
+    `
+      UPDATE memories
+      SET display_name = ?, event_id = ?, event_title = ?, updated_at = ?, raw_json = ?
+      WHERE id = ?
+    `
+  ).run(
+    memory.displayName,
+    memory.eventId ?? null,
+    memory.eventTitle ?? null,
+    memory.updatedAt,
+    stringify(memory),
+    memory.id
+  );
+}
+
+function insertMemoryRevision(db: DatabaseSync, revision: MemoryRevision): void {
+  db.prepare(
+    `
+      INSERT INTO memory_revisions (revision_id, memory_id, reason, created_at, raw_json)
+      VALUES (?, ?, ?, ?, ?)
+    `
+  ).run(revision.revisionId, revision.memoryId, revision.reason, revision.createdAt, stringify(revision));
+}
+
+function countMemoryRevisions(db: DatabaseSync, memoryId: string): number {
+  return (db.prepare("SELECT COUNT(*) AS count FROM memory_revisions WHERE memory_id = ?").get(memoryId) as { count: number })
+    .count;
+}
+
+function createCreatedMemoryRevision(memory: RelationshipMemory): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(memory.id, "created", memory.createdAt, 1),
+    memoryId: memory.id,
+    createdAt: memory.createdAt,
+    reason: "created",
+    nextValue: memoryRevisionValue(memory)
+  };
+}
+
+function createUpdatedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  updates: UpdateMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, updates.reason, updates.updatedAt, sequence),
+    memoryId: next.id,
+    createdAt: updates.updatedAt,
+    reason: updates.reason,
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: updates.userText
+  };
+}
+
+function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMemory> {
+  return {
+    displayName: memory.displayName,
+    primaryContactLabel: memory.primaryContactLabel,
+    eventId: memory.eventId,
+    eventTitle: memory.eventTitle,
+    contextNote: memory.contextNote,
+    relationshipContext: memory.relationshipContext,
+    tags: memory.tags,
+    confidence: memory.confidence,
+    updatedAt: memory.updatedAt
+  };
+}
+
+function createMemoryRevisionId(memoryId: string, reason: MemoryRevisionReason, createdAt: string, sequence: number): string {
+  return `memory_revision_${memoryId}_${reason}_${createdAt.replace(/[^0-9a-z]/gi, "")}_${sequence}`;
 }
 
 function assertSqliteMemoryHasConfirmedCandidate(db: DatabaseSync, memory: RelationshipMemory): void {

@@ -185,6 +185,55 @@ describe("sqlite relationship repository", () => {
     });
   });
 
+  it("persists append-only memory revisions while search uses the latest projection", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id);
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const updated = reopened.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    const finalRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const revisions = finalRepo.listMemoryRevisions(memory.id);
+    const search = createRelationshipTools(finalRepo).search_memories(fixtureUser.id, "hiring workflows");
+
+    expect(updated.contextNote).toBe("working on hiring workflows");
+    expect(finalRepo.listMemories(fixtureUser.id)[0].contextNote).toBe("working on hiring workflows");
+    expect(search[0].memory.id).toBe(memory.id);
+    expect(search[0].memory.contextNote).toBe("working on hiring workflows");
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({
+      reason: "created",
+      memoryId: memory.id,
+      nextValue: {
+        contextNote: "building recruiting agents"
+      }
+    });
+    expect(revisions[1]).toMatchObject({
+      reason: "user_correction",
+      memoryId: memory.id,
+      previousValue: {
+        contextNote: "building recruiting agents"
+      },
+      nextValue: {
+        contextNote: "working on hiring workflows"
+      },
+      userText: "Actually Maya was working on hiring workflows."
+    });
+  });
+
   it("persists candidate expiration and expires stale candidates on pending lookup", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({

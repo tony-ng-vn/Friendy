@@ -150,6 +150,19 @@ export type RelationshipMemory = {
   updatedAt: string;
 };
 
+export type MemoryRevisionReason = "created" | "user_correction" | "user_note_added" | "deleted";
+
+/** Append-only audit entry for each accepted version of a relationship memory. */
+export type MemoryRevision = {
+  revisionId: string;
+  memoryId: string;
+  createdAt: string;
+  reason: MemoryRevisionReason;
+  previousValue?: Partial<RelationshipMemory>;
+  nextValue: Partial<RelationshipMemory>;
+  userText?: string;
+};
+
 /** Audit trail for agent turns and tool use; useful for debugging ranking and consent behavior. */
 export type AgentInteraction = {
   id: string;

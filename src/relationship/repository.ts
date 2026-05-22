@@ -18,6 +18,8 @@ import type {
   ContactCandidateDetected,
   EventContextMatch,
   AgentInteraction,
+  MemoryRevision,
+  MemoryRevisionReason,
   RelationshipDateContext,
   RelationshipMemory,
   User
@@ -31,6 +33,7 @@ export type RepositorySeed = {
   eventMatches?: EventContextMatch[];
   promptAttempts?: CandidatePromptAttempt[];
   memories?: RelationshipMemory[];
+  memoryRevisions?: MemoryRevision[];
   interactions?: AgentInteraction[];
 };
 
@@ -45,6 +48,14 @@ export type ConfirmCandidateOptions = {
 export type MarkCandidatePromptedOptions = {
   spaceId?: string;
   promptedAt?: string;
+};
+
+export type UpdateMemoryInput = {
+  contextNote: string;
+  relationshipContext?: string;
+  reason: MemoryRevisionReason;
+  userText?: string;
+  updatedAt: string;
 };
 
 /**
@@ -84,6 +95,8 @@ export type RelationshipRepository = {
   ignoreCandidate(candidateId: string): void;
   listMemories(userId?: string): RelationshipMemory[];
   addMemory(memory: RelationshipMemory): RelationshipMemory;
+  updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory;
+  listMemoryRevisions(memoryId: string): MemoryRevision[];
   addInteraction(interaction: AgentInteraction): AgentInteraction;
   listInteractions(userId?: string): AgentInteraction[];
 };
@@ -100,6 +113,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
   const eventMatches = [...(seed.eventMatches ?? [])];
   const promptAttempts = [...(seed.promptAttempts ?? [])];
   const memories = [...(seed.memories ?? [])];
+  const memoryRevisions = [...(seed.memoryRevisions ?? seed.memories?.map(createCreatedMemoryRevision) ?? [])];
   const interactions = [...(seed.interactions ?? [])];
 
   return {
@@ -206,6 +220,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       };
 
       memories.push(memory);
+      memoryRevisions.push(createCreatedMemoryRevision(memory));
       return memory;
     },
 
@@ -268,7 +283,31 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
         throw new Error(`Memory already exists: ${memory.id}`);
       }
       memories.push(memory);
+      memoryRevisions.push(createCreatedMemoryRevision(memory));
       return memory;
+    },
+
+    updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory {
+      const index = memories.findIndex((memory) => memory.id === memoryId);
+      if (index < 0) {
+        throw new Error(`Memory not found: ${memoryId}`);
+      }
+
+      const previous = memories[index];
+      const updated: RelationshipMemory = {
+        ...previous,
+        contextNote: updates.contextNote,
+        relationshipContext: updates.relationshipContext ?? previous.relationshipContext,
+        tags: extractTags([updates.contextNote, updates.relationshipContext ?? ""].join(" ")),
+        updatedAt: updates.updatedAt
+      };
+      memories[index] = updated;
+      memoryRevisions.push(createUpdatedMemoryRevision(previous, updated, updates, memoryRevisions.length + 1));
+      return updated;
+    },
+
+    listMemoryRevisions(memoryId: string): MemoryRevision[] {
+      return memoryRevisions.filter((revision) => revision.memoryId === memoryId);
     },
 
     addInteraction(interaction: AgentInteraction): AgentInteraction {
@@ -300,6 +339,51 @@ function assertCandidateHasNoMemory(memory: RelationshipMemory, memories: Relati
   if (memory.candidateId && memories.some((existing) => existing.candidateId === memory.candidateId)) {
     throw new Error("Memory already exists for candidate");
   }
+}
+
+function createCreatedMemoryRevision(memory: RelationshipMemory): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(memory.id, "created", memory.createdAt, 1),
+    memoryId: memory.id,
+    createdAt: memory.createdAt,
+    reason: "created",
+    nextValue: memoryRevisionValue(memory)
+  };
+}
+
+function createUpdatedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  updates: UpdateMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, updates.reason, updates.updatedAt, sequence),
+    memoryId: next.id,
+    createdAt: updates.updatedAt,
+    reason: updates.reason,
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: updates.userText
+  };
+}
+
+function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMemory> {
+  return {
+    displayName: memory.displayName,
+    primaryContactLabel: memory.primaryContactLabel,
+    eventId: memory.eventId,
+    eventTitle: memory.eventTitle,
+    contextNote: memory.contextNote,
+    relationshipContext: memory.relationshipContext,
+    tags: memory.tags,
+    confidence: memory.confidence,
+    updatedAt: memory.updatedAt
+  };
+}
+
+function createMemoryRevisionId(memoryId: string, reason: MemoryRevisionReason, createdAt: string, sequence: number): string {
+  return `memory_revision_${memoryId}_${reason}_${createdAt.replace(/[^0-9a-z]/gi, "")}_${sequence}`;
 }
 
 /** Computes the ISO expiry timestamp from a contact detection time. */
