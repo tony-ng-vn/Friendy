@@ -204,3 +204,22 @@
 - `npm run eval:agent`: passed 22/22 with zero unsafe mutations and zero hallucinations.
 - `npm run agent:friendy:check`: passed.
 - `git diff --check`: passed.
+
+## Task 12 Red Tests
+
+- Date: 2026-05-22
+- Added eval-runner expectations for seven additional Mac MVP behavior evals: natural save wording, calendar-missing prompt copy, weak event guess copy, no unsafe save on candidate detection, multi-candidate bare-yes ambiguity, delete-from-search behavior, and setup failure copy.
+- Added `macMvpDemoCheck` tests for the canonical phone-verified, start, contact prompt, save, recall, and update transcript plus the `check:mac-mvp-demo` package script.
+- Red run: `npm test -- src/relationship/evals/agentEvalRunner.test.ts src/relationship/evals/macMvpDemoCheck.test.ts` failed because the eval catalog still had 22 cases and `macMvpDemoCheck.ts` did not exist.
+
+## Task 12 Green Verification
+
+- Date: 2026-05-22
+- Expanded `npm run eval:agent` to 29 required deterministic cases covering safe save, natural saved-memory wording, ambiguity, follow-up narrowing/expiry, update/delete safety, setup failure copy, privacy scope, and no unsafe save.
+- Added `npm run check:mac-mvp-demo`, a deterministic local demo check that runs the fixture phone-verified/start/contact-prompt/save/recall/update loop through the repository, tools, and interpreted agent.
+- `npm test -- src/relationship/evals/agentEvalRunner.test.ts src/relationship/evals/macMvpDemoCheck.test.ts`: passed with 2 files and 7 tests.
+- `npm run eval:agent`: passed 29/29 with zero unsafe mutations and zero hallucinations.
+- `npm run check:mac-mvp-demo`: passed and printed the canonical local transcript.
+- `npm test`: passed with 47 files and 272 tests.
+- `npm run build`: passed.
+- `git diff --check`: passed.

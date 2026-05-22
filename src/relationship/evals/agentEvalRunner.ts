@@ -2,6 +2,9 @@
  * Trajectory-level relationship-agent evals.
  * Assertions check repository state, tool calls, and bounded reply substrings — not exact user-facing prose.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createRelationshipAgent } from "../agentCore";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
@@ -12,6 +15,8 @@ import {
   type MessageInterpreter
 } from "../openRouterInterpreter";
 import { createRelationshipRepository } from "../repository";
+import { runFriendyDoctor } from "../runtime/friendyDoctor";
+import { planCandidatePrompt } from "../runtime/promptPlanner";
 import { createRelationshipTools } from "../tools";
 import { createSpectrumFriendyRuntime } from "../transports/spectrumTransport";
 import type { CalendarEvent, ContactCandidateDetected, InboundAgentMessage } from "../types";
@@ -174,6 +179,30 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("untargeted-memory-correction", "interpreted", [
     "untargeted correction asks for a clearer memory target",
     "untargeted correction does not mutate memory"
+  ]),
+  evalCase("natural-save-confirmation-wording", "deterministic", [
+    "confirmed candidate uses natural saved-memory wording",
+    "confirmed candidate memory includes user context"
+  ]),
+  evalCase("calendar-missing-contact-prompt", "deterministic", [
+    "calendar-missing contact prompt still asks where they met"
+  ]),
+  evalCase("weak-event-guess-prompt", "deterministic", [
+    "weak event guess asks whether event or somewhere else"
+  ]),
+  evalCase("candidate-detection-no-unsafe-save", "deterministic", [
+    "candidate detection alone creates no memory"
+  ]),
+  evalCase("multi-candidate-bare-yes-ambiguity", "deterministic", [
+    "bare yes with multiple pending candidates asks which one",
+    "bare yes with multiple pending candidates does not save"
+  ]),
+  evalCase("delete-removes-memory-from-search", "interpreted", [
+    "delete memory removes it from search results"
+  ]),
+  evalCase("friendy-doctor-setup-failure-copy", "deterministic", [
+    "setup failure copy says what is broken and what to do next",
+    "setup failure copy includes mock-mode fallback"
   ])
 ];
 
@@ -672,6 +701,161 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[22],
+    async run() {
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
+      const tools = createRelationshipTools(repo);
+      tools.create_contact_candidate(fixtureDetectedContact);
+      const agent = createRelationshipAgent(tools);
+      const result = agent.handleMessage(inbound("yes, building recruiting agents and played piano", "terminal"));
+      const [memory] = repo.listMemories(fixtureUser.id);
+
+      return [
+        assertion(
+          "confirmed candidate uses natural saved-memory wording",
+          "intent",
+          includesAll(result.outbound.text, ["Got it, saved Maya", "Photon Residency Dinner", "I'll remember"])
+        ),
+        assertion(
+          "confirmed candidate memory includes user context",
+          "memoryWrite",
+          memory?.contextNote.includes("recruiting agents") === true && memory.contextNote.includes("played piano")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[23],
+    async run() {
+      const plan = planCandidatePrompt({ displayName: "Maya", scoredEvents: [] });
+
+      return [
+        assertion(
+          "calendar-missing contact prompt still asks where they met",
+          "clarification",
+          plan.route === "none" && includesAll(plan.text, ["I noticed you added Maya", "Where did you meet"])
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[24],
+    async run() {
+      const plan = planCandidatePrompt({
+        displayName: "Maya",
+        scoredEvents: [
+          {
+            eventId: "event_weak_coffee",
+            title: "Coffee near office",
+            score: 48,
+            strength: "weak",
+            rank: 1,
+            reason: "weak social context",
+            snapshot: calendarSnapshot("Coffee near office")
+          }
+        ]
+      });
+
+      return [
+        assertion(
+          "weak event guess asks whether event or somewhere else",
+          "clarification",
+          plan.route === "weak" && includesAll(plan.text, ["Was this from Coffee near office", "somewhere else"])
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[25],
+    async run() {
+      const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureShortEvent] });
+      const tools = createRelationshipTools(repo);
+      const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+
+      return [
+        assertion(
+          "candidate detection alone creates no memory",
+          "unsafeMutation",
+          repo.getCandidate(candidate.id)?.status === "pending" && repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[26],
+    async run() {
+      const repo = createRelationshipRepository({ users: [fixtureUser] });
+      const tools = createRelationshipTools(repo);
+      tools.create_contact_candidate({
+        ...fixtureDetectedContact,
+        displayName: "Maya Chen",
+        contactIdentifier: "contact_maya"
+      });
+      tools.create_contact_candidate({
+        ...fixtureDetectedContact,
+        displayName: "Nina Park",
+        contactIdentifier: "contact_nina",
+        phoneNumbers: ["+15550101031"]
+      });
+      const agent = createRelationshipAgent(tools);
+      const result = agent.handleMessage(inbound("yes", "terminal"));
+
+      return [
+        assertion(
+          "bare yes with multiple pending candidates asks which one",
+          "clarification",
+          includesAll(result.outbound.text, ["Maya Chen", "Nina Park", "Which one"])
+        ),
+        assertion(
+          "bare yes with multiple pending candidates does not save",
+          "unsafeMutation",
+          repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[27],
+    async run({ interpreter, now }) {
+      const { agent, tools } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInbound("I met Maya at dinner, building recruiting agents"));
+      const deleted = await agent.handleMessage(interpretedInbound("delete Maya memory"));
+
+      return [
+        assertion(
+          "delete memory removes it from search results",
+          "memoryWrite",
+          deleted.toolCalls.includes("delete_memory") && tools.search_memories(fixtureUser.id, "recruiting agents").length === 0
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[28],
+    async run() {
+      const cwd = mkdtempSync(join(tmpdir(), "friendy-doctor-eval-"));
+      try {
+        const report = runFriendyDoctor({ cwd, env: {}, platform: "linux", nodeVersion: "v24.15.0" });
+        const text = report.lines.join("\n");
+
+        return [
+          assertion(
+            "setup failure copy says what is broken and what to do next",
+            "scopeBoundary",
+            includesAll(text, ["macOS sensor: binary missing", "Next step: Run npm run build:macos-sensor"])
+          ),
+          assertion(
+            "setup failure copy includes mock-mode fallback",
+            "scopeBoundary",
+            text.includes("FRIENDY_SENSOR_MOCK=1")
+          )
+        ];
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }
   }
 ];
 
@@ -863,6 +1047,21 @@ function interpretedInboundAt(text: string, receivedAt: string): InboundAgentMes
   return {
     ...interpretedInbound(text),
     receivedAt
+  };
+}
+
+function calendarSnapshot(title: string) {
+  return {
+    eventIdentifier: `calendar_${title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+    title,
+    startsAt: "2026-05-20T12:00:00.000Z",
+    endsAt: "2026-05-20T13:00:00.000Z",
+    location: "San Francisco",
+    calendarSource: "eventkit",
+    calendarTitle: "Personal",
+    isAllDay: false,
+    attendeeCount: 1,
+    isRecurring: false
   };
 }
 

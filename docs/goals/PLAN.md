@@ -12,7 +12,7 @@
 - [x] Execute Task 9: add bounded update and delete tools.
 - [x] Execute Task 10: add follow-up search context TTL and correction routing.
 - [x] Execute Task 11: add redacted runtime traces.
-- [ ] Execute Task 12: add required behavior evals and demo check.
+- [x] Execute Task 12: add required behavior evals and demo check.
 - [ ] Execute Task 13: align docs and implementation notes.
 - [ ] Run final verification across the completed MVP plan.
 - [ ] Push `main`.
