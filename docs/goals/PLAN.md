@@ -13,6 +13,6 @@
 - [x] Execute Task 10: add follow-up search context TTL and correction routing.
 - [x] Execute Task 11: add redacted runtime traces.
 - [x] Execute Task 12: add required behavior evals and demo check.
-- [ ] Execute Task 13: align docs and implementation notes.
+- [x] Execute Task 13: align docs and implementation notes.
 - [ ] Run final verification across the completed MVP plan.
 - [ ] Push `main`.

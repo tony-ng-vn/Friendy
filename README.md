@@ -10,18 +10,20 @@ Friendy currently works as a local macOS-first prototype with deterministic veri
 
 What works today:
 
+- Run the canonical foreground Mac MVP runtime with `npm run agent:friendy`.
+- Check local runtime readiness with `npm run doctor:friendy`.
 - Text the Spectrum/iMessage agent to save and search relationship memories.
 - Detect newly added macOS Contacts when the explicit local checker runs.
 - Map a new contact to nearby Apple Calendar events when an event is available.
 - Ask for user confirmation before saving a detected contact as relationship memory.
 - Handle no-event contact adds by asking where the user met the person.
 - Share pending candidates and memories between the local checker and Spectrum runtime through optional local SQLite storage.
-- Evaluate agent behavior with deterministic multi-turn relationship trajectories.
+- Evaluate agent behavior with deterministic multi-turn relationship trajectories and the Mac MVP demo check.
 
 What is not built yet:
 
-- A one-command foreground runtime that runs Spectrum and contact/calendar checking together.
 - A macOS LaunchAgent or always-on background watcher.
+- Signed `.app`, installer, or LaunchAgent packaging.
 - LinkedIn, Instagram, X, or other social connection detectors.
 - Face recognition, scraping, a CRM, or automatic memory creation without user confirmation.
 - Production cloud sync or multi-user signup identity.
@@ -57,6 +59,7 @@ Run the core verification checks:
 npm test
 npm run build
 npm run eval:agent
+npm run check:mac-mvp-demo
 ```
 
 Run safe product-flow checks that do not read real Contacts or send live iMessages:
@@ -66,6 +69,30 @@ npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 ```
+
+## Canonical Mac MVP Runtime
+
+Run the consolidated readiness check:
+
+```bash
+npm run doctor:friendy
+```
+
+Run with the fake sensor for deterministic local development:
+
+```bash
+FRIENDY_SENSOR_MOCK=1 FRIENDY_PROMPT_TRANSPORT=console npm run agent:friendy
+```
+
+Run the real Mac runtime after building the sensor:
+
+```bash
+npm run build:macos-sensor
+npm run doctor:friendy
+npm run agent:friendy
+```
+
+Friendy notices new contacts on your Mac and uses Calendar only to guess where you met them. It never reads your iMessages or scrapes social profiles, and it always asks before saving someone.
 
 ## Live iMessage Agent
 
@@ -202,6 +229,9 @@ The SQLite file lives under `.friendy/`, which is ignored by git because it cont
 | `npm test` | Run unit and integration tests. |
 | `npm run build` | Type-check and build the Vite app. |
 | `npm run eval:agent` | Run deterministic multi-turn relationship-agent evals. |
+| `npm run check:mac-mvp-demo` | Run the deterministic Mac MVP capture/recall/correction demo check. |
+| `npm run doctor:friendy` | Check local Mac MVP runtime readiness without starting Spectrum or the sensor. |
+| `npm run agent:friendy` | Run the canonical foreground Mac MVP runtime. |
 | `npm run agent:terminal -- "..."` | Run a local terminal agent path without Spectrum credentials. |
 | `npm run agent:spectrum` | Run the live Spectrum/iMessage transport. |
 | `npm run check:imessage-e2e` | Run deterministic iMessage-style contact confirmation and search flow. |
@@ -218,7 +248,7 @@ Manual memory capture:
 
 ```text
 You: I met Sarah Fah at Photon Residency II. She ran the community.
-Friendy: Saved Sarah Fah. I'll remember she ran the community at Photon Residency II.
+Friendy: Got it, saved Sarah Fah from Photon Residency II. I'll remember she ran the community.
 ```
 
 Detected contact confirmation:
@@ -226,7 +256,7 @@ Detected contact confirmation:
 ```text
 Friendy: I noticed you added Maya Chen during Photon Residency Dinner. Did you meet Maya Chen there?
 You: yes, actually at Photon Residency, recruiting agents
-Friendy: Saved Maya Chen. I'll remember recruiting agents at Photon Residency.
+Friendy: Got it, saved Maya Chen from Photon Residency. I'll remember recruiting agents.
 ```
 
 Search:

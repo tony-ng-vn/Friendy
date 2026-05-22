@@ -66,6 +66,9 @@ Transport message
 - `src/relationship/ingestion/localCheckCli.ts`: `npm run ingest:local:check` entry point, state file handling, dry-run default, and guarded live Spectrum sender.
 - `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
 - `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
+- `src/relationship/evals/macMvpDemoCheck.ts`: deterministic Mac MVP demo check for phone-verified/start/contact-prompt/save/recall/update.
+- `src/relationship/runtime/friendyDoctor.ts`: structured local runtime readiness check for Node, env, SQLite, sensor state, prompt transport, sensor binary/mock mode, and native permission availability.
+- `src/relationship/runtime/friendyRuntimeCli.ts`: canonical foreground Mac MVP runtime entry point.
 - `src/relationship/transports/`: communication adapters and deterministic iMessage E2E product flow; product logic should live above this layer.
 
 ## Commands
@@ -75,10 +78,12 @@ npm test
 npm run build
 npm run agent:terminal -- "yes, recruiting agents, played piano"
 npm run eval:agent
+npm run check:mac-mvp-demo
 npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 npm run doctor:friendy
+npm run agent:friendy
 npm run agent:spectrum
 ```
 
@@ -108,6 +113,7 @@ npm test -- src/relationship/responseComposer.test.ts
 npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/evals/agentEvalRunner.test.ts
+npm test -- src/relationship/evals/macMvpDemoCheck.test.ts
 npm test -- src/relationship/transports/spectrumTransport.test.ts
 npm test -- src/relationship/transports/imessageE2eFlow.test.ts
 npm test -- src/relationship/candidateConfirmation.test.ts

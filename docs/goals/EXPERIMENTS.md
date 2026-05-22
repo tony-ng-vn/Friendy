@@ -223,3 +223,12 @@
 - `npm test`: passed with 47 files and 272 tests.
 - `npm run build`: passed.
 - `git diff --check`: passed.
+
+## Task 13 Verification
+
+- Date: 2026-05-22
+- Updated `README.md` with the canonical Mac MVP runtime commands, `doctor:friendy`, `check:mac-mvp-demo`, trust copy, and current built/not-built boundaries.
+- Updated `REFERENCE.md` with the finished spec/plan pointers, canonical runtime/demo commands, and source map entries for the demo check, runtime doctor, and foreground runtime.
+- Updated `implementation-notes.html` with the final Mac-only MVP implementation plan summary.
+- `npm run build`: passed.
+- `git diff --check`: passed.
