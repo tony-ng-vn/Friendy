@@ -55,7 +55,8 @@ The Swift sensor called `schedulePendingContactEmit()` on **every poll** while c
 ### Known follow-ups (not blocking MVP use)
 
 - `npm run check:mac-mvp-e2e-state` may report **missing history batch ack file** even after a successful iMessage flow — investigate ack path if automating proof.
-- Broad relationship recall routing Spec A is implemented: “Anyone in my contacts related to Friendy?” should now route to `search_memories` and avoid the generic redirect. Later retrieval quality upgrades are scoped in Spec B at `docs/superpowers/specs/2026-05-22-relationship-hybrid-retrieval-design.md`.
+- Broad relationship recall routing Spec A is implemented: “Anyone in my contacts related to Friendy?” should now route to `search_memories` and avoid the generic redirect.
+- Deterministic Spec B retrieval is implemented: generated memory search documents, document-lexical evidence, SQLite search-document backfill/sync, optional local FTS5 rows when available, and merged repository retrieval candidates. Optional embeddings and LLM reranking remain deferred.
 - Each `agent:friendy` restart requires texting **`start`** again (by design).
 - Only **net-new** contacts after `start` prompt; pre-start adds are ignored for idempotency.
 - Saving in Contacts ≠ Friendy memory until the user replies to the iMessage prompt.
