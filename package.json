@@ -12,6 +12,7 @@
     "agent:friendy:check": "tsx src/relationship/runtime/friendyRuntimeCheck.ts",
     "build:macos-sensor": "node scripts/build-macos-sensor.mjs",
     "doctor:macos-sensor": "tsx src/relationship/runtime/macosSensorDoctor.ts",
+    "check:macos-sensor-fixture": "tsx src/relationship/runtime/macosSensorFixtureCheck.ts",
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "check:imessage-e2e": "tsx src/relationship/transports/imessageE2eFlow.ts",
     "ingest:check": "tsx src/relationship/ingestion/ingestCheck.ts",
