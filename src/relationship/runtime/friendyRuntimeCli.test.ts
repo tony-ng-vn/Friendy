@@ -99,6 +99,33 @@ describe("Friendy foreground runtime CLI configuration", () => {
     started.close();
   });
 
+  it("warns when the SQLite runtime path is under a common cloud-synced folder", async () => {
+    const cwd = tempDir();
+    const logs: string[] = [];
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_SQLITE_PATH: join(cwd, "Dropbox", "Friendy", ".friendy", "friendy.sqlite"),
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      sender: {
+        async sendPrompt() {
+          return {};
+        }
+      },
+      startSensor() {
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger(logs)
+    });
+
+    expect(logs.join("\n")).toContain("[friendy:runtime_store:warning]");
+    expect(logs.join("\n")).toContain("cloud-synced or network folder");
+    started.close();
+  });
+
   it("starts the inbound iMessage agent with the same repository for real sensors", async () => {
     const cwd = tempDir();
     const sensorBinaryPath = join(cwd, "friendy-macos-sensor");
@@ -162,11 +189,17 @@ function tempDir(): string {
   return dir;
 }
 
-function testLogger() {
+function testLogger(logs: string[] = []) {
   return {
-    info() {},
-    warn() {},
-    error() {}
+    info(message: string) {
+      logs.push(message);
+    },
+    warn(message: string) {
+      logs.push(message);
+    },
+    error(message: string) {
+      logs.push(message);
+    }
   };
 }
 

@@ -96,6 +96,7 @@ export async function startFriendyForegroundRuntime({
   if (config.runtimeStore !== "sqlite") {
     throw new Error("agent:friendy requires FRIENDY_RUNTIME_STORE=sqlite for shared local runtime state.");
   }
+  warnIfRuntimePathIsCloudSynced(config, logger);
 
   const userId = resolveConfiguredUserId(env, "local_friendy_user") ?? "local_friendy_user";
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
@@ -234,6 +235,36 @@ function shouldStartInboundAgent(config: FriendyRuntimeConfig, env: Partial<Node
   }
 
   return config.sensor.mode === "real" || env.FRIENDY_START_INBOUND_AGENT === "1";
+}
+
+function warnIfRuntimePathIsCloudSynced(config: FriendyRuntimeConfig, logger: RuntimeLogger): void {
+  for (const [label, path] of [
+    ["SQLite runtime store", config.sqlitePath],
+    ["macOS sensor state", config.sensorStateDir]
+  ] as const) {
+    if (isCloudSyncedOrNetworkPath(path)) {
+      logger.warn(
+        `[friendy:runtime_store:warning] ${label} is under a common cloud-synced or network folder; SQLite WAL should stay on a local same-host filesystem. Path: ${path}`
+      );
+    }
+  }
+}
+
+function isCloudSyncedOrNetworkPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").toLowerCase();
+  if (normalized.startsWith("//")) {
+    return true;
+  }
+
+  return [
+    "/icloud drive/",
+    "/mobile documents/",
+    "/dropbox/",
+    "/google drive/",
+    "/onedrive/",
+    "/box/",
+    "/volumes/"
+  ].some((marker) => normalized.includes(marker));
 }
 
 function createConsolePromptSender(): RuntimePromptSenderWithKind {
