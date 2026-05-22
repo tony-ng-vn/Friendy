@@ -2,6 +2,8 @@ node_modules/
 dist/
 .friendy/
 .worktrees/
+swift/FriendyMacOSSensor/.build/
+tmp-macos-sensor-*/
 .DS_Store
 *.env.*
 !.env.example
