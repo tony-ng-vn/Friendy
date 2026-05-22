@@ -19,6 +19,7 @@
     "check:macos-sensor-fixture": "tsx src/relationship/runtime/macosSensorFixtureCheck.ts",
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "check:mac-mvp-demo": "tsx src/relationship/evals/macMvpDemoCheck.ts",
+    "check:mac-mvp-e2e-state": "tsx src/relationship/evals/macMvpE2eStateCheck.ts",
     "check:imessage-e2e": "tsx src/relationship/transports/imessageE2eFlow.ts",
     "ingest:check": "tsx src/relationship/ingestion/ingestCheck.ts",
     "ingest:local:check": "tsx src/relationship/ingestion/localCheckCli.ts",

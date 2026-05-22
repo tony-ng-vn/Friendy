@@ -69,6 +69,16 @@
 - Focused green run: `npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/macosSensorSource.test.ts` passed with 3 files and 31 tests.
 - Final verification: `npm test` passed with 48 files and 286 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed. `npm run build:macos-sensor` still cannot run on this Linux host (`spawnSync swift ENOENT`), so the user must pull and rebuild the app bundle on macOS before the next live run.
 
+## Option B Live Artifact State Checker
+
+- Date: 2026-05-22
+- Gap: manual E2E evidence required several pasted commands (`tail`/`rg`/`sqlite3`) and was easy to misread during live debugging.
+- Added `npm run check:mac-mvp-e2e-state`, a read-only checker over `.friendy/macos-sensor-state/sensor-events.ndjson`, ack files referenced by `history_batch_complete`, and `.friendy/friendy.sqlite`.
+- It passes only when the latest artifacts show a named `contact_added`, a present history-batch ack file, and at least one saved memory. It also prints latest candidates plus `contact_pending` / `sensor_diagnostic` reasons when evidence is incomplete.
+- Red run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` failed because `macMvpE2eStateCheck` did not exist.
+- Green run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` passed with 4 tests.
+- Final verification: `npm test` passed with 49 files and 290 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed. Running `npm run check:mac-mvp-e2e-state` on this Linux workspace correctly returned incomplete live evidence because there is no real Mac `contact_added`, ack, or saved memory here.
+
 ## Baseline
 
 - Date: 2026-05-22
