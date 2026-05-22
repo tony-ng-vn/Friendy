@@ -27,12 +27,30 @@ describe("Mac MVP live E2E state check", () => {
     mkdirSync(join(stateDir, "acks"), { recursive: true });
     writeFileSync(ackPath, "");
     writeSensorEvents(stateDir, [
-      contactAddedEvent({ displayName: "Testing Seven", historyBatchId: "history_batch_testing_7" }),
+      contactAddedEvent({
+        displayName: "Testing Seven",
+        historyBatchId: "history_batch_testing_7",
+        stableId: "stable-testing-seven"
+      }),
       historyBatchCompleteEvent({ historyBatchId: "history_batch_testing_7", ackPath })
     ]);
     writeSqlite(sqlitePath, {
-      candidates: [{ displayName: "Testing Seven", status: "confirmed" }],
-      memories: [{ displayName: "Testing Seven", eventTitle: "Friendy MVP test", contextNote: "met at home" }]
+      candidates: [
+        {
+          id: "candidate_testing_seven",
+          displayName: "Testing Seven",
+          status: "confirmed",
+          contactIdentifier: "stable-testing-seven"
+        }
+      ],
+      memories: [
+        {
+          displayName: "Testing Seven",
+          candidateId: "candidate_testing_seven",
+          eventTitle: "Friendy MVP test",
+          contextNote: "met at home"
+        }
+      ]
     });
 
     const report = runMacMvpE2eStateCheck({ cwd });
@@ -47,7 +65,7 @@ describe("Mac MVP live E2E state check", () => {
     expect(report.lines.join("\n")).toContain("Memory for latest contact: present");
   });
 
-  it("fails when only an old memory exists for a different person", () => {
+  it("fails when only an old memory exists for a different contact id", () => {
     const cwd = tempDir();
     const stateDir = join(cwd, ".friendy/macos-sensor-state");
     const sqlitePath = join(cwd, ".friendy/friendy.sqlite");
@@ -55,12 +73,30 @@ describe("Mac MVP live E2E state check", () => {
     mkdirSync(join(stateDir, "acks"), { recursive: true });
     writeFileSync(ackPath, "");
     writeSensorEvents(stateDir, [
-      contactAddedEvent({ displayName: "Testing Eight", historyBatchId: "history_batch_testing_8" }),
+      contactAddedEvent({
+        displayName: "Testing Eight",
+        historyBatchId: "history_batch_testing_8",
+        stableId: "stable-testing-eight"
+      }),
       historyBatchCompleteEvent({ historyBatchId: "history_batch_testing_8", ackPath })
     ]);
     writeSqlite(sqlitePath, {
-      candidates: [{ displayName: "Testing Eight", status: "prompted" }],
-      memories: [{ displayName: "Old Memory", eventTitle: "Old Event", contextNote: "old context" }]
+      candidates: [
+        {
+          id: "candidate_testing_old",
+          displayName: "Testing Eight",
+          status: "confirmed",
+          contactIdentifier: "stable-old-contact"
+        }
+      ],
+      memories: [
+        {
+          displayName: "Testing Eight",
+          candidateId: "candidate_testing_old",
+          eventTitle: "Old Event",
+          contextNote: "old context"
+        }
+      ]
     });
 
     const report = runMacMvpE2eStateCheck({ cwd });
@@ -69,6 +105,7 @@ describe("Mac MVP live E2E state check", () => {
     expect(report.memoryCount).toBe(1);
     expect(report.lines.join("\n")).toContain("Latest contact_added: Testing Eight");
     expect(report.lines.join("\n")).toContain("Saved memories: 1");
+    expect(report.lines.join("\n")).toContain("Confirmed candidate for latest contact: missing");
     expect(report.lines.join("\n")).toContain("Memory for latest contact: missing");
   });
 
@@ -100,7 +137,7 @@ describe("Mac MVP live E2E state check", () => {
     mkdirSync(stateDir, { recursive: true });
     writeSensorEvents(stateDir, [contactAddedEvent({ displayName: "Unnamed Contact" })]);
     writeSqlite(join(cwd, ".friendy/friendy.sqlite"), {
-      candidates: [{ displayName: "Unnamed Contact", status: "prompted" }],
+      candidates: [{ displayName: "Unnamed Contact", status: "prompted", contactIdentifier: "stable-Unnamed Contact" }],
       memories: []
     });
 
@@ -127,8 +164,8 @@ function writeSensorEvents(stateDir: string, events: Array<Record<string, unknow
 function writeSqlite(
   sqlitePath: string,
   seed: {
-    candidates: Array<{ displayName: string; status: string }>;
-    memories: Array<{ displayName: string; eventTitle?: string; contextNote?: string }>;
+    candidates: Array<{ id?: string; displayName: string; status: string; contactIdentifier?: string }>;
+    memories: Array<{ displayName: string; candidateId?: string; eventTitle?: string; contextNote?: string }>;
   }
 ): void {
   mkdirSync(join(sqlitePath, ".."), { recursive: true });
@@ -150,12 +187,13 @@ function writeSqlite(
       );
     `);
     for (const [index, candidate] of seed.candidates.entries()) {
+      const id = candidate.id ?? `candidate_${index}`;
       db.prepare("INSERT INTO candidates (id, insert_order, display_name, status, raw_json) VALUES (?, ?, ?, ?, ?)").run(
-        `candidate_${index}`,
+        id,
         index,
         candidate.displayName,
         candidate.status,
-        JSON.stringify(candidate)
+        JSON.stringify({ ...candidate, id })
       );
     }
     for (const [index, memory] of seed.memories.entries()) {
@@ -173,10 +211,12 @@ function writeSqlite(
 
 function contactAddedEvent({
   displayName,
-  historyBatchId = "history_batch_testing"
+  historyBatchId = "history_batch_testing",
+  stableId = `stable-${displayName}`
 }: {
   displayName: string;
   historyBatchId?: string;
+  stableId?: string;
 }): Record<string, unknown> {
   return {
     ...baseEvent("contact_added"),
@@ -189,7 +229,7 @@ function contactAddedEvent({
     historyTokenAfterRef: `outbox:${historyBatchId}:after`,
     detectedAt: "2026-05-22T09:10:05Z",
     contact: {
-      stableId: `stable-${displayName}`,
+      stableId,
       displayName,
       phoneNumberHashes: ["sha256:test"],
       phoneNumberHints: [{ last4: "4567", label: "mobile" }],

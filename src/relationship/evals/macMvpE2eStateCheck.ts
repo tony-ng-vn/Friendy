@@ -14,6 +14,7 @@ export type MacMvpE2eStateCheckReport = {
   latestHistoryBatchId?: string;
   latestAckPresent: boolean;
   memoryCount: number;
+  confirmedCandidateForLatestContact: boolean;
   candidateSummaries: string[];
   diagnosticCodes: string[];
   lines: string[];
@@ -52,10 +53,15 @@ export function runMacMvpE2eStateCheck({
   const sqlite = readSqliteSummary(sqlitePath);
   const latestContactName = latestContact?.contact.displayName;
   const hasNamedContact = Boolean(latestContactName && latestContactName !== "Unnamed Contact");
+  const latestCandidate = latestContact
+    ? sqlite.candidates.find((candidate) => {
+        return candidate.contactIdentifier === latestContact.contact.stableId && candidate.status === "confirmed";
+      })
+    : undefined;
   const hasMemoryForLatestContact = Boolean(
-    latestContactName && sqlite.latestMemoryNames.some((name) => normalizeName(name) === normalizeName(latestContactName))
+    latestCandidate && sqlite.memories.some((memory) => memory.candidateId === latestCandidate.id)
   );
-  const ok = hasNamedContact && latestAckPresent && hasMemoryForLatestContact;
+  const ok = hasNamedContact && latestAckPresent && Boolean(latestCandidate) && hasMemoryForLatestContact;
   const lines = renderLines({
     sensorEventsPath,
     sqlitePath,
@@ -66,6 +72,7 @@ export function runMacMvpE2eStateCheck({
     contactPending,
     sqlite,
     hasNamedContact,
+    hasConfirmedCandidateForLatestContact: Boolean(latestCandidate),
     hasMemoryForLatestContact,
     ok
   });
@@ -76,6 +83,7 @@ export function runMacMvpE2eStateCheck({
     latestHistoryBatchId: latestContact?.historyBatchId,
     latestAckPresent,
     memoryCount: sqlite.memoryCount,
+    confirmedCandidateForLatestContact: Boolean(latestCandidate),
     candidateSummaries: sqlite.candidateSummaries,
     diagnosticCodes: diagnostics.map((event) => event.code),
     lines
@@ -102,24 +110,35 @@ function readSensorEvents(sensorEventsPath: string): MacosSensorEvent[] {
 
 function readSqliteSummary(sqlitePath: string): {
   memoryCount: number;
-  latestMemoryNames: string[];
+  memories: Array<{ candidateId?: string; displayName: string }>;
+  candidates: Array<{ id?: string; contactIdentifier?: string; displayName: string; status: string }>;
   candidateSummaries: string[];
 } {
   if (!existsSync(sqlitePath)) {
-    return { memoryCount: 0, latestMemoryNames: [], candidateSummaries: [] };
+    return { memoryCount: 0, memories: [], candidates: [], candidateSummaries: [] };
   }
 
   const db = new DatabaseSync(sqlitePath, { readOnly: true });
   try {
+    const memories = readJsonRows(db, "SELECT raw_json FROM memories ORDER BY insert_order DESC LIMIT 10").map((memory) => ({
+      candidateId: stringField(memory, "candidateId"),
+      displayName: displayNameOf(memory)
+    }));
+    const candidates = readJsonRows(db, "SELECT raw_json FROM candidates ORDER BY insert_order DESC LIMIT 10").map((candidate) => ({
+      id: stringField(candidate, "id"),
+      contactIdentifier: stringField(candidate, "contactIdentifier"),
+      displayName: displayNameOf(candidate),
+      status: statusOf(candidate)
+    }));
+
     return {
       memoryCount: countRows(db, "memories"),
-      latestMemoryNames: readJsonRows(db, "SELECT raw_json FROM memories ORDER BY insert_order DESC LIMIT 3").map(displayNameOf),
-      candidateSummaries: readJsonRows(db, "SELECT raw_json FROM candidates ORDER BY insert_order DESC LIMIT 5").map(
-        (candidate) => `${displayNameOf(candidate)} (${statusOf(candidate)})`
-      )
+      memories,
+      candidates,
+      candidateSummaries: candidates.slice(0, 5).map((candidate) => `${candidate.displayName} (${candidate.status})`)
     };
   } catch {
-    return { memoryCount: 0, latestMemoryNames: [], candidateSummaries: [] };
+    return { memoryCount: 0, memories: [], candidates: [], candidateSummaries: [] };
   } finally {
     db.close();
   }
@@ -151,6 +170,7 @@ function renderLines({
   contactPending,
   sqlite,
   hasNamedContact,
+  hasConfirmedCandidateForLatestContact,
   hasMemoryForLatestContact,
   ok
 }: {
@@ -161,8 +181,13 @@ function renderLines({
   latestAckPresent: boolean;
   diagnostics: Array<Extract<MacosSensorEvent, { type: "sensor_diagnostic" }>>;
   contactPending: Array<Extract<MacosSensorEvent, { type: "contact_pending" }>>;
-  sqlite: { memoryCount: number; latestMemoryNames: string[]; candidateSummaries: string[] };
+  sqlite: {
+    memoryCount: number;
+    memories: Array<{ candidateId?: string; displayName: string }>;
+    candidateSummaries: string[];
+  };
   hasNamedContact: boolean;
+  hasConfirmedCandidateForLatestContact: boolean;
   hasMemoryForLatestContact: boolean;
   ok: boolean;
 }): string[] {
@@ -183,9 +208,10 @@ function renderLines({
   lines.push(`Named post-start contact: ${hasNamedContact ? "present" : "missing"}`);
   lines.push(`History batch ack: ${latestAckPresent ? "present" : "missing"}${latestAckPath ? ` (${latestAckPath})` : ""}`);
   lines.push(`Saved memories: ${sqlite.memoryCount}`);
-  if (sqlite.latestMemoryNames.length > 0) {
-    lines.push(`Latest memories: ${sqlite.latestMemoryNames.join(", ")}`);
+  if (sqlite.memories.length > 0) {
+    lines.push(`Latest memories: ${sqlite.memories.slice(0, 3).map((memory) => memory.displayName).join(", ")}`);
   }
+  lines.push(`Confirmed candidate for latest contact: ${hasConfirmedCandidateForLatestContact ? "present" : "missing"}`);
   lines.push(`Memory for latest contact: ${hasMemoryForLatestContact ? "present" : "missing"}`);
   if (sqlite.candidateSummaries.length > 0) {
     lines.push(`Latest candidates: ${sqlite.candidateSummaries.join(", ")}`);
@@ -208,12 +234,12 @@ function statusOf(value: Record<string, unknown>): string {
   return typeof value.status === "string" ? value.status : "unknown";
 }
 
-function resolveArtifactPath(cwd: string, path: string): string {
-  return isAbsolute(path) ? path : resolve(cwd, path);
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  return typeof value[key] === "string" ? value[key] : undefined;
 }
 
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
+function resolveArtifactPath(cwd: string, path: string): string {
+  return isAbsolute(path) ? path : resolve(cwd, path);
 }
 
 function lastOf<T>(values: T[]): T | undefined {

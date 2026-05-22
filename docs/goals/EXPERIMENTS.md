@@ -88,6 +88,15 @@
 - Focused green run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` passed with 5 tests.
 - Final verification: `npm test` passed with 49 files and 291 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed.
 
+## Option B Live Artifact State Checker Linkage Hardening
+
+- Date: 2026-05-22
+- Gap: name matching still allowed a false positive if an old saved memory reused the same display name as the latest detected contact.
+- Added a RED regression where latest `contact_added` has stable id `stable-testing-eight`, but the only confirmed candidate/memory pair points at `stable-old-contact`. Red run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` failed because the checker still returned `ok: true`.
+- Green implementation: the checker now requires the latest contact stable id to map to a confirmed candidate, then requires a memory whose `candidateId` matches that candidate. It prints `Confirmed candidate for latest contact: present|missing` and `Memory for latest contact: present|missing`.
+- Focused green run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` passed with 5 tests.
+- Final verification: `npm test` passed with 49 files and 291 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed.
+
 ## Baseline
 
 - Date: 2026-05-22
