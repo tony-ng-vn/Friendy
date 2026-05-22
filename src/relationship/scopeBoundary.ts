@@ -121,7 +121,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
     return outOfScope("generic_relationship_theory", RELATIONSHIP_THEORY_REDIRECT);
   }
 
-  if (isCodingTask(lower)) {
+  if (isCodingTask(lower) && !looksLikePeopleMemoryQuery(lower)) {
     return outOfScope("coding_task", CODING_REDIRECT);
   }
 
@@ -183,7 +183,7 @@ export function isPendingCandidateInquiry(text: string): boolean {
 function isClearlyOffTopicWhilePending(text: string): boolean {
   return (
     isAdversarialGeneralAssistantRequest(text) ||
-    isCodingTask(text) ||
+    (isCodingTask(text) && !looksLikePeopleMemoryQuery(text)) ||
     isMathTask(text) ||
     isGeneralKnowledgeTask(text) ||
     isGenericAdviceTask(text) ||
@@ -273,13 +273,26 @@ function isSocialReasoning(text: string): boolean {
 
 function isRelationshipRecall(text: string): boolean {
   return (
-    /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved)\b/.test(text) ||
+    /\b(who|where|when|what)\b.*\b(met|meet|know|relationship|remember|saved|contact|contacts)\b/.test(text) ||
     /\bdo i know\b/.test(text) ||
     /\bwho (likes|works|goes|is|was)\b/.test(text) ||
     /\b(who|find|show|list)\b.*\b(slept|sleep|bed|room|lead|founder|project|making|made|goes|school|class|from|at)\b/.test(
       text
-    )
+    ) ||
+    isBroadRelatedPeopleRecall(text)
   );
+}
+
+function isBroadRelatedPeopleRecall(text: string): boolean {
+  return (
+    /\b(anyone|anybody|people|person|someone|somebody|contacts?)\b.*\b(related|connected|connection|about|from|at|met|know|saved)\b/.test(
+      text
+    ) || /\b(who|which)\b.*\b(related|connected|connection)\b/.test(text)
+  );
+}
+
+function looksLikePeopleMemoryQuery(text: string): boolean {
+  return isRelationshipRecall(text) || isBroadRelatedPeopleRecall(text);
 }
 
 function isRelationshipAdjacentButUnderspecified(text: string): boolean {
