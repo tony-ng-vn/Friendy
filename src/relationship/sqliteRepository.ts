@@ -144,7 +144,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
         upsertCandidate(db, candidate);
 
-        const eventMatches = mapCandidateToEvents(candidate.id, contact, listCalendarEvents(contact.userId));
+        const eventMatches = mapCandidateToEvents(candidate.id, eventMatchContact(contact), listCalendarEvents(contact.userId));
         for (const match of eventMatches) {
           upsertEventMatch(db, match);
         }
@@ -759,6 +759,13 @@ function expireSqliteCandidateIfStale(db: DatabaseSync, candidate: ContactCandid
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
   return status === "pending" || status === "prompted";
+}
+
+function eventMatchContact(contact: ContactCandidateDetected): ContactCandidateDetected {
+  return {
+    ...contact,
+    detectedAt: contact.eventMatchAnchorAt ?? contact.observedAt ?? contact.detectedAt
+  };
 }
 
 function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {

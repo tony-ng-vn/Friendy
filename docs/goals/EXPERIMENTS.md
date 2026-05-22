@@ -90,3 +90,22 @@
 - `npm run build`: passed.
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `git diff --check`: passed.
+
+## Task 6 Red Tests
+
+- Date: 2026-05-22
+- Added in-memory and SQLite candidate timing tests for `observedAt`, `contactUpdatedAt`, and `eventMatchAnchorAt`.
+- Added runtime assertion that sensor-created candidates preserve observed/update/anchor timestamps.
+- Red run: `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts src/relationship/runtime/friendyRuntime.test.ts` failed because event matching ignored `eventMatchAnchorAt` and runtime-created candidates did not set `contactUpdatedAt` or `eventMatchAnchorAt`.
+
+## Task 6 Green Verification
+
+- Date: 2026-05-22
+- Added candidate timing fields to `ContactCandidateDetected` and extended candidate status values for future lifecycle states.
+- In-memory and SQLite repositories now preserve original `detectedAt` while mapping event guesses through `eventMatchAnchorAt ?? observedAt ?? detectedAt`.
+- Runtime-created sensor candidates now set `observedAt`, `contactUpdatedAt`, and `eventMatchAnchorAt`.
+- `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts src/relationship/runtime/friendyRuntime.test.ts`: passed with 3 files and 48 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
+- `npm run agent:friendy:check`: passed.
+- `git diff --check`: passed.

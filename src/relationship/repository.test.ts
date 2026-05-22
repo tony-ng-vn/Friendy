@@ -18,6 +18,40 @@ describe("relationship repository", () => {
     expect(matches[0].eventTitle).toBe("Photon Residency Dinner");
   });
 
+  it("stores explicit candidate timing fields and uses the event match anchor for calendar context", () => {
+    const anchorEvent: CalendarEvent = {
+      id: "event_anchor_dinner",
+      userId: fixtureUser.id,
+      title: "Anchor Dinner",
+      startsAt: "2026-05-22T09:30:00.000Z",
+      endsAt: "2026-05-22T10:30:00.000Z",
+      timezone: "UTC",
+      calendarSource: "simulated",
+      eventKind: "short"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [anchorEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      detectedAt: "2026-05-22T12:00:00.000Z",
+      observedAt: "2026-05-22T10:00:00.000Z",
+      contactUpdatedAt: "2026-05-22T09:58:00.000Z",
+      eventMatchAnchorAt: "2026-05-22T10:00:00.000Z"
+    });
+
+    expect(candidate.detectedAt).toBe("2026-05-22T12:00:00.000Z");
+    expect(candidate.observedAt).toBe("2026-05-22T10:00:00.000Z");
+    expect(candidate.contactUpdatedAt).toBe("2026-05-22T09:58:00.000Z");
+    expect(candidate.eventMatchAnchorAt).toBe("2026-05-22T10:00:00.000Z");
+    expect(repo.listEventMatches(candidate.id)[0]).toMatchObject({
+      eventTitle: "Anchor Dinner",
+      rank: 1
+    });
+  });
+
   it("sets candidate expiration and expires stale candidates on pending lookup", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

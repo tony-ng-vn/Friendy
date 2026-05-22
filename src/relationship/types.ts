@@ -12,7 +12,15 @@
 export type ContactCandidateSource = "contacts_delta" | "manual" | "manual_imessage" | "simulated";
 
 /** Lifecycle for a newly detected contact before it becomes searchable memory. */
-export type ContactCandidateStatus = "pending" | "prompted" | "confirmed" | "ignored" | "expired" | "error";
+export type ContactCandidateStatus =
+  | "pending"
+  | "prompted"
+  | "confirmed"
+  | "ignored"
+  | "expired"
+  | "error"
+  | "needs_clarification"
+  | "send_failed";
 
 export type CalendarSource = "apple_calendar" | "google_calendar" | "simulated";
 
@@ -58,6 +66,9 @@ export type ContactCandidateDetected = {
   unifiedContactIdentifier?: string;
   containerIdentifier?: string;
   observedAt?: string;
+  contactCreatedAt?: string;
+  contactUpdatedAt?: string;
+  eventMatchAnchorAt?: string;
   contactMethodHashes?: {
     phoneNumberHashes: string[];
     emailHashes: string[];

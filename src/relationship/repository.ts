@@ -136,7 +136,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
       candidates.push(candidate);
       // Persist event guesses at detection time so the later confirmation prompt can explain its assumption.
-      eventMatches.push(...mapCandidateToEvents(candidate.id, contact, calendarEvents));
+      eventMatches.push(...mapCandidateToEvents(candidate.id, eventMatchContact(contact), calendarEvents));
       return candidate;
     },
 
@@ -279,6 +279,13 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     listInteractions(userId?: string): AgentInteraction[] {
       return userId ? interactions.filter((interaction) => interaction.userId === userId) : [...interactions];
     }
+  };
+}
+
+function eventMatchContact(contact: ContactCandidateDetected): ContactCandidateDetected {
+  return {
+    ...contact,
+    detectedAt: contact.eventMatchAnchorAt ?? contact.observedAt ?? contact.detectedAt
   };
 }
 

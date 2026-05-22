@@ -6,7 +6,7 @@
 - [x] Execute Task 3: add inspectable runtime lifecycle logs.
 - [x] Execute Task 4: add behavior contract artifacts.
 - [x] Execute Task 5: add event guess strength and prompt routing.
-- [ ] Execute Task 6: add candidate lifecycle timing fields.
+- [x] Execute Task 6: add candidate lifecycle timing fields.
 - [ ] Execute Task 7: add active start gate and pause/resume.
 - [ ] Execute Task 8: add append-only memory revisions.
 - [ ] Execute Task 9: add bounded update and delete tools.

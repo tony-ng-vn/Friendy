@@ -590,6 +590,8 @@ function toDetectedContact(userId: string, event: Extract<MacosSensorEvent, { ty
     unifiedContactIdentifier: event.contact.unifiedStableId,
     containerIdentifier: event.contact.containerId,
     observedAt: event.observedAt,
+    contactUpdatedAt: event.detectedAt,
+    eventMatchAnchorAt: event.detectedAt,
     contactMethodHashes: {
       phoneNumberHashes: event.contact.phoneNumberHashes,
       emailHashes: event.contact.emailHashes

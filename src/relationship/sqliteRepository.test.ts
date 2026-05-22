@@ -331,6 +331,47 @@ describe("sqlite relationship repository", () => {
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Nina Park"]);
   });
 
+  it("persists candidate timing fields and maps events through the event match anchor", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [
+          {
+            id: "event_anchor_dinner",
+            userId: fixtureUser.id,
+            title: "Anchor Dinner",
+            startsAt: "2026-05-22T09:30:00.000Z",
+            endsAt: "2026-05-22T10:30:00.000Z",
+            timezone: "UTC",
+            calendarSource: "simulated",
+            eventKind: "short"
+          }
+        ]
+      }
+    }));
+
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      detectedAt: "2026-05-22T12:00:00.000Z",
+      observedAt: "2026-05-22T10:00:00.000Z",
+      contactUpdatedAt: "2026-05-22T09:58:00.000Z",
+      eventMatchAnchorAt: "2026-05-22T10:00:00.000Z"
+    });
+
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      detectedAt: "2026-05-22T12:00:00.000Z",
+      observedAt: "2026-05-22T10:00:00.000Z",
+      contactUpdatedAt: "2026-05-22T09:58:00.000Z",
+      eventMatchAnchorAt: "2026-05-22T10:00:00.000Z"
+    });
+    expect(repo.listEventMatches(candidate.id)[0]).toMatchObject({
+      eventTitle: "Anchor Dinner",
+      rank: 1
+    });
+  });
+
   it("rejects direct memory writes without a confirmed candidate", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({
