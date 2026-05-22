@@ -44,6 +44,32 @@ describe("Mac MVP live E2E state check", () => {
     expect(report.lines.join("\n")).toContain("Latest contact_added: Testing Seven");
     expect(report.lines.join("\n")).toContain("History batch ack: present");
     expect(report.lines.join("\n")).toContain("Saved memories: 1");
+    expect(report.lines.join("\n")).toContain("Memory for latest contact: present");
+  });
+
+  it("fails when only an old memory exists for a different person", () => {
+    const cwd = tempDir();
+    const stateDir = join(cwd, ".friendy/macos-sensor-state");
+    const sqlitePath = join(cwd, ".friendy/friendy.sqlite");
+    const ackPath = join(stateDir, "acks/history_batch_testing_8.ack");
+    mkdirSync(join(stateDir, "acks"), { recursive: true });
+    writeFileSync(ackPath, "");
+    writeSensorEvents(stateDir, [
+      contactAddedEvent({ displayName: "Testing Eight", historyBatchId: "history_batch_testing_8" }),
+      historyBatchCompleteEvent({ historyBatchId: "history_batch_testing_8", ackPath })
+    ]);
+    writeSqlite(sqlitePath, {
+      candidates: [{ displayName: "Testing Eight", status: "prompted" }],
+      memories: [{ displayName: "Old Memory", eventTitle: "Old Event", contextNote: "old context" }]
+    });
+
+    const report = runMacMvpE2eStateCheck({ cwd });
+
+    expect(report.ok).toBe(false);
+    expect(report.memoryCount).toBe(1);
+    expect(report.lines.join("\n")).toContain("Latest contact_added: Testing Eight");
+    expect(report.lines.join("\n")).toContain("Saved memories: 1");
+    expect(report.lines.join("\n")).toContain("Memory for latest contact: missing");
   });
 
   it("fails with a useful diagnostic when polling is alive but no contact event exists", () => {

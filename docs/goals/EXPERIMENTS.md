@@ -79,6 +79,15 @@
 - Green run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` passed with 4 tests.
 - Final verification: `npm test` passed with 49 files and 290 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed. Running `npm run check:mac-mvp-e2e-state` on this Linux workspace correctly returned incomplete live evidence because there is no real Mac `contact_added`, ack, or saved memory here.
 
+## Option B Live Artifact State Checker Hardening
+
+- Date: 2026-05-22
+- Gap: the first artifact checker required any saved memory, which could have allowed an old memory for a different contact to satisfy the latest post-start contact proof.
+- Added a RED regression test where latest `contact_added` is `Testing Eight`, ack is present, but the only saved memory is `Old Memory`. Red run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` failed because the checker still returned `ok: true`.
+- Green implementation: the checker now requires a saved memory whose display name matches the latest detected contact and prints `Memory for latest contact: present|missing`.
+- Focused green run: `npm test -- src/relationship/evals/macMvpE2eStateCheck.test.ts` passed with 5 tests.
+- Final verification: `npm test` passed with 49 files and 291 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed.
+
 ## Baseline
 
 - Date: 2026-05-22

@@ -52,7 +52,10 @@ export function runMacMvpE2eStateCheck({
   const sqlite = readSqliteSummary(sqlitePath);
   const latestContactName = latestContact?.contact.displayName;
   const hasNamedContact = Boolean(latestContactName && latestContactName !== "Unnamed Contact");
-  const ok = hasNamedContact && latestAckPresent && sqlite.memoryCount > 0;
+  const hasMemoryForLatestContact = Boolean(
+    latestContactName && sqlite.latestMemoryNames.some((name) => normalizeName(name) === normalizeName(latestContactName))
+  );
+  const ok = hasNamedContact && latestAckPresent && hasMemoryForLatestContact;
   const lines = renderLines({
     sensorEventsPath,
     sqlitePath,
@@ -63,6 +66,7 @@ export function runMacMvpE2eStateCheck({
     contactPending,
     sqlite,
     hasNamedContact,
+    hasMemoryForLatestContact,
     ok
   });
 
@@ -147,6 +151,7 @@ function renderLines({
   contactPending,
   sqlite,
   hasNamedContact,
+  hasMemoryForLatestContact,
   ok
 }: {
   sensorEventsPath: string;
@@ -158,6 +163,7 @@ function renderLines({
   contactPending: Array<Extract<MacosSensorEvent, { type: "contact_pending" }>>;
   sqlite: { memoryCount: number; latestMemoryNames: string[]; candidateSummaries: string[] };
   hasNamedContact: boolean;
+  hasMemoryForLatestContact: boolean;
   ok: boolean;
 }): string[] {
   const latestDiagnostic = lastOf(diagnostics);
@@ -180,6 +186,7 @@ function renderLines({
   if (sqlite.latestMemoryNames.length > 0) {
     lines.push(`Latest memories: ${sqlite.latestMemoryNames.join(", ")}`);
   }
+  lines.push(`Memory for latest contact: ${hasMemoryForLatestContact ? "present" : "missing"}`);
   if (sqlite.candidateSummaries.length > 0) {
     lines.push(`Latest candidates: ${sqlite.candidateSummaries.join(", ")}`);
   }
@@ -203,6 +210,10 @@ function statusOf(value: Record<string, unknown>): string {
 
 function resolveArtifactPath(cwd: string, path: string): string {
   return isAbsolute(path) ? path : resolve(cwd, path);
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
 }
 
 function lastOf<T>(values: T[]): T | undefined {

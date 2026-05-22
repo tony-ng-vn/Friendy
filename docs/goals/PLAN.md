@@ -13,6 +13,7 @@
 - [x] Record latest Mac rerun evidence: app-bundle launch and pre-start contact ignore/ack worked; post-start contact prompt remains unverified.
 - [x] Add throttled `sensor_diagnostic` output for silent Contacts history polling.
 - [x] Add `check:mac-mvp-e2e-state` to summarize live Mac sensor, ack, candidate, and memory artifacts.
+- [x] Harden `check:mac-mvp-e2e-state` so stale memories for other contacts cannot satisfy the latest-contact proof.
 - [ ] Run real Mac manual E2E and record contact name, timestamps, batch id, memory count, and recall result.
 
 ## Completed Mac MVP Final Runbook
