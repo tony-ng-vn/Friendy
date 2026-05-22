@@ -55,6 +55,24 @@ describe("macOS sensor Swift source contract", () => {
     expect(eventSource).toContain("historyBatchCompleteEvent");
     expect(eventSource).toContain("contactAddedEvent");
   });
+
+  it("replays pending outbox batches until Node acks and then advances the token", () => {
+    const nativeSource = readSwift("NativeMacosSensor.swift");
+
+    expect(nativeSource).toContain('let tokenAfterPath = payload["tokenAfterPath"] as? String');
+    expect(nativeSource).toContain("Data(contentsOf: URL(fileURLWithPath: tokenAfterPath))");
+    expect(nativeSource).toContain("waitForAckAndAdvanceToken(batchId: historyBatchId, tokenAfter: tokenAfter, ackPath: ackPath");
+    expect(nativeSource).toContain('removeItem(at: self.outboxDir.appendingPathComponent("\\(batchId)-after-token.data"))');
+  });
+
+  it("keeps Calendar permission degradation non-fatal while Contacts denial exits", () => {
+    const nativeSource = readSwift("NativeMacosSensor.swift");
+
+    expect(nativeSource).toContain('guard permission == "authorized" else');
+    expect(nativeSource).toContain('"permissionStatus": permission');
+    expect(nativeSource).toContain("emitContactsPermissionError");
+    expect(nativeSource).toContain("exit(1)");
+  });
 });
 
 function readSwift(filename: string): string {

@@ -197,7 +197,12 @@ final class NativeMacosSensor {
                 emitSensorEvent(event)
             }
             emitSensorEvent(historyBatchCompleteEvent(identity: identity, historyBatchId: batchId, contactEventIds: eventIds, ackPath: ackPath))
-            waitForAckAndAdvanceToken(batchId: batchId, tokenAfter: tokenAfter, ackPath: ackPath)
+            waitForAckAndAdvanceToken(
+                batchId: batchId,
+                tokenAfter: tokenAfter,
+                ackPath: ackPath,
+                tokenAfterPath: outboxDir.appendingPathComponent("\(batchId)-after-token.data").path
+            )
         } catch {
             do {
                 try saveBaselineToken()
@@ -251,6 +256,8 @@ final class NativeMacosSensor {
             guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let events = payload["events"] as? [[String: Any]],
                   let historyBatchId = payload["historyBatchId"] as? String,
+                  let tokenAfterPath = payload["tokenAfterPath"] as? String,
+                  let tokenAfter = try? Data(contentsOf: URL(fileURLWithPath: tokenAfterPath)),
                   let ackPath = payload["ackPath"] as? String else {
                 continue
             }
@@ -259,15 +266,18 @@ final class NativeMacosSensor {
                 emitSensorEvent(event)
             }
             emitSensorEvent(historyBatchCompleteEvent(identity: identity, historyBatchId: historyBatchId, contactEventIds: eventIds, ackPath: ackPath))
+            waitForAckAndAdvanceToken(batchId: historyBatchId, tokenAfter: tokenAfter, ackPath: ackPath, tokenAfterPath: tokenAfterPath)
         }
     }
 
-    private func waitForAckAndAdvanceToken(batchId: String, tokenAfter: Data, ackPath: String) {
+    private func waitForAckAndAdvanceToken(batchId: String, tokenAfter: Data, ackPath: String, tokenAfterPath: String) {
         DispatchQueue.global().async {
             for _ in 0..<120 {
                 if self.fileManager.fileExists(atPath: ackPath) {
                     try? tokenAfter.write(to: self.tokenURL, options: .atomic)
                     try? self.fileManager.removeItem(at: self.outboxDir.appendingPathComponent("\(batchId).json"))
+                    try? self.fileManager.removeItem(at: self.outboxDir.appendingPathComponent("\(batchId)-after-token.data"))
+                    try? self.fileManager.removeItem(atPath: tokenAfterPath)
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.5)
