@@ -27,6 +27,8 @@ type CandidateAmbiguityReplyInput = {
   candidates: Array<{ displayName: string }>;
 };
 
+export type OnboardingControlReplyKind = "started" | "paused" | "resumed";
+
 /**
  * Formats saved memories for the user without exposing storage details.
  *
@@ -114,6 +116,19 @@ export function composeIgnoreCandidateReply({ candidateName }: IgnoreCandidateRe
   }
 
   return `Ignored ${candidateName}.`;
+}
+
+/** Formats start/pause/resume setup controls without exposing internal runtime state. */
+export function composeOnboardingControlReply(kind: OnboardingControlReplyKind): string {
+  if (kind === "started") {
+    return "Great. Friendy is on. Add a new contact on your Mac, and I'll ask before saving anything.";
+  }
+
+  if (kind === "paused") {
+    return 'Contact memory is paused. I won\'t prompt you about new contacts until you reply "resume".';
+  }
+
+  return "Friendy is back on. I'll ask before saving any new contact memories.";
 }
 
 function composeSingleSearchMatch(memory: RelationshipMemory): string {

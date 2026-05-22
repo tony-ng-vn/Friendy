@@ -14,18 +14,23 @@ import type { AgentCoreResult, AgentToolCall, InboundAgentMessage } from "./type
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
+import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
 import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
   composeIgnoreCandidateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
+  composeOnboardingControlReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
 import { decideMessageScope } from "./scopeBoundary";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
+type RelationshipAgentOptions = {
+  onboarding?: OnboardingStateController;
+};
 
 /**
  * Creates the first relationship memory agent.
@@ -33,7 +38,7 @@ type RelationshipTools = ReturnType<typeof createRelationshipTools>;
  * This is a deterministic router around explicit tools, not a fully autonomous LLM loop yet.
  * That keeps the MVP debuggable while we prove the capture-confirm-search workflow.
  */
-export function createRelationshipAgent(tools: RelationshipTools) {
+export function createRelationshipAgent(tools: RelationshipTools, { onboarding }: RelationshipAgentOptions = {}) {
   const candidateIntake = createCandidateIntake({ tools });
 
   return {
@@ -41,6 +46,12 @@ export function createRelationshipAgent(tools: RelationshipTools) {
       const normalized = message.text.trim();
       const lower = normalized.toLowerCase();
       const toolCalls: AgentToolCall[] = [];
+      const onboardingControl = detectOnboardingControl(normalized);
+      if (onboardingControl) {
+        onboarding?.applyControl(onboardingControl);
+        return reply(message, composeOnboardingControlReply(onboardingControl), toolCalls);
+      }
+
       const scopeDecision = decideMessageScope({
         text: normalized,
         hasPendingCandidate: tools.list_pending_candidates(message.userId).length > 0

@@ -7,6 +7,7 @@
  */
 import { mkdirSync, mkdtempSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { OnboardingState } from "../onboardingState";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore } from "../sqliteRepository";
 import { createFakeMacosSensorEvents } from "./fakeMacosSensor";
 import { createFriendySensorRuntime, type RuntimePromptSender } from "./friendyRuntime";
@@ -16,6 +17,7 @@ export type FriendyRuntimeCheckReport = {
   candidateCount: number;
   promptTexts: string[];
   ackPaths: string[];
+  startGateHeldBeforeStart: boolean;
   replayedUnackedBatchAcked: boolean;
   lines: string[];
 };
@@ -37,6 +39,7 @@ export async function runFriendyRuntimeCheck({
   const promptTexts: string[] = [];
   const ackPaths: string[] = [];
   const lines = ["Friendy foreground runtime check", `SQLite runtime: ${sqlitePath}`];
+  let onboardingState: OnboardingState = "ready_pending_user_start";
   const sender: RuntimePromptSender = {
     async sendPrompt(input) {
       promptTexts.push(input.text);
@@ -51,13 +54,23 @@ export async function runFriendyRuntimeCheck({
       throw new Error("Fake macOS sensor did not emit the expected contact batch sequence.");
     }
 
-    await withRuntime({ sqlitePath, ackPaths, lines, sender, now }, async (runtime) => {
+    let startGateHeldBeforeStart = false;
+    await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime, repo, state) => {
       await runtime.processLine(JSON.stringify(readyEvent));
+      await runtime.processLine(JSON.stringify(contactEvent));
+      startGateHeldBeforeStart =
+        repo.listPendingCandidates("local_friendy_user").length === 0 &&
+        promptTexts.length === 0 &&
+        !state.getProcessedEvent("contacts:mac_mock:fixture-contact-1:add");
+    });
+
+    onboardingState = "active";
+    await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime) => {
       await runtime.processLine(JSON.stringify(contactEvent));
     });
 
     let candidateCount = 0;
-    await withRuntime({ sqlitePath, ackPaths, lines, sender, now }, async (runtime, repo) => {
+    await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime, repo) => {
       await runtime.processLine(JSON.stringify(contactEvent));
       await runtime.processLine(JSON.stringify(batchEvent));
       candidateCount = repo.listPendingCandidates("local_friendy_user").length;
@@ -68,10 +81,14 @@ export async function runFriendyRuntimeCheck({
       promptTexts.length === 1 &&
       ackPaths.some((path) => path.includes("history_batch_mock_1.ack"));
     const ok =
+      startGateHeldBeforeStart &&
       candidateCount === 1 &&
       promptTexts.some((text) => text.includes("Photon Residency Dinner")) &&
       replayedUnackedBatchAcked;
 
+    if (startGateHeldBeforeStart) {
+      lines.push("Start gate: held contact event before user start");
+    }
     if (replayedUnackedBatchAcked) {
       lines.push("Replayed unacked history batch: acked without duplicate prompt");
     }
@@ -82,6 +99,7 @@ export async function runFriendyRuntimeCheck({
       candidateCount,
       promptTexts,
       ackPaths,
+      startGateHeldBeforeStart,
       replayedUnackedBatchAcked,
       lines
     };
@@ -101,17 +119,20 @@ async function withRuntime(
     ackPaths,
     lines,
     sender,
+    getOnboardingState,
     now
   }: {
     sqlitePath: string;
     ackPaths: string[];
     lines: string[];
     sender: RuntimePromptSender;
+    getOnboardingState: () => OnboardingState;
     now: () => string;
   },
   callback: (
     runtime: ReturnType<typeof createFriendySensorRuntime>,
-    repo: ReturnType<typeof createSqliteRelationshipRepository>
+    repo: ReturnType<typeof createSqliteRelationshipRepository>,
+    state: ReturnType<typeof createSqliteRuntimeStateStore>
   ) => Promise<void>
 ): Promise<void> {
   const repo = createSqliteRelationshipRepository({ path: sqlitePath });
@@ -137,11 +158,12 @@ async function withRuntime(
         lines.push(message);
       }
     },
+    getOnboardingState,
     now
   });
 
   try {
-    await callback(runtime, repo);
+    await callback(runtime, repo, state);
   } finally {
     repo.close();
     state.close();

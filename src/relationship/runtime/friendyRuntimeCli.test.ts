@@ -88,6 +88,12 @@ describe("Friendy foreground runtime CLI configuration", () => {
 
     await runtime?.processLine(JSON.stringify(contactAddedEvent()));
 
+    expect(started.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(prompts).toEqual([]);
+
+    started.onboarding.applyControl("started");
+    await runtime?.processLine(JSON.stringify(contactAddedEvent()));
+
     expect(started.repo.listPendingCandidates("user_friendy")[0]).toMatchObject({
       displayName: "Maya",
       contactIdentifier: "ABCD-1234"
@@ -157,6 +163,7 @@ describe("Friendy foreground runtime CLI configuration", () => {
     writeFileSync(sensorBinaryPath, "");
     let inboundRepo: unknown;
     let inboundUserId: string | undefined;
+    let inboundOnboarding: unknown;
     let inboundClosed = false;
 
     const started = await startFriendyForegroundRuntime({
@@ -170,9 +177,10 @@ describe("Friendy foreground runtime CLI configuration", () => {
         expect(launch.mode).toBe("real");
         return { child: fakeChildProcess() };
       },
-      startInboundAgent({ repo, userId }) {
+      startInboundAgent({ repo, userId, onboarding }) {
         inboundRepo = repo;
         inboundUserId = userId;
+        inboundOnboarding = onboarding;
         return {
           close() {
             inboundClosed = true;
@@ -184,6 +192,7 @@ describe("Friendy foreground runtime CLI configuration", () => {
 
     expect(inboundRepo).toBe(started.repo);
     expect(inboundUserId).toBe("user_friendy");
+    expect(inboundOnboarding).toBe(started.onboarding);
 
     started.close();
     expect(inboundClosed).toBe(true);

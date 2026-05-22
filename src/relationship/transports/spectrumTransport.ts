@@ -16,6 +16,7 @@ import {
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { resolveConfiguredUserId } from "../identity";
+import type { OnboardingStateController } from "../onboardingState";
 import type { RelationshipRepository } from "../repository";
 import { createRuntimeRelationshipRepository } from "../runtimeRepository";
 import { createRelationshipTools } from "../tools";
@@ -38,6 +39,7 @@ export type SpectrumRuntimeOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
@@ -47,6 +49,7 @@ export type StartSpectrumFriendyAgentOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
@@ -87,6 +90,7 @@ export function createSpectrumFriendyRuntime({
   now,
   repo: providedRepo,
   tools: providedTools,
+  onboarding,
   env = process.env
 }: SpectrumRuntimeOptions) {
   const repo = providedRepo ?? createRuntimeRelationshipRepository({
@@ -97,7 +101,7 @@ export function createSpectrumFriendyRuntime({
     }
   });
   const tools = providedTools ?? createRelationshipTools(repo);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, onboarding, interpreter, now });
 
   return {
     repo,
@@ -123,6 +127,7 @@ export async function startSpectrumFriendyAgent({
   now,
   repo,
   tools,
+  onboarding,
   env = process.env
 }: StartSpectrumFriendyAgentOptions = {}) {
   loadFriendyEnv();
@@ -133,6 +138,7 @@ export async function startSpectrumFriendyAgent({
     now,
     repo,
     tools,
+    onboarding,
     env
   });
 

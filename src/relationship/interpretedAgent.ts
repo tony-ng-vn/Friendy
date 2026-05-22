@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
+import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
 import {
@@ -18,6 +19,7 @@ import {
   composeIgnoreCandidateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
+  composeOnboardingControlReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
@@ -34,6 +36,7 @@ type InterpretedRelationshipAgentOptions = {
   repo: RelationshipRepository;
   tools: RelationshipTools;
   interpreter: MessageInterpreter;
+  onboarding?: OnboardingStateController;
   now?: () => string;
   timezone?: string;
 };
@@ -73,6 +76,7 @@ export function createInterpretedRelationshipAgent({
   repo,
   tools,
   interpreter,
+  onboarding,
   now = () => new Date().toISOString(),
   timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
@@ -82,6 +86,41 @@ export function createInterpretedRelationshipAgent({
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
       const startedAt = Date.now();
+      const onboardingControl = detectOnboardingControl(message.text);
+      if (onboardingControl) {
+        onboarding?.applyControl(onboardingControl);
+        const outboundText = composeOnboardingControlReply(onboardingControl);
+        const interaction = repo.addInteraction({
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "onboarding_control",
+            action: onboardingControl,
+            confidence: 1
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction
+        };
+      }
+
       const scopeDecision = decideMessageScope({
         text: message.text,
         hasPendingCandidate: repo.listPendingCandidates(message.userId).length > 0

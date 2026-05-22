@@ -14,6 +14,7 @@
  *   before entering repository types; raw phone/email never leave the sensor.
  */
 import type { RelationshipRepository } from "../repository";
+import { isContactAutomationActive, type OnboardingState } from "../onboardingState";
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
 import { planCandidatePrompt } from "./promptPlanner";
@@ -113,11 +114,13 @@ export type FriendySensorRuntimeInput = {
   sender: RuntimePromptSender;
   ackWriter: RuntimeAckWriter;
   logger?: RuntimeLogger;
+  getOnboardingState?: () => OnboardingState;
   now?: () => string;
 };
 
-type FriendySensorRuntimeContext = Omit<FriendySensorRuntimeInput, "logger" | "now"> & {
+type FriendySensorRuntimeContext = Omit<FriendySensorRuntimeInput, "logger" | "now" | "getOnboardingState"> & {
   logger: RuntimeLogger;
+  getOnboardingState: () => OnboardingState;
   now: () => string;
 };
 
@@ -129,9 +132,10 @@ export function createFriendySensorRuntime({
   sender,
   ackWriter,
   logger = console,
+  getOnboardingState = () => "active",
   now = () => new Date().toISOString()
 }: FriendySensorRuntimeInput) {
-  const context: FriendySensorRuntimeContext = { userId, repo, state, sender, ackWriter, logger, now };
+  const context: FriendySensorRuntimeContext = { userId, repo, state, sender, ackWriter, logger, getOnboardingState, now };
 
   return {
     async processLine(line: string): Promise<void> {
@@ -228,8 +232,17 @@ async function processEvent({
   sender,
   ackWriter,
   logger,
+  getOnboardingState,
   now
 }: FriendySensorRuntimeContext & { event: MacosSensorEvent }): Promise<void> {
+  if (event.type === "contact_added") {
+    const onboardingState = getOnboardingState();
+    if (!isContactAutomationActive(onboardingState)) {
+      logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
+      return;
+    }
+  }
+
   const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
   if (processed) {
     if (event.type === "contact_added" && processed.candidateId) {

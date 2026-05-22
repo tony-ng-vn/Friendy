@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
 import { resolveConfiguredUserId } from "../identity";
+import { createOnboardingStateController, type OnboardingStateController } from "../onboardingState";
 import type { RelationshipRepository } from "../repository";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
 import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
@@ -52,6 +53,7 @@ export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
   startSensor?: (input: { launch: FriendySensorLaunchConfig; runtime: SensorRuntimeLineProcessor }) => StartedSensorProcess;
   startInboundAgent?: FriendyInboundAgentStarter;
   ackWriter?: RuntimeAckWriter;
+  onboarding?: OnboardingStateController;
 };
 
 export type RuntimePromptSenderWithKind = RuntimePromptSender & {
@@ -62,6 +64,7 @@ export type StartedFriendyForegroundRuntime = {
   config: FriendyRuntimeConfig;
   repo: SqliteRelationshipRepository;
   state: SqliteRuntimeStateStore;
+  onboarding: OnboardingStateController;
   sensor: StartedSensorProcess;
   inboundAgent?: StartedInboundAgent;
   close(): void;
@@ -74,6 +77,7 @@ export type StartedInboundAgent = {
 export type FriendyInboundAgentStarter = (input: {
   repo: RelationshipRepository;
   userId: string;
+  onboarding: OnboardingStateController;
   env: Partial<NodeJS.ProcessEnv>;
   logger: RuntimeLogger;
 }) => StartedInboundAgent;
@@ -108,7 +112,8 @@ export async function startFriendyForegroundRuntime({
   logger = console,
   ackWriter = createFileAckWriter(cwd),
   startSensor = defaultStartSensor,
-  startInboundAgent = defaultStartInboundAgent
+  startInboundAgent = defaultStartInboundAgent,
+  onboarding = createOnboardingStateController()
 }: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
   logger.info("[friendy] loading env");
   const config = resolveFriendyRuntimeConfig({ cwd, env });
@@ -122,6 +127,7 @@ export async function startFriendyForegroundRuntime({
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
   const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
   logger.info("[friendy] sqlite store ready");
+  logger.info("[friendy] contact memory ready; waiting for user start");
   const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
   logger.info(`[friendy] prompt transport ready: ${promptSenderKind(promptSender)}`);
   const runtime = createFriendySensorRuntime({
@@ -130,10 +136,11 @@ export async function startFriendyForegroundRuntime({
     state,
     sender: promptSender,
     ackWriter,
-    logger
+    logger,
+    getOnboardingState: () => onboarding.getState()
   });
   const inboundAgent = shouldStartInboundAgent(config, env)
-    ? startInboundAgent({ repo, userId, env, logger })
+    ? startInboundAgent({ repo, userId, onboarding, env, logger })
     : undefined;
   logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
   const sensor = startSensor({ launch: config.sensor, runtime });
@@ -143,6 +150,7 @@ export async function startFriendyForegroundRuntime({
     config,
     repo,
     state,
+    onboarding,
     sensor,
     inboundAgent,
     close() {
@@ -246,14 +254,16 @@ function defaultStartSensor({
 
 function defaultStartInboundAgent({
   repo,
+  onboarding,
   env,
   logger
 }: {
   repo: RelationshipRepository;
+  onboarding: OnboardingStateController;
   env: Partial<NodeJS.ProcessEnv>;
   logger: RuntimeLogger;
 }): StartedInboundAgent {
-  void startSpectrumFriendyAgent({ repo, env }).catch((error) => {
+  void startSpectrumFriendyAgent({ repo, onboarding, env }).catch((error) => {
     logger.error(`[friendy:inbound_agent:error] ${error instanceof Error ? error.message : String(error)}`);
   });
 

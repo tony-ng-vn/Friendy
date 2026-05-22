@@ -109,3 +109,26 @@
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `npm run agent:friendy:check`: passed.
 - `git diff --check`: passed.
+
+## Task 7 Red Tests
+
+- Date: 2026-05-22
+- Added onboarding reducer tests.
+- Added response composer control-copy tests.
+- Added interpreted-agent routing coverage for start, pause, and resume.
+- Added runtime and foreground CLI coverage showing contact events should be held before start/while paused and replayed after activation.
+- Red run: focused Task 7 tests failed because onboarding state/control routing did not exist and the sensor runtime still created candidates while gated.
+
+## Task 7 Green Verification
+
+- Date: 2026-05-22
+- Added an onboarding state controller shared by chat controls and the foreground sensor runtime.
+- `start`, `pause`, and `resume` are handled before interpreter calls and do not create or mutate memories.
+- Before user start or while paused, `contact_added` events are held without candidate creation, prompt delivery, processed-event recording, or history-batch ack. Replayed events process normally after activation.
+- `agent:friendy:check` now verifies the start gate before exercising restart/replay ack recovery.
+- `npm test -- src/relationship/onboardingState.test.ts src/relationship/agentCore.test.ts src/relationship/interpretedAgent.test.ts src/relationship/responseComposer.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/friendyRuntimeCli.test.ts src/relationship/runtime/friendyRuntimeCheck.test.ts`: passed with 7 files and 67 tests.
+- `npm test`: passed with 45 files and 254 tests.
+- `npm run build`: passed.
+- `npm run agent:friendy:check`: passed and reported the held pre-start event plus replayed unacked batch ack.
+- `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
+- `git diff --check`: passed.

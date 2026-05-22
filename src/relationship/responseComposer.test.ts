@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   composeClarificationReply,
   composeIgnoreCandidateReply,
+  composeOnboardingControlReply,
   composeNoMatchReply,
   composeSaveConfirmation,
   composeSearchReply
@@ -81,6 +82,18 @@ describe("relationship response composer", () => {
     expect(noPendingIgnore).toMatch(/don't see a pending contact/i);
 
     [saved, noMatch, clarification, ignored, noPendingIgnore].forEach(expectNoInternalLanguage);
+  });
+
+  it("formats start, pause, and resume control replies without technical language", () => {
+    expect(composeOnboardingControlReply("started")).toBe(
+      "Great. Friendy is on. Add a new contact on your Mac, and I'll ask before saving anything."
+    );
+    expect(composeOnboardingControlReply("paused")).toBe(
+      'Contact memory is paused. I won\'t prompt you about new contacts until you reply "resume".'
+    );
+    expect(composeOnboardingControlReply("resumed")).toBe(
+      "Friendy is back on. I'll ask before saving any new contact memories."
+    );
   });
 });
 

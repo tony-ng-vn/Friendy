@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createInterpretedRelationshipAgent } from "./interpretedAgent";
+import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
@@ -45,6 +46,42 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("handles start, pause, and resume without interpreter or memory mutation", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const onboarding = createOnboardingStateController("ready_pending_user_start");
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      onboarding,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for control messages");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const started = await agent.handleMessage(inbound("start"));
+    expect(onboarding.getState()).toBe("active");
+    const paused = await agent.handleMessage(inbound("pause"));
+    expect(onboarding.getState()).toBe("paused");
+    const resumed = await agent.handleMessage(inbound("resume"));
+    expect(onboarding.getState()).toBe("active");
+
+    expect(started.outbound.text).toBe(
+      "Great. Friendy is on. Add a new contact on your Mac, and I'll ask before saving anything."
+    );
+    expect(paused.outbound.text).toBe('Contact memory is paused. I won\'t prompt you about new contacts until you reply "resume".');
+    expect(resumed.outbound.text).toBe("Friendy is back on. I'll ask before saving any new contact memories.");
+    expect(interpreterCalls).toBe(0);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+    expect(repo.listInteractions(fixtureUser.id).map((interaction) => interaction.toolCalls)).toEqual([[], [], []]);
+  });
+
   it("captures Amaya from a natural Photon Residency message and logs the turn", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -53,7 +90,7 @@ describe("interpreted relationship agent", () => {
     );
 
     const memories = repo.listMemories(fixtureUser.id);
-    expect(result.outbound.text).toContain("Got it, saved");
+    expect(result.outbound.text).toContain("Got it, saved Amaya");
     expect(memories[0]).toMatchObject({
       displayName: "Amaya",
       primaryContactLabel: "manual contact"

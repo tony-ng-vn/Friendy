@@ -28,8 +28,10 @@ describe("Friendy foreground runtime check", () => {
     expect(report.promptTexts[0]).toContain("Photon Residency Dinner");
     expect(report.ackPaths[0]).toContain("history_batch_mock_1.ack");
     expect(report.replayedUnackedBatchAcked).toBe(true);
+    expect(report.startGateHeldBeforeStart).toBe(true);
     expect(report.promptTexts).toHaveLength(1);
     expect(report.lines.join("\n")).toContain("Friendy runtime check passed");
+    expect(report.lines.join("\n")).toContain("Start gate: held contact event before user start");
     expect(report.lines.join("\n")).toContain("Replayed unacked history batch: acked without duplicate prompt");
   });
 });

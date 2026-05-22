@@ -1,5 +1,6 @@
 import { ambiguousDinnerMemory, fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { buildCandidateReviewPrompt, createRelationshipAgent } from "./agentCore";
+import { createOnboardingStateController } from "./onboardingState";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
 
@@ -38,6 +39,44 @@ describe("relationship agent core", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("updates a supplied onboarding gate for start, pause, and resume controls", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const onboarding = createOnboardingStateController("ready_pending_user_start");
+    const agent = createRelationshipAgent(tools, { onboarding });
+
+    expect(
+      agent.handleMessage({
+        userId: fixtureUser.id,
+        platform: "terminal",
+        text: "start",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      }).outbound.text
+    ).toContain("Friendy is on");
+    expect(onboarding.getState()).toBe("active");
+
+    expect(
+      agent.handleMessage({
+        userId: fixtureUser.id,
+        platform: "terminal",
+        text: "pause",
+        receivedAt: "2026-05-20T12:01:00.000Z"
+      }).outbound.text
+    ).toContain("paused");
+    expect(onboarding.getState()).toBe("paused");
+
+    expect(
+      agent.handleMessage({
+        userId: fixtureUser.id,
+        platform: "terminal",
+        text: "resume",
+        receivedAt: "2026-05-20T12:02:00.000Z"
+      }).outbound.text
+    ).toContain("back on");
+    expect(onboarding.getState()).toBe("active");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
   it("asks who an underspecified message draft is for", () => {
     const repo = createRelationshipRepository();
     const tools = createRelationshipTools(repo);
@@ -72,7 +111,7 @@ describe("relationship agent core", () => {
 
     expect(result.toolCalls).toContain("list_pending_candidates");
     expect(result.toolCalls).toContain("confirm_candidate");
-    expect(result.outbound.text).toContain("Got it, saved");
+    expect(result.outbound.text).toContain("Got it, saved Maya Chen");
     expect(result.outbound.text).toContain("Maya Chen");
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
   });
@@ -294,7 +333,7 @@ describe("relationship agent core", () => {
       receivedAt: "2026-05-20T12:03:00.000Z"
     });
 
-    expect(saveResult.outbound.text).toContain("Got it, saved");
+    expect(saveResult.outbound.text).toContain("Got it, saved Amaya");
     expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({
       displayName: "Amaya"
     });

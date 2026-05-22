@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createRelationshipRepository } from "../repository";
+import type { OnboardingState } from "../onboardingState";
 import { createFriendySensorRuntime, createInMemoryRuntimeStateStore, type RuntimePromptSender } from "./friendyRuntime";
 
 describe("Friendy macOS sensor runtime", () => {
@@ -197,6 +198,69 @@ describe("Friendy macOS sensor runtime", () => {
     ]);
   });
 
+  it("holds contact events before user start and processes the replay after activation", async () => {
+    let onboardingState: OnboardingState = "ready_pending_user_start";
+    const harness = createHarness(
+      {},
+      {
+        getOnboardingState: () => onboardingState
+      }
+    );
+    const contactLine = JSON.stringify(contactAddedEvent());
+    const batchLine = JSON.stringify({
+      ...baseEvent("history_batch_complete"),
+      historyBatchId: "history_batch_1",
+      contactEventIds: ["sensor_evt_contact_1"],
+      ackPath: ".friendy/macos-sensor-state/acks/history_batch_1.ack"
+    });
+
+    await harness.runtime.processLine(contactLine);
+    await harness.runtime.processLine(batchLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(harness.prompts).toEqual([]);
+    expect(harness.acks).toEqual([]);
+    expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toBeUndefined();
+
+    onboardingState = "active";
+    await harness.runtime.processLine(contactLine);
+    await harness.runtime.processLine(batchLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_1.ack"]);
+  });
+
+  it("pauses contact automation without deleting pending state and resumes without duplicates", async () => {
+    let onboardingState: OnboardingState = "active";
+    const harness = createHarness(
+      {},
+      {
+        getOnboardingState: () => onboardingState
+      }
+    );
+    const contactLine = JSON.stringify(contactAddedEvent());
+
+    await harness.runtime.processLine(contactLine);
+    onboardingState = "paused";
+    await harness.runtime.processLine(JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2", stableId: "EFGH-5678" })));
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.state.getProcessedEvent("contacts:mac_1:EFGH-5678:add")).toBeUndefined();
+
+    onboardingState = "active";
+    const replayedLine = JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2", stableId: "EFGH-5678" }));
+    await harness.runtime.processLine(replayedLine);
+    await harness.runtime.processLine(replayedLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(2);
+    expect(harness.prompts).toHaveLength(2);
+    expect(harness.state.getProcessedEvent("contacts:mac_1:EFGH-5678:add")).toMatchObject({
+      status: "candidate_created"
+    });
+  });
+
   it("leaves a sensor-created candidate pending when proactive prompt delivery fails", async () => {
     const harness = createHarness({
       sendPrompt() {
@@ -298,7 +362,10 @@ describe("Friendy macOS sensor runtime", () => {
   });
 });
 
-function createHarness(overrides: Partial<RuntimePromptSender> = {}) {
+function createHarness(
+  overrides: Partial<RuntimePromptSender> = {},
+  runtimeOptions: { getOnboardingState?: () => OnboardingState } = {}
+) {
   const repo = createRelationshipRepository();
   const state = createInMemoryRuntimeStateStore();
   const prompts: Array<{ userId: string; candidateId?: string; text: string }> = [];
@@ -332,18 +399,21 @@ function createHarness(overrides: Partial<RuntimePromptSender> = {}) {
         logs.push(message);
       }
     },
+    getOnboardingState: runtimeOptions.getOnboardingState,
     now: () => "2026-05-21T18:36:51.000Z"
   });
 
   return { runtime, repo, state, prompts, acks, logs };
 }
 
-function contactAddedEvent() {
+function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = {}) {
+  const eventId = overrides.eventId ?? "sensor_evt_contact_1";
+  const stableId = overrides.stableId ?? "ABCD-1234";
   return {
     ...baseEvent("contact_added"),
-    eventId: "sensor_evt_contact_1",
+    eventId,
     observedAt: "2026-05-21T18:36:50Z",
-    idempotencyKey: "contacts:mac_1:ABCD-1234:add",
+    idempotencyKey: `contacts:mac_1:${stableId}:add`,
     historyBatchId: "history_batch_1",
     historyBatchIndex: 0,
     historyBatchSize: 1,
@@ -351,8 +421,8 @@ function contactAddedEvent() {
     historyTokenAfterRef: "outbox:history_batch_1:after",
     detectedAt: "2026-05-21T20:30:00-07:00",
     contact: {
-      stableId: "ABCD-1234",
-      unifiedStableId: "UNIFIED-ABCD-1234",
+      stableId,
+      unifiedStableId: `UNIFIED-${stableId}`,
       containerId: "icloud_container",
       displayName: "Maya",
       phoneNumberHashes: ["sha256:phone"],

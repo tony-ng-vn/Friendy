@@ -8,3 +8,4 @@
 - 2026-05-22: Task 4 keeps behavior rules and structured-output instructions as separate builders so adding product rules does not weaken the OpenRouter JSON-schema constraint.
 - 2026-05-22: Task 5 treats weak calendar guesses as suggestions rather than confirmations, so a user can correct the event/place without fighting the calendar guess.
 - 2026-05-22: Task 6 intentionally does not rename `detectedAt`; it keeps it for candidate identity/expiry compatibility and adds `eventMatchAnchorAt` for the calendar-matching decision.
+- 2026-05-22: Task 7 keeps start/pause/resume as a per-process gate for the foreground MVP runtime. Held contact events are not marked processed or acked, so the native outbox can replay them after the user starts or resumes Friendy.
