@@ -1,5 +1,5 @@
 import type { RelationshipRepository } from "../repository";
-import type { CalendarEvent, ContactCandidateDetected } from "../types";
+import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
 import { planCandidatePrompt } from "./promptPlanner";
 import { parseSensorEventLine, type MacosSensorEvent } from "./sensorEvents";
@@ -154,8 +154,14 @@ async function processEvent({
   logger,
   now
 }: FriendySensorRuntimeContext & { event: MacosSensorEvent }): Promise<void> {
-  if ("idempotencyKey" in event && state.getProcessedEvent(event.idempotencyKey)) {
-    logger.info(`Duplicate sensor event ignored: ${event.idempotencyKey}`);
+  const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
+  if (processed) {
+    if (event.type === "contact_added" && processed.candidateId) {
+      await retryPromptForDuplicateContact({ event, processed, userId, repo, sender, logger });
+      return;
+    }
+
+    logger.info(`Duplicate sensor event ignored: ${processed.idempotencyKey}`);
     return;
   }
 
@@ -215,14 +221,62 @@ async function processEvent({
     const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
     recordProcessed(state, event, "candidate_created", now(), { candidateId: candidate.id });
 
-    const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
-    try {
-      const result = await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
-      repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`);
-    } catch (error) {
-      logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);
-    }
+    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents });
     return;
+  }
+}
+
+async function retryPromptForDuplicateContact({
+  event,
+  processed,
+  userId,
+  repo,
+  sender,
+  logger
+}: {
+  event: Extract<MacosSensorEvent, { type: "contact_added" }>;
+  processed: ProcessedSensorEvent;
+  userId: string;
+  repo: RelationshipRepository;
+  sender: RuntimePromptSender;
+  logger: RuntimeLogger;
+}): Promise<void> {
+  const candidate = repo.getCandidate(processed.candidateId!);
+  if (!candidate || candidate.status !== "pending") {
+    logger.info(`Duplicate sensor event ignored: ${event.idempotencyKey}`);
+    return;
+  }
+
+  logger.info(`Retrying prompt delivery for duplicate sensor event: ${event.idempotencyKey}`);
+  const scoredEvents = scoreCalendarContext({
+    detectedAt: event.detectedAt,
+    calendarMatches: event.calendarMatches
+  });
+  await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents });
+}
+
+async function sendCandidatePrompt({
+  userId,
+  repo,
+  sender,
+  logger,
+  candidate,
+  scoredEvents
+}: {
+  userId: string;
+  repo: RelationshipRepository;
+  sender: RuntimePromptSender;
+  logger: RuntimeLogger;
+  candidate: ContactCandidate;
+  scoredEvents: ScoredCalendarEvent[];
+}): Promise<void> {
+  const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
+  try {
+    const result = await sender.sendPrompt({ userId, candidateId: candidate.id, text: prompt.text });
+    repo.markCandidatePrompted(candidate.id, result.interactionId ?? `prompt_${candidate.id}`);
+  } catch (error) {
+    repo.markCandidatePromptFailed(candidate.id, "prompt_send_failed");
+    logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);
   }
 }
 

@@ -33,6 +33,7 @@ export type RelationshipRepository = {
   getCandidate(candidateId: string): ContactCandidate | undefined;
   listEventMatches(candidateId: string): EventContextMatch[];
   markCandidatePrompted(candidateId: string, interactionId: string): ContactCandidate;
+  markCandidatePromptFailed(candidateId: string, reason: string): ContactCandidate;
   confirmCandidate(
     candidateId: string,
     contextNote: string,
@@ -152,6 +153,20 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
       candidate.status = "prompted";
       candidate.promptInteractionId = interactionId;
+      delete candidate.statusReason;
+      return candidate;
+    },
+
+    markCandidatePromptFailed(candidateId: string, reason: string): ContactCandidate {
+      const candidate = candidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      if (candidate.status !== "pending") {
+        throw new Error(`Candidate is not pending: ${candidateId}`);
+      }
+
+      candidate.statusReason = reason;
       return candidate;
     },
 

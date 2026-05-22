@@ -127,10 +127,32 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         const promptedCandidate: ContactCandidate = {
           ...candidate,
           status: "prompted",
-          promptInteractionId: interactionId
+          promptInteractionId: interactionId,
+          statusReason: undefined
         };
         upsertCandidate(db, promptedCandidate);
         return promptedCandidate;
+      });
+    },
+
+    markCandidatePromptFailed(candidateId: string, reason: string): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+        if (candidate.status !== "pending") {
+          throw new Error(`Candidate is not pending: ${candidateId}`);
+        }
+
+        const failedCandidate: ContactCandidate = {
+          ...candidate,
+          statusReason: reason
+        };
+        upsertCandidate(db, failedCandidate);
+        return failedCandidate;
       });
     },
 

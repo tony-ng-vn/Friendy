@@ -61,6 +61,7 @@ export type ContactCandidate = ContactCandidateDetected & {
   id: string;
   status: ContactCandidateStatus;
   promptInteractionId?: string;
+  statusReason?: string;
 };
 
 /** Calendar window used to infer where a contact was probably met. */

@@ -111,7 +111,8 @@ describe("Friendy macOS sensor runtime", () => {
     const [candidate] = harness.repo.listPendingCandidates("user_friendy");
     expect(candidate).toMatchObject({
       displayName: "Maya",
-      status: "pending"
+      status: "pending",
+      statusReason: "prompt_send_failed"
     });
     expect(candidate).not.toHaveProperty("promptInteractionId");
     expect(harness.logs.join("\n")).toContain("Failed to send candidate prompt");
@@ -130,6 +131,33 @@ describe("Friendy macOS sensor runtime", () => {
 
     expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
     expect(harness.prompts).toHaveLength(1);
+  });
+
+  it("retries prompt delivery for a duplicate contact event when the candidate is still pending", async () => {
+    let shouldFail = true;
+    const harness = createHarness({
+      async sendPrompt(input) {
+        if (shouldFail) {
+          shouldFail = false;
+          throw new Error("first send failed");
+        }
+        harness.prompts.push(input);
+        return { interactionId: "interaction_retry_1" };
+      }
+    });
+    const line = JSON.stringify(contactAddedEvent());
+
+    await harness.runtime.processLine(line);
+    await harness.runtime.processLine(line);
+
+    const [candidate] = harness.repo.listPendingCandidates("user_friendy");
+    expect(candidate).toMatchObject({
+      displayName: "Maya",
+      status: "prompted",
+      promptInteractionId: "interaction_retry_1"
+    });
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.logs.join("\n")).toContain("Retrying prompt delivery for duplicate sensor event");
   });
 
   it("writes history batch ack only after every contact event has a persisted outcome", async () => {
