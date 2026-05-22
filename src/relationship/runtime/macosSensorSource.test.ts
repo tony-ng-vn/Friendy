@@ -19,7 +19,9 @@ describe("macOS sensor Swift source contract", () => {
 
     expect(cliSource).toContain("--emit-fixture");
     expect(cliSource).toContain("contact_added");
+    expect(cliSource).toContain("contact_batch");
     expect(eventSource).toContain('commonSensorEvent("contact_added"');
+    expect(eventSource).toContain("historyBatchCompleteFixtureEvent");
     expect(eventSource).toContain('"phoneNumberHashes"');
     expect(eventSource).toContain('"phoneNumberHints"');
     expect(eventSource).toContain('"emailHashes"');

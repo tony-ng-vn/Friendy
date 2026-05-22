@@ -56,7 +56,7 @@ describe("compiled macOS sensor fixture check", () => {
     expect(report.lines.join("\n")).toContain("npm run build:macos-sensor");
   });
 
-  it("runs the standalone binary fixture mode and validates redacted contact_added NDJSON", () => {
+  it("runs the standalone binary fixture mode and validates redacted contact batch NDJSON", () => {
     const cwd = tempDir();
     const binaryPath = join(cwd, "bin/friendy-macos-sensor");
     mkdirSync(join(cwd, "bin"), { recursive: true });
@@ -68,19 +68,21 @@ describe("compiled macOS sensor fixture check", () => {
       platform: "darwin",
       execFileSync(command, args) {
         calls.push({ command, args });
-        return `${JSON.stringify(contactAddedFixture())}\n`;
+        return `${JSON.stringify(contactAddedFixture())}\n${JSON.stringify(historyBatchCompleteFixture())}\n`;
       }
     });
 
     expect(report.ok).toBe(true);
     expect(report.skipped).toBe(false);
-    expect(report.eventTypes).toEqual(["contact_added"]);
+    expect(report.eventTypes).toEqual(["contact_added", "history_batch_complete"]);
+    expect(report.ackPath).toBe(".friendy/macos-sensor-state/acks/history_batch_fixture_1.ack");
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe(binaryPath);
     expect(calls[0].args).toContain("--state-dir");
     expect(calls[0].args).toContain("--emit-fixture");
-    expect(calls[0].args).toContain("contact_added");
-    expect(report.lines.join("\n")).toContain("Fixture event types: contact_added");
+    expect(calls[0].args).toContain("contact_batch");
+    expect(report.lines.join("\n")).toContain("Fixture event types: contact_added, history_batch_complete");
+    expect(report.lines.join("\n")).toContain("Fixture ack path: .friendy/macos-sensor-state/acks/history_batch_fixture_1.ack");
     expect(report.lines.join("\n")).toContain("Redacted contact methods: present");
   });
 });
@@ -142,5 +144,21 @@ function contactAddedFixture(): Record<string, unknown> {
         isRecurring: false
       }
     ]
+  };
+}
+
+function historyBatchCompleteFixture(): Record<string, unknown> {
+  return {
+    schemaVersion: MACOS_SENSOR_SCHEMA_VERSION,
+    eventId: "sensor_evt_fixture_batch_1",
+    type: "history_batch_complete",
+    sensorName: MACOS_SENSOR_NAME,
+    sensorVersion: "0.1.0",
+    runId: "sensor_run_fixture",
+    deviceId: "mac_fixture",
+    emittedAt: "2026-05-21T18:36:52Z",
+    historyBatchId: "history_batch_fixture_1",
+    contactEventIds: ["sensor_evt_fixture_contact_1"],
+    ackPath: ".friendy/macos-sensor-state/acks/history_batch_fixture_1.ack"
   };
 }

@@ -11,7 +11,7 @@ func runSensorCLI(arguments: [String]) {
     guard let options = parseSensorCLIOptions(arguments) else {
         emitSensorEvent(fatalSensorEvent(
             code: "missing_state_dir",
-            message: "Usage: friendy-macos-sensor --state-dir <path> [--emit-fixture contact_added]",
+            message: "Usage: friendy-macos-sensor --state-dir <path> [--emit-fixture contact_batch|contact_added|ready]",
             identity: identity
         ))
         exit(1)
@@ -56,6 +56,12 @@ func valueAfter(_ flag: String, in arguments: [String]) -> String? {
 }
 
 func emitFixtureEvent(_ fixture: String, identity: SensorIdentity) {
+    if fixture == "contact_batch" {
+        emitSensorEvent(contactAddedFixtureEvent(identity: identity))
+        emitSensorEvent(historyBatchCompleteFixtureEvent(identity: identity))
+        return
+    }
+
     if fixture == "contact_added" {
         emitSensorEvent(contactAddedFixtureEvent(identity: identity))
         return
@@ -68,7 +74,7 @@ func emitFixtureEvent(_ fixture: String, identity: SensorIdentity) {
 
     emitSensorEvent(fatalSensorEvent(
         code: "unknown_fixture",
-        message: "Unknown fixture \(fixture). Supported fixtures: contact_added, ready.",
+        message: "Unknown fixture \(fixture). Supported fixtures: contact_batch, contact_added, ready.",
         identity: identity
     ))
     exit(1)

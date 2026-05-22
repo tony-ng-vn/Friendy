@@ -2,7 +2,7 @@ import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import { parseSensorEventLine, type MacosContactAddedEvent } from "./sensorEvents";
+import { parseSensorEventLine, type MacosContactAddedEvent, type MacosSensorEvent } from "./sensorEvents";
 
 type ExecFileSync = (
   command: string,
@@ -17,6 +17,7 @@ export type MacosSensorFixtureCheckReport = {
   skipped: boolean;
   binaryPath: string;
   eventTypes: string[];
+  ackPath?: string;
   lines: string[];
 };
 
@@ -49,12 +50,13 @@ export function runMacosSensorFixtureCheck({
   const stateDir = mkdtempSync(join(tmpdir(), "friendy-macos-sensor-fixture-state-"));
   try {
     const stdout = String(
-      execFileSync(binaryPath, ["--state-dir", stateDir, "--emit-fixture", "contact_added"], {
+      execFileSync(binaryPath, ["--state-dir", stateDir, "--emit-fixture", "contact_batch"], {
         encoding: "utf8"
       })
     );
     const parsed = parseFixtureOutput(stdout);
     lines.push(`Fixture event types: ${parsed.eventTypes.join(", ")}`);
+    lines.push(`Fixture ack path: ${parsed.ackPath}`);
     lines.push("Redacted contact methods: present");
     lines.push("Compiled macOS sensor fixture check passed.");
 
@@ -63,6 +65,7 @@ export function runMacosSensorFixtureCheck({
       skipped: false,
       binaryPath,
       eventTypes: parsed.eventTypes,
+      ackPath: parsed.ackPath,
       lines
     };
   } catch (error) {
@@ -91,7 +94,7 @@ function resolveBinaryPath(cwd: string, env: Partial<NodeJS.ProcessEnv>): string
   return join(cwd, "bin/friendy-macos-sensor");
 }
 
-function parseFixtureOutput(stdout: string): { eventTypes: string[] } {
+function parseFixtureOutput(stdout: string): { eventTypes: string[]; ackPath: string } {
   const rawLines = stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -103,12 +106,30 @@ function parseFixtureOutput(stdout: string): { eventTypes: string[] } {
 
   const events = rawLines.map((line) => parseSensorEventLine(line));
   const contactEvents = events.filter((event): event is MacosContactAddedEvent => event.type === "contact_added");
-  if (events.length !== 1 || contactEvents.length !== 1) {
-    throw new Error("sensor fixture must emit exactly one contact_added event");
+  const batchEvents = events.filter(isHistoryBatchCompleteEvent);
+  if (events.length !== 2 || contactEvents.length !== 1 || batchEvents.length !== 1) {
+    throw new Error("sensor fixture must emit contact_added followed by history_batch_complete");
   }
 
-  assertRedactedContactMethods(contactEvents[0]);
-  return { eventTypes: events.map((event) => event.type) };
+  const [contactEvent] = contactEvents;
+  const [batchEvent] = batchEvents;
+  if (events[0].type !== "contact_added" || events[1].type !== "history_batch_complete") {
+    throw new Error("sensor fixture must emit contact_added before history_batch_complete");
+  }
+
+  if (batchEvent.historyBatchId !== contactEvent.historyBatchId) {
+    throw new Error("history_batch_complete must reference the contact_added history batch");
+  }
+
+  if (!batchEvent.contactEventIds.includes(contactEvent.eventId)) {
+    throw new Error("history_batch_complete must include the contact_added event id");
+  }
+
+  assertRedactedContactMethods(contactEvent);
+  return {
+    eventTypes: events.map((event) => event.type),
+    ackPath: batchEvent.ackPath
+  };
 }
 
 function assertRedactedContactMethods(event: MacosContactAddedEvent): void {
@@ -121,6 +142,12 @@ function assertRedactedContactMethods(event: MacosContactAddedEvent): void {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isHistoryBatchCompleteEvent(
+  event: MacosSensorEvent
+): event is Extract<MacosSensorEvent, { type: "history_batch_complete" }> {
+  return event.type === "history_batch_complete";
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
