@@ -47,7 +47,8 @@ describe("relationship tools", () => {
       fixtureUser.id,
       "Amaya",
       "met at Photon Residency, recruiting agents founder",
-      "manual contact"
+      "manual contact",
+      { confirmedAt: "2026-05-21T20:30:00.000Z" }
     );
 
     expect(memory.candidateId).toBeDefined();
@@ -55,6 +56,10 @@ describe("relationship tools", () => {
       displayName: "Amaya",
       source: "manual",
       status: "confirmed"
+    });
+    expect(memory).toMatchObject({
+      createdAt: "2026-05-21T20:30:00.000Z",
+      updatedAt: "2026-05-21T20:30:00.000Z"
     });
     expect(repo.listMemories(fixtureUser.id)).toEqual([memory]);
   });

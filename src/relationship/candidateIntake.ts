@@ -13,6 +13,7 @@ type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 export type CandidateIntakeScope = {
   userId: string;
   spaceId?: string;
+  receivedAt?: string;
 };
 
 export type CandidateReviewPrompt = {
@@ -96,7 +97,8 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
         confirmation.eventId,
         {
           eventTitle: confirmation.eventTitle,
-          relationshipContext: confirmation.relationshipContext
+          relationshipContext: confirmation.relationshipContext,
+          confirmedAt: input.scope.receivedAt
         }
       );
 

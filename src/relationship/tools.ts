@@ -26,6 +26,7 @@ type CreateManualMemoryOptions = {
   dateContext?: RelationshipDateContext;
   idempotencyKey?: string;
   createdFromInteractionId?: string;
+  confirmedAt?: string;
 };
 
 /**
@@ -78,7 +79,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       candidateId: string,
       contextNote: string,
       eventId?: string,
-      options: { eventTitle?: string; relationshipContext?: string } = {}
+      options: { eventTitle?: string; relationshipContext?: string; confirmedAt?: string } = {}
     ) {
       const candidate = repo.getCandidate(candidateId);
       if (!candidate || candidate.userId !== userId) {
@@ -125,7 +126,8 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 
       return repo.confirmCandidate(candidate.id, contextNote, undefined, {
         eventTitle: options.eventTitle,
-        dateContext: options.dateContext
+        dateContext: options.dateContext,
+        confirmedAt: options.confirmedAt
       });
     }
   };

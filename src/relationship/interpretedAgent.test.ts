@@ -56,7 +56,9 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Saved");
     expect(memories[0]).toMatchObject({
       displayName: "Amaya",
-      primaryContactLabel: "manual contact"
+      primaryContactLabel: "manual contact",
+      createdAt: "2026-05-20T12:00:00.000Z",
+      updatedAt: "2026-05-20T12:00:00.000Z"
     });
     expect(memories[0].contextNote).toContain("Photon Residency II");
     expect(memories[0].contextNote.toLowerCase()).toContain("sleep");
