@@ -175,7 +175,7 @@ function isIgnoreCandidate(text: string): boolean {
 /** True when the user asks which contact an open confirmation prompt refers to. */
 export function isPendingCandidateInquiry(text: string): boolean {
   const lower = text.trim().toLowerCase();
-  return /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add|who are you asking about)\b/.test(
+  return /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add|who are you asking(?: about)?)\b/.test(
     lower
   );
 }

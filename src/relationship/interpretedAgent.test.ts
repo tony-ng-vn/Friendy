@@ -417,6 +417,41 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("explains multiple pending contacts when the user asks which prompt is being referenced", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 2",
+      phoneNumbers: ["+15550101032"]
+    });
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 1",
+      phoneNumbers: ["+15550101031"]
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for pending-contact inquiry");
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inbound("Who are you asking? Testing 2 or testing 1?"));
+
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(result.outbound.text).toContain("Testing 2");
+    expect(result.outbound.text).toContain("Testing 1");
+    expect(result.outbound.text).toContain("Which one");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
+  });
+
   it("confirms a pending contact from free-text context before calling the interpreter", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
