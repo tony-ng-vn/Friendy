@@ -43,8 +43,9 @@ describe("sqlite relationship repository", () => {
     expect(
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get()
     ).toEqual({ name: "schema_migrations" });
-    expect(db.prepare("SELECT version, name FROM schema_migrations").all()).toEqual([
-      { version: 1, name: "1_initial_runtime_store" }
+    expect(db.prepare("SELECT version, name FROM schema_migrations ORDER BY version").all()).toEqual([
+      { version: 1, name: "1_initial_runtime_store" },
+      { version: 2, name: "2_memory_search_documents" }
     ]);
   });
 
@@ -260,6 +261,80 @@ describe("sqlite relationship repository", () => {
       reason: "deleted",
       userText: "delete Maya memory"
     });
+  });
+
+  it("backfills and syncs memory search documents across SQLite repository instances", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id);
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(reopened.listMemorySearchDocuments(fixtureUser.id)[0]).toMatchObject({
+      memoryId: memory.id,
+      userId: fixtureUser.id,
+      fields: {
+        displayName: "Maya Chen",
+        contextNote: "building recruiting agents"
+      }
+    });
+
+    reopened.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    const updatedRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(updatedRepo.listMemorySearchDocuments(fixtureUser.id)[0].text).toContain("working on hiring workflows");
+
+    updatedRepo.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:30:00.000Z"
+    });
+
+    const finalRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(finalRepo.listMemorySearchDocuments(fixtureUser.id)).toEqual([]);
+  });
+
+  it("returns FTS memory search document candidates when SQLite supports FTS5", () => {
+    if (!sqliteSupportsFts5()) {
+      return;
+    }
+
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const tools = createRelationshipTools(repo);
+    const memory = tools.create_manual_memory(
+      fixtureUser.id,
+      "Testing 12",
+      "Met them during testing Friendy",
+      "manual contact",
+      {
+        dateContext: {
+          rawText: "during Mac contact watcher debugging week",
+          localDate: "2026-05-22",
+          startsAt: "2026-05-22T00:00:00.000Z",
+          timezone: "America/Los_Angeles"
+        }
+      }
+    );
+
+    expect(repo.searchMemoryDocuments?.(fixtureUser.id, "debugging week", ["debugging", "week"])).toEqual([
+      {
+        memoryId: memory.id,
+        source: "fts",
+        score: expect.any(Number),
+        matchedTerms: ["debugging", "week"]
+      }
+    ]);
   });
 
   it("persists candidate expiration and expires stale candidates on pending lookup", () => {
@@ -928,7 +1003,7 @@ describe("sqlite relationship repository", () => {
 
     const db = new DatabaseSync(dbPath);
     try {
-      expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(1);
+      expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(2);
       for (const table of ["calendar_events", "candidates", "memories", "interactions"]) {
         const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
         expect(columns.map((column) => column.name)).toContain("insert_order");
@@ -953,6 +1028,18 @@ function trackRepository(repository: SqliteRelationshipRepository): SqliteRelati
 function trackCloseable<T extends { close: () => void }>(item: T): T {
   closeables.push(item);
   return item;
+}
+
+function sqliteSupportsFts5(): boolean {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE VIRTUAL TABLE temp_fts_support USING fts5(value)");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    db.close();
+  }
 }
 
 function confirmedCandidate({

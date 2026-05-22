@@ -10,6 +10,7 @@
  * - Pending/prompted candidates expire after {@link CANDIDATE_EXPIRATION_DAYS} so stale contact
  *   prompts do not linger indefinitely.
  */
+import { buildMemorySearchDocument, type MemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 import type {
   CalendarEvent,
@@ -99,6 +100,8 @@ export type RelationshipRepository = {
   ): RelationshipMemory;
   ignoreCandidate(candidateId: string): void;
   listMemories(userId?: string): RelationshipMemory[];
+  listMemorySearchDocuments(userId?: string): MemorySearchDocument[];
+  searchMemoryDocuments?(userId: string, query: string, terms: string[]): RetrievalCandidate[];
   addMemory(memory: RelationshipMemory): RelationshipMemory;
   updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory;
   deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory;
@@ -281,6 +284,13 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     listMemories(userId?: string): RelationshipMemory[] {
       const visibleMemories = memories.filter((memory) => !memory.deletedAt);
       return userId ? visibleMemories.filter((memory) => memory.userId === userId) : [...visibleMemories];
+    },
+
+    listMemorySearchDocuments(userId?: string): MemorySearchDocument[] {
+      const visibleMemories = memories.filter((memory) => !memory.deletedAt);
+      return (userId ? visibleMemories.filter((memory) => memory.userId === userId) : visibleMemories).map(
+        buildMemorySearchDocument
+      );
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {

@@ -214,6 +214,31 @@ describe("relationship repository", () => {
     });
   });
 
+  it("derives search documents from visible memories after create, update, and delete", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id).map((document) => document.memoryId)).toEqual([memory.id]);
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)[0].text).toContain("building recruiting agents");
+
+    repo.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)[0].text).toContain("working on hiring workflows");
+
+    repo.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:30:00.000Z"
+    });
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)).toEqual([]);
+  });
+
   it("rejects direct memory writes without a confirmed candidate", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

@@ -14,6 +14,12 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
+import {
+  buildMemorySearchDocument,
+  scoreMemorySearchDocument,
+  type MemorySearchDocument,
+  type RetrievalCandidate
+} from "./memorySearchDocument";
 import type {
   ProcessedSensorEvent,
   RuntimeSensorState,
@@ -284,6 +290,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         };
 
         insertMemory(db, memory);
+        upsertMemorySearchDocument(db, memory);
         insertMemoryRevision(db, createCreatedMemoryRevision(memory));
         return memory;
       });
@@ -316,10 +323,27 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       );
     },
 
+    listMemorySearchDocuments(userId?: string): MemorySearchDocument[] {
+      if (userId) {
+        return readRows<MemorySearchDocument>(
+          db.prepare("SELECT raw_json FROM memory_search_documents WHERE user_id = ? ORDER BY updated_at, memory_id").all(userId)
+        );
+      }
+
+      return readRows<MemorySearchDocument>(
+        db.prepare("SELECT raw_json FROM memory_search_documents ORDER BY updated_at, memory_id").all()
+      );
+    },
+
+    searchMemoryDocuments(userId: string, query: string, terms: string[]): RetrievalCandidate[] {
+      return searchSqliteMemoryDocuments(db, userId, query, terms);
+    },
+
     addMemory(memory: RelationshipMemory): RelationshipMemory {
       return runTransaction(db, () => {
         assertSqliteMemoryHasConfirmedCandidate(db, memory);
         insertMemory(db, memory);
+        upsertMemorySearchDocument(db, memory);
         insertMemoryRevision(db, createCreatedMemoryRevision(memory));
         return memory;
       });
@@ -345,6 +369,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           updatedAt: updates.updatedAt
         };
         updateMemoryRow(db, updated);
+        upsertMemorySearchDocument(db, updated);
         insertMemoryRevision(db, createUpdatedMemoryRevision(previous, updated, updates, countMemoryRevisions(db, memoryId) + 1));
         return updated;
       });
@@ -368,6 +393,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           updatedAt: input.deletedAt
         };
         updateMemoryRow(db, deleted);
+        deleteMemorySearchDocument(db, deleted.id);
         insertMemoryRevision(db, createDeletedMemoryRevision(previous, deleted, input, countMemoryRevisions(db, memoryId) + 1));
         return deleted;
       });
@@ -719,6 +745,17 @@ function setupSchema(db: DatabaseSync): void {
       ON memories(candidate_id)
       WHERE candidate_id IS NOT NULL;
 
+    CREATE TABLE IF NOT EXISTS memory_search_documents (
+      memory_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(memory_id) REFERENCES memories(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS memory_search_documents_user_updated_idx
+      ON memory_search_documents(user_id, updated_at, memory_id);
+
     CREATE TABLE IF NOT EXISTS memory_revisions (
       revision_id TEXT PRIMARY KEY,
       memory_id TEXT NOT NULL,
@@ -811,8 +848,109 @@ function setupSchema(db: DatabaseSync): void {
     INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
     VALUES (1, '1_initial_runtime_store', '2026-05-21T00:00:00.000Z');
 
-    PRAGMA user_version = 1;
+    INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+    VALUES (2, '2_memory_search_documents', '2026-05-22T00:00:00.000Z');
+
+    PRAGMA user_version = 2;
   `);
+  setupMemorySearchFts(db);
+  backfillMemorySearchDocuments(db);
+}
+
+function setupMemorySearchFts(db: DatabaseSync): void {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_search_fts USING fts5(
+        memory_id UNINDEXED,
+        user_id UNINDEXED,
+        display_name,
+        event_title,
+        context_note,
+        relationship_context,
+        tags,
+        search_text
+      );
+    `);
+  } catch {
+    // FTS5 is optional. Derived document rows still keep lexical search usable.
+  }
+}
+
+function backfillMemorySearchDocuments(db: DatabaseSync): void {
+  const memories = readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+  const liveMemoryIds = new Set<string>();
+
+  for (const memory of memories) {
+    if (memory.deletedAt) {
+      deleteMemorySearchDocument(db, memory.id);
+      continue;
+    }
+
+    liveMemoryIds.add(memory.id);
+    upsertMemorySearchDocument(db, memory);
+  }
+
+  const documents = readRows<MemorySearchDocument>(db.prepare("SELECT raw_json FROM memory_search_documents").all());
+  for (const document of documents) {
+    if (!liveMemoryIds.has(document.memoryId)) {
+      deleteMemorySearchDocument(db, document.memoryId);
+    }
+  }
+}
+
+function searchSqliteMemoryDocuments(
+  db: DatabaseSync,
+  userId: string,
+  query: string,
+  terms: string[]
+): RetrievalCandidate[] {
+  if (!memorySearchFtsAvailable(db)) {
+    return [];
+  }
+
+  const ftsQuery = buildFtsQuery(terms.length > 0 ? terms : extractTags(query));
+  if (!ftsQuery) {
+    return [];
+  }
+
+  const rows = db
+    .prepare(
+      `
+        SELECT d.raw_json, bm25(memory_search_fts) AS rank
+        FROM memory_search_fts
+        JOIN memory_search_documents d ON d.memory_id = memory_search_fts.memory_id
+        WHERE memory_search_fts MATCH ?
+          AND memory_search_fts.user_id = ?
+        ORDER BY rank, d.updated_at DESC, d.memory_id
+        LIMIT 20
+      `
+    )
+    .all(ftsQuery, userId) as Array<RawJsonRow & { rank: number }>;
+
+  return rows.map((row) => {
+    const document = parseJson<MemorySearchDocument>(row.raw_json);
+    const documentCandidate = scoreMemorySearchDocument(document, terms);
+    return {
+      memoryId: document.memoryId,
+      source: "fts",
+      score: Math.max(1, documentCandidate?.score ?? 1),
+      matchedTerms: documentCandidate?.matchedTerms ?? terms
+    };
+  });
+}
+
+function buildFtsQuery(terms: string[]): string {
+  return terms
+    .map((term) => term.replace(/[^\p{L}\p{N}_-]/gu, "").trim())
+    .filter(Boolean)
+    .map((term) => `"${term.replace(/"/g, "\"\"")}"`)
+    .join(" ");
+}
+
+function memorySearchFtsAvailable(db: DatabaseSync): boolean {
+  return Boolean(
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_search_fts'").get()
+  );
 }
 
 function expireStaleCandidates(db: DatabaseSync, userId: string): void {
@@ -864,6 +1002,7 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
   }
   for (const memory of seed.memories ?? []) {
     insertMemory(db, memory);
+    upsertMemorySearchDocument(db, memory);
     insertMemoryRevision(db, createCreatedMemoryRevision(memory));
   }
   for (const interaction of seed.interactions ?? []) {
@@ -1033,6 +1172,58 @@ function updateMemoryRow(db: DatabaseSync, memory: RelationshipMemory): void {
     memory.updatedAt,
     stringify(memory),
     memory.id
+  );
+}
+
+function upsertMemorySearchDocument(db: DatabaseSync, memory: RelationshipMemory): void {
+  if (memory.deletedAt) {
+    deleteMemorySearchDocument(db, memory.id);
+    return;
+  }
+
+  const document = buildMemorySearchDocument(memory);
+  db.prepare(
+    `
+      INSERT INTO memory_search_documents (memory_id, user_id, updated_at, raw_json)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(memory_id) DO UPDATE SET
+        user_id = excluded.user_id,
+        updated_at = excluded.updated_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(document.memoryId, document.userId, document.updatedAt, stringify(document));
+  upsertMemorySearchFts(db, document);
+}
+
+function deleteMemorySearchDocument(db: DatabaseSync, memoryId: string): void {
+  db.prepare("DELETE FROM memory_search_documents WHERE memory_id = ?").run(memoryId);
+  if (memorySearchFtsAvailable(db)) {
+    db.prepare("DELETE FROM memory_search_fts WHERE memory_id = ?").run(memoryId);
+  }
+}
+
+function upsertMemorySearchFts(db: DatabaseSync, document: MemorySearchDocument): void {
+  if (!memorySearchFtsAvailable(db)) {
+    return;
+  }
+
+  db.prepare("DELETE FROM memory_search_fts WHERE memory_id = ?").run(document.memoryId);
+  db.prepare(
+    `
+      INSERT INTO memory_search_fts (
+        memory_id, user_id, display_name, event_title, context_note, relationship_context, tags, search_text
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `
+  ).run(
+    document.memoryId,
+    document.userId,
+    document.fields.displayName,
+    document.fields.eventTitle ?? "",
+    document.fields.contextNote,
+    document.fields.relationshipContext ?? "",
+    document.fields.tags.join(" "),
+    document.text
   );
 }
 
