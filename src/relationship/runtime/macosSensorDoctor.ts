@@ -1,6 +1,6 @@
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 export type MacosSensorDoctorInput = {
   cwd?: string;
@@ -23,6 +23,10 @@ export function runMacosSensorDoctor({
 }: MacosSensorDoctorInput = {}): MacosSensorDoctorReport {
   const binaryPath = resolve(cwd, env.FRIENDY_SENSOR_BINARY_PATH || "bin/friendy-macos-sensor");
   const lines = [`Friendy macOS sensor doctor`, `Binary path: ${binaryPath}`, `Platform: ${platform}`];
+  lines.push(`Swift: ${readSwiftVersion(execFileSync)}`);
+  lines.push(`Swift package: ${existsSync(join(cwd, "swift/FriendyMacOSSensor/Package.swift")) ? "present" : "missing"}`);
+  lines.push(`Swift sources: ${requiredSwiftSourcesPresent(cwd) ? "present" : "missing"}`);
+  lines.push(`Native Contacts/EventKit verification: ${platform === "darwin" ? "available on this host" : "requires macOS"}`);
 
   if (!existsSync(binaryPath)) {
     lines.push("Binary: missing");
@@ -43,6 +47,25 @@ export function runMacosSensorDoctor({
   }
 
   return { ok: true, binaryPath, lines };
+}
+
+function readSwiftVersion(execFileSync: (command: string, args: string[]) => string | Buffer): string {
+  try {
+    return firstLine(String(execFileSync("swift", ["--version"])));
+  } catch {
+    return "missing";
+  }
+}
+
+function requiredSwiftSourcesPresent(cwd: string): boolean {
+  const sourceRoot = join(cwd, "swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor");
+  return ["main.swift", "SensorCLI.swift", "SensorEvents.swift", "NativeMacosSensor.swift"].every((filename) =>
+    existsSync(join(sourceRoot, filename))
+  );
+}
+
+function firstLine(value: string): string {
+  return value.split(/\r?\n/)[0]?.trim() || "unknown";
 }
 
 export function main(): void {

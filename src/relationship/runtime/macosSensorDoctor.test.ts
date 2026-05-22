@@ -44,6 +44,49 @@ describe("macOS sensor doctor and build scaffold", () => {
     expect(report.lines.join("\n")).toContain("npm run build:macos-sensor");
   });
 
+  it("reports Swift availability and required source files before native verification", () => {
+    const cwd = tempDir();
+    mkdirSync(join(cwd, "swift/FriendyMacOSSensor"), { recursive: true });
+    writeFileSync(join(cwd, "swift/FriendyMacOSSensor/Package.swift"), "");
+    mkdirSync(join(cwd, "swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor"), { recursive: true });
+    for (const filename of ["main.swift", "SensorCLI.swift", "SensorEvents.swift", "NativeMacosSensor.swift"]) {
+      writeFileSync(join(cwd, "swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor", filename), "");
+    }
+
+    const report = runMacosSensorDoctor({
+      cwd,
+      platform: "linux",
+      execFileSync(command, args) {
+        if (command === "swift" && args[0] === "--version") {
+          return "Swift version 5.10";
+        }
+        throw new Error("unexpected command");
+      }
+    });
+
+    const output = report.lines.join("\n");
+    expect(output).toContain("Swift: Swift version 5.10");
+    expect(output).toContain("Swift package: present");
+    expect(output).toContain("Swift sources: present");
+    expect(output).toContain("Native Contacts/EventKit verification: requires macOS");
+  });
+
+  it("reports missing Swift clearly when the toolchain is unavailable", () => {
+    const cwd = tempDir();
+    const report = runMacosSensorDoctor({
+      cwd,
+      platform: "linux",
+      execFileSync(command, args) {
+        if (command === "swift" && args[0] === "--version") {
+          throw new Error("swift not found");
+        }
+        throw new Error("unexpected command");
+      }
+    });
+
+    expect(report.lines.join("\n")).toContain("Swift: missing");
+  });
+
   it("reports a present binary and captures signing diagnostics when available", () => {
     const cwd = tempDir();
     const binaryPath = join(cwd, "bin/friendy-macos-sensor");
