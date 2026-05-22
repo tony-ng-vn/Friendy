@@ -59,6 +59,16 @@
 - Follow-up source adjustment: pre-start contact logs now say the contact was ignored and instruct the operator to text `start`, then add a new contact, instead of incorrectly saying the event was being held.
 - Verification after the log adjustment: `npm test -- src/relationship/runtime/friendyRuntime.test.ts` passed with 14 tests; `npm test` passed with 48 files and 284 tests; `npm run build` passed; `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations; `npm run agent:friendy:check` passed with the clearer pre-start ignore log; `npm run check:mac-mvp-demo` passed; `git diff --check` passed.
 
+## Option B Silent Post-Start Add Diagnostics
+
+- Date: 2026-05-22
+- User log showed startup, app-bundle sensor launch, `macOS sensor ready`, and a processed `start` interaction at `2026-05-22T09:03:04.548Z`, then no log lines after adding a new contact.
+- Root-cause boundary: a post-start contact add should now emit at least `contact_pending` before any prompt. Seeing neither `contact_pending` nor `contact_added` means the next evidence needs to distinguish Contacts-history polling returning no changes from app/event-log/runtime delivery failure.
+- Added RED tests for a non-PII `sensor_diagnostic` event (`contacts_history_poll_no_changes`) in the TypeScript schema, runtime logging, and Swift source contract. Red run: `npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/macosSensorSource.test.ts` failed because the schema rejected `sensor_diagnostic`, the runtime logged it as an invalid event, and Swift had no `sensorDiagnosticEvent` builder.
+- Green implementation: Swift now emits a throttled `sensor_diagnostic` when a Contacts history poll returns zero touched contacts; runtime logs it as `macOS sensor diagnostic: contacts_history_poll_no_changes pending=0 nextCheckInSeconds=5` without creating candidates, prompts, processed events, or acks.
+- Focused green run: `npm test -- src/relationship/runtime/sensorEvents.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/macosSensorSource.test.ts` passed with 3 files and 31 tests.
+- Final verification: `npm test` passed with 48 files and 286 tests, `npm run build` passed, `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations, `npm run agent:friendy:check` passed, `npm run check:mac-mvp-demo` passed, and `git diff --check` passed. `npm run build:macos-sensor` still cannot run on this Linux host (`spawnSync swift ENOENT`), so the user must pull and rebuild the app bundle on macOS before the next live run.
+
 ## Baseline
 
 - Date: 2026-05-22

@@ -140,6 +140,25 @@ describe("Friendy macOS sensor runtime", () => {
     );
   });
 
+  it("logs sensor diagnostics without creating candidates or prompts", async () => {
+    const harness = createHarness();
+
+    await harness.runtime.processLine(
+      JSON.stringify({
+        ...baseEvent("sensor_diagnostic"),
+        code: "contacts_history_poll_no_changes",
+        pendingContactCount: 0,
+        nextCheckInSeconds: 5
+      })
+    );
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(harness.prompts).toEqual([]);
+    expect(harness.logs.join("\n")).toContain(
+      "macOS sensor diagnostic: contacts_history_poll_no_changes pending=0 nextCheckInSeconds=5"
+    );
+  });
+
   it("records history reset in sensor state without creating prompts", async () => {
     const harness = createHarness();
 

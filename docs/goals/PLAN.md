@@ -11,6 +11,7 @@
 - [x] Run automated verification commands for the Option B follow-up.
 - [x] Commit and push the source-level diagnostic slice.
 - [x] Record latest Mac rerun evidence: app-bundle launch and pre-start contact ignore/ack worked; post-start contact prompt remains unverified.
+- [x] Add throttled `sensor_diagnostic` output for silent Contacts history polling.
 - [ ] Run real Mac manual E2E and record contact name, timestamps, batch id, memory count, and recall result.
 
 ## Completed Mac MVP Final Runbook

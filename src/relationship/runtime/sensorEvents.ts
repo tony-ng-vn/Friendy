@@ -114,6 +114,15 @@ const contactPendingEventSchema = commonEventSchema.extend({
   nextCheckInSeconds: z.number().nonnegative().optional()
 });
 
+const sensorDiagnosticCodeSchema = z.enum(["contacts_history_poll_no_changes"]);
+
+const sensorDiagnosticEventSchema = commonEventSchema.extend({
+  type: z.literal("sensor_diagnostic"),
+  code: sensorDiagnosticCodeSchema,
+  pendingContactCount: z.number().int().nonnegative().optional(),
+  nextCheckInSeconds: z.number().nonnegative().optional()
+});
+
 const historyBatchCompleteEventSchema = commonEventSchema.extend({
   type: z.literal("history_batch_complete"),
   historyBatchId: z.string().min(1),
@@ -148,6 +157,7 @@ const sensorEventSchema = z.discriminatedUnion("type", [
   readyEventSchema,
   contactAddedEventSchema,
   contactPendingEventSchema,
+  sensorDiagnosticEventSchema,
   historyBatchCompleteEventSchema,
   historyResetEventSchema,
   permissionErrorEventSchema,

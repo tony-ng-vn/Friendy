@@ -71,9 +71,11 @@ final class NativeMacosSensor {
     private var pendingContactIdentifiers: Set<String> = []
     private var pendingDiagnosticContactIdentifiers: Set<String> = []
     private var pendingHistoryTokenAfter: Data?
+    private var lastNoChangeDiagnosticAt: Date?
 
     /// Quiet period after the last add/update before re-fetching; mimics waiting until the user taps Done.
     private static let contactEmitDebounceSeconds: TimeInterval = 5.0
+    private static let noChangeDiagnosticSeconds: TimeInterval = 15.0
 
     init(
         stateDir: String,
@@ -244,7 +246,10 @@ final class NativeMacosSensor {
             pendingHistoryTokenAfter = historyFetch.tokenAfter
             try historyFetch.tokenAfter.write(to: tokenURL, options: .atomic)
 
-            if !historyFetch.touchedContactIds.isEmpty {
+            if historyFetch.touchedContactIds.isEmpty {
+                emitNoChangeDiagnosticIfDue()
+            } else {
+                lastNoChangeDiagnosticAt = nil
                 emitSensorEvent(contactPendingEvent(
                     identity: identity,
                     reason: "history_changes_queued",
@@ -269,6 +274,21 @@ final class NativeMacosSensor {
     private struct ContactHistoryFetchResult {
         let touchedContactIds: Set<String>
         let tokenAfter: Data
+    }
+
+    private func emitNoChangeDiagnosticIfDue(now: Date = Date()) {
+        if let lastNoChangeDiagnosticAt,
+           now.timeIntervalSince(lastNoChangeDiagnosticAt) < Self.noChangeDiagnosticSeconds {
+            return
+        }
+
+        lastNoChangeDiagnosticAt = now
+        emitSensorEvent(sensorDiagnosticEvent(
+            identity: identity,
+            code: "contacts_history_poll_no_changes",
+            pendingContactCount: pendingContactIdentifiers.count,
+            nextCheckInSeconds: Int(Self.contactEmitDebounceSeconds)
+        ))
     }
 
     private var contactKeyDescriptors: [CNKeyDescriptor] {

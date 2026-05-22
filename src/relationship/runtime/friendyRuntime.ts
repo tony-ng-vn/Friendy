@@ -270,6 +270,11 @@ async function processEvent({
     return;
   }
 
+  if (event.type === "sensor_diagnostic") {
+    logger.info(formatSensorDiagnosticLog(event));
+    return;
+  }
+
   if (event.type === "history_reset") {
     const eventNow = now();
     recordHistoryResetSensorState({ userId, state, event, now: eventNow });
@@ -347,6 +352,18 @@ function formatContactPendingLog(event: Extract<MacosSensorEvent, { type: "conta
   }
 
   return `macOS sensor contact pending: ${event.reason} ${fields.join(" ")}`;
+}
+
+function formatSensorDiagnosticLog(event: Extract<MacosSensorEvent, { type: "sensor_diagnostic" }>): string {
+  const fields: string[] = [];
+  if (event.pendingContactCount !== undefined) {
+    fields.push(`pending=${event.pendingContactCount}`);
+  }
+  if (event.nextCheckInSeconds !== undefined) {
+    fields.push(`nextCheckInSeconds=${event.nextCheckInSeconds}`);
+  }
+
+  return `macOS sensor diagnostic: ${event.code}${fields.length ? ` ${fields.join(" ")}` : ""}`;
 }
 
 function recordReadySensorState({

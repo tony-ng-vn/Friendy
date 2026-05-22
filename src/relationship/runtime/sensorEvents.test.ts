@@ -95,6 +95,25 @@ describe("macOS sensor event contract", () => {
     expect(JSON.stringify(event)).not.toMatch(/Testing|Maya|\+1555|@/);
   });
 
+  it("parses non-PII sensor diagnostics for silent Contacts history polling", () => {
+    const event = parseSensorEventLine(
+      JSON.stringify({
+        ...basePayload("sensor_diagnostic"),
+        code: "contacts_history_poll_no_changes",
+        pendingContactCount: 0,
+        nextCheckInSeconds: 5
+      })
+    );
+
+    expect(event).toMatchObject({
+      type: "sensor_diagnostic",
+      code: "contacts_history_poll_no_changes",
+      pendingContactCount: 0,
+      nextCheckInSeconds: 5
+    });
+    expect(JSON.stringify(event)).not.toMatch(/Testing|Maya|\+1555|@/);
+  });
+
   it("requires idempotency keys on durable outcome events", () => {
     const payload = contactAddedPayload();
     delete (payload as Record<string, unknown>).idempotencyKey;
