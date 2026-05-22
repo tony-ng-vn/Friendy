@@ -89,6 +89,7 @@
       <li>Updated <code>build:macos-sensor</code> so the standalone sensor build embeds the TCC <code>Info.plist</code> into the linked executable and signs the copied binary with the entitlements file on macOS. It defaults to ad-hoc signing and can use <code>FRIENDY_CODESIGN_IDENTITY</code> for a specific local identity.</li>
       <li>Expanded the compiled sensor fixture check so it validates controlled fatal NDJSON from missing <code>--state-dir</code>, unknown fixture, and unwritable state-directory paths. The checker now extracts stdout from expected nonzero sensor exits instead of treating every nonzero exit as an opaque failure.</li>
       <li>Expanded <code>agent:friendy:check</code> so it simulates a runtime restart before a history batch ack, replays the unacked contact batch against the same SQLite store, and verifies that Friendy writes the ack without creating a duplicate candidate or prompt.</li>
+      <li>Consolidated the Mac-only MVP planning docs around the finished onboarding and agent behavior spec plus the final implementation plan, removed superseded draft/runtime-only docs, and added one launchable goal prompt per final-plan task.</li>
     </ul>
     <h2>Verification</h2>
     <ul>

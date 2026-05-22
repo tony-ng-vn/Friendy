@@ -1,6 +1,13 @@
 # Superpowers Planning Artifacts
 
-These are the original Superpowers spec and implementation plan used to shape the Friendy product flow.
+These are the Superpowers spec and implementation plan artifacts used to shape the Friendy product flow.
+
+Current Mac-only MVP artifacts:
+
+- [Finished Mac-only MVP onboarding and agent behavior spec](specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md)
+- [Final Mac-only MVP implementation plan](plans/2026-05-22-mac-only-mvp-final-implementation.md)
+
+Original product-flow artifacts:
 
 - [Product design spec](specs/2026-05-19-photon-relationship-memory-agent-design.md)
 - [Implementation plan](plans/2026-05-19-photon-relationship-memory-agent.md)

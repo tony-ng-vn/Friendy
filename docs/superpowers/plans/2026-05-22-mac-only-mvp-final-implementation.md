@@ -13,7 +13,6 @@
 ## Source Documents
 
 - Finished spec: `docs/superpowers/specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md`
-- Current draft plan kept as historical context: `docs/superpowers/plans/2026-05-22-mac-only-mvp-runtime-reliability.md`
 - Runtime source: `src/relationship/runtime/`
 - Agent source: `src/relationship/`
 - Current eval runner: `src/relationship/evals/agentEvalRunner.ts`
