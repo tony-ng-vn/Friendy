@@ -7,6 +7,10 @@ Current Mac-only MVP artifacts:
 - [Finished Mac-only MVP onboarding and agent behavior spec](specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md)
 - [Final Mac-only MVP implementation plan](plans/2026-05-22-mac-only-mvp-final-implementation.md)
 
+Current routing/search correction artifacts:
+
+- [Relationship routing and query normalization design](specs/2026-05-22-relationship-routing-and-query-normalization-design.md)
+
 Original product-flow artifacts:
 
 - [Product design spec](specs/2026-05-19-photon-relationship-memory-agent-design.md)
