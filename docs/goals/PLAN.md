@@ -1,16 +1,18 @@
-# Candidate Intake Interface Spec Goal Plan
+# Mac-Only MVP Final Goal Plan
 
-- [x] Inspect current Friendy worktree and architecture docs.
-- [x] Add red Candidate Intake interface tests without production implementation.
-- [x] Create `CONTEXT.md` with Friendy domain vocabulary.
-- [x] Add Candidate Intake Superpowers implementation plan.
-- [x] Run required verification and record results.
-- [x] Commit docs-and-tests interface spec pass.
-
-## Candidate Intake Implementation Follow-up
-
-- [x] Add the `candidateIntake` module behind the red interface spec.
-- [x] Route deterministic and interpreted agents through Candidate Intake for confirm/ignore handling.
-- [x] Preserve event-matched candidate confirmation compatibility for ingestion-generated candidates.
-- [x] Run focused regression checks and full project verification.
-- [x] Commit implementation in incremental `<scope>:<message>` commits.
+- [x] Inspect current worktree, runbook, and final implementation plan.
+- [x] Execute Task 1: pin Node version and add safe CI.
+- [ ] Execute Task 2: add structured `doctor:friendy`.
+- [ ] Execute Task 3: add inspectable runtime lifecycle logs.
+- [ ] Execute Task 4: add behavior contract artifacts.
+- [ ] Execute Task 5: add event guess strength and prompt routing.
+- [ ] Execute Task 6: add candidate lifecycle timing fields.
+- [ ] Execute Task 7: add active start gate and pause/resume.
+- [ ] Execute Task 8: add append-only memory revisions.
+- [ ] Execute Task 9: add bounded update and delete tools.
+- [ ] Execute Task 10: add follow-up search context TTL and correction routing.
+- [ ] Execute Task 11: add redacted runtime traces.
+- [ ] Execute Task 12: add required behavior evals and demo check.
+- [ ] Execute Task 13: align docs and implementation notes.
+- [ ] Run final verification across the completed MVP plan.
+- [ ] Push `main`.

@@ -90,6 +90,7 @@
       <li>Expanded the compiled sensor fixture check so it validates controlled fatal NDJSON from missing <code>--state-dir</code>, unknown fixture, and unwritable state-directory paths. The checker now extracts stdout from expected nonzero sensor exits instead of treating every nonzero exit as an opaque failure.</li>
       <li>Expanded <code>agent:friendy:check</code> so it simulates a runtime restart before a history batch ack, replays the unacked contact batch against the same SQLite store, and verifies that Friendy writes the ack without creating a duplicate candidate or prompt.</li>
       <li>Consolidated the Mac-only MVP planning docs around the finished onboarding and agent behavior spec plus the final implementation plan, removed superseded draft/runtime-only docs, and added one launchable goal prompt per final-plan task.</li>
+      <li>Pinned the Mac MVP runtime to Node 24 or newer with <code>package.json</code> engines, <code>.nvmrc</code>, <code>.node-version</code>, and GitHub Actions CI using the existing local MVP verification commands.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -231,6 +232,7 @@
       <li>Ran SQLite-lock and free-text-context final verification: <code>npm test</code> passed with 41 files and 233 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases with zero unsafe mutations, <code>npm run doctor:macos-sensor</code> reported present TCC metadata and expected Linux native-verification guidance, <code>npm run agent:friendy:check</code> passed, <code>npm run check:macos-sensor-fixture</code> skipped successfully on Linux without a compiled binary, and <code>git diff --check</code> passed.</li>
       <li>For runtime verification hardening, first ran RED tests showing the compiled sensor fixture check did not validate controlled fatal NDJSON and <code>agent:friendy:check</code> did not prove unacked history batch replay across a runtime restart. After implementation, <code>npm test -- src/relationship/runtime/macosSensorFixtureCheck.test.ts src/relationship/runtime/friendyRuntimeCheck.test.ts</code> passed with 7 tests.</li>
       <li>Ran runtime verification-hardening final verification: <code>npm test</code> passed with 41 files and 234 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases with zero unsafe mutations, <code>npm run doctor:macos-sensor</code> reported present TCC metadata and expected Linux native-verification guidance, <code>npm run agent:friendy:check</code> passed after replaying an unacked batch across a simulated restart, <code>npm run check:macos-sensor-fixture</code> skipped successfully on Linux without a compiled binary, and <code>git diff --check</code> passed.</li>
+      <li>For Mac MVP Task 1, first ran a RED Node-version contract test showing <code>packageJson.engines?.node</code> was missing. After adding Node 24 pins and CI, <code>npm test -- src/relationship/runtime/nodeVersion.test.ts</code> passed with 1 test, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>
