@@ -57,7 +57,7 @@ The Swift sensor called `schedulePendingContactEmit()` on **every poll** while c
 - `npm run check:mac-mvp-e2e-state` may report **missing history batch ack file** even after a successful iMessage flow — investigate ack path if automating proof.
 - Broad relationship recall routing Spec A is implemented: “Anyone in my contacts related to Friendy?” should now route to `search_memories` and avoid the generic redirect.
 - Deterministic Spec B retrieval is implemented: generated memory search documents, document-lexical evidence, SQLite search-document backfill/sync, optional local FTS5 rows when available, and merged repository retrieval candidates. Optional embeddings and LLM reranking remain deferred.
-- Pending-prompt inquiry wording is fixed: “Who are you asking? Testing 2 or Testing 1?” should now return the pending-contact ambiguity reply instead of the generic redirect.
+- Pending-prompt inquiry wording is generalized: questions like “Who are you asking?”, “who are u asking?”, “What contact do you mean?”, or “Do you mean Testing 2?” should now return the pending-contact ambiguity reply instead of the generic redirect.
 - Each `agent:friendy` restart requires texting **`start`** again (by design).
 - Only **net-new** contacts after `start` prompt; pre-start adds are ignored for idempotency.
 - Saving in Contacts ≠ Friendy memory until the user replies to the iMessage prompt.

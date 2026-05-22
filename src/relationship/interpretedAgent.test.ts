@@ -442,7 +442,7 @@ describe("interpreted relationship agent", () => {
       }
     });
 
-    const result = await agent.handleMessage(inbound("Who are you asking? Testing 2 or testing 1?"));
+    const result = await agent.handleMessage(inbound("who are u asking?"));
 
     expect(interpreterCalls).toBe(0);
     expect(result.toolCalls).toEqual(["list_pending_candidates"]);

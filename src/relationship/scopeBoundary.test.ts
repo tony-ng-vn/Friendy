@@ -65,12 +65,20 @@ describe("relationship agent scope boundary", () => {
       scope: "in_scope",
       capability: "candidate_confirmation"
     });
-    expect(
-      decideMessageScope({ text: "Who are you asking? Testing 2 or Testing 1?", hasPendingCandidate: true })
-    ).toMatchObject({
-      scope: "in_scope",
-      capability: "candidate_confirmation"
-    });
+    for (const text of [
+      "Who are you asking? Testing 2 or Testing 1?",
+      "who are u asking?",
+      "Which one are you asking about?",
+      "What contact do you mean?",
+      "Do you mean Testing 2 or Testing 1?",
+      "Are you asking about Testing 2?",
+      "Which person is this for?"
+    ]) {
+      expect(decideMessageScope({ text, hasPendingCandidate: true })).toMatchObject({
+        scope: "in_scope",
+        capability: "candidate_confirmation"
+      });
+    }
     expect(decideMessageScope({ text: "coffee shop nearby", hasPendingCandidate: false })).toMatchObject({
       scope: "out_of_scope"
     });

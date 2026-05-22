@@ -174,9 +174,13 @@ function isIgnoreCandidate(text: string): boolean {
 
 /** True when the user asks which contact an open confirmation prompt refers to. */
 export function isPendingCandidateInquiry(text: string): boolean {
-  const lower = text.trim().toLowerCase();
-  return /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add|who are you asking(?: about)?)\b/.test(
-    lower
+  const lower = text.trim().toLowerCase().replace(/\bu\b/g, "you");
+  return (
+    /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add)\b/.test(lower) ||
+    /\b(who|what|which)\b.*\b(you|friendy)\b.*\b(ask|asking|mean|referring)\b/.test(lower) ||
+    /\b(what|which)\b.*\b(contact|person|one|prompt)\b.*\b(mean|asking|about|for|referring)\b/.test(lower) ||
+    /\b(do|are)\s+you\s+(mean|asking|referring)\b/.test(lower) ||
+    /\bwhich\b.*\b(person|contact|one)\b.*\b(this|it)\b.*\b(for|about)\b/.test(lower)
   );
 }
 
