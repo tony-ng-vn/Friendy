@@ -101,9 +101,10 @@ function hardBlockFromInterpretation(value: unknown): AgentTrace["hardBlock"] {
     return undefined;
   }
 
+  const reason = (scopeDecision as { reason?: unknown }).reason;
   return {
     blocked: true,
-    reason: typeof (scopeDecision as { reason?: unknown }).reason === "string" ? (scopeDecision as { reason: string }).reason : undefined
+    reason: typeof reason === "string" ? reason : undefined
   };
 }
 
@@ -145,12 +146,10 @@ function policyFromInterpretation(value: unknown): AgentTrace["policy"] {
     return undefined;
   }
 
+  const reason = (policyDecision as { reason?: unknown }).reason;
   return {
     decision,
-    reason:
-      typeof (policyDecision as { reason?: unknown }).reason === "string"
-        ? (policyDecision as { reason: string }).reason
-        : undefined
+    reason: typeof reason === "string" ? reason : undefined
   };
 }
 

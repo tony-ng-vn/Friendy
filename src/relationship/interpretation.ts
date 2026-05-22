@@ -188,7 +188,7 @@ export const messageInterpretationSchema = z
     intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
     confidence: z.number().min(0).max(1),
     domain: routeDomainSchema.optional(),
-    search: searchPlanSchema.nullable().optional().transform((value) => value ?? undefined),
+    search: searchPlanSchema.nullable().optional(),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),
     dateContext: z
