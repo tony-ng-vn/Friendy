@@ -14,5 +14,5 @@
 - [x] Execute Task 11: add redacted runtime traces.
 - [x] Execute Task 12: add required behavior evals and demo check.
 - [x] Execute Task 13: align docs and implementation notes.
-- [ ] Run final verification across the completed MVP plan.
-- [ ] Push `main`.
+- [x] Run final verification across the completed MVP plan.
+- [x] Push `main`.

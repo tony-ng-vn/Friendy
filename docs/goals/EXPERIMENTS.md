@@ -232,3 +232,17 @@
 - Updated `implementation-notes.html` with the final Mac-only MVP implementation plan summary.
 - `npm run build`: passed.
 - `git diff --check`: passed.
+
+## Final Mac MVP Runbook Verification
+
+- Date: 2026-05-22
+- `npm test`: passed with 47 files and 272 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 29/29 with zero unsafe mutations and zero hallucinations.
+- `npm run check:imessage-e2e`: passed.
+- `npm run ingest:local:check -- --mock`: passed and printed the Friendy-101 prompt without live send.
+- `npm run agent:friendy:check`: passed.
+- `FRIENDY_SENSOR_MOCK=1 FRIENDY_PROMPT_TRANSPORT=console npm run doctor:friendy`: passed in mock mode with expected Linux native-permission guidance.
+- `npm run check:mac-mvp-demo`: passed.
+- `npm run check:macos-sensor-fixture`: skipped successfully on Linux without a compiled macOS binary.
+- `git diff --check`: passed.
