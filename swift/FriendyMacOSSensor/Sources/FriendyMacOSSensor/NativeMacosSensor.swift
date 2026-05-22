@@ -340,7 +340,7 @@ final class NativeMacosSensor {
 
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = eventStore.events(matching: predicate)
-        let matches = events.prefix(20).map { event in
+        let matches = sortedCalendarEvents(events).prefix(20).map { event in
             [
                 "eventIdentifier": event.eventIdentifier ?? "",
                 "calendarIdentifier": event.calendar.calendarIdentifier,
@@ -367,6 +367,30 @@ final class NativeMacosSensor {
             ],
             Array(matches)
         )
+    }
+
+    private func sortedCalendarEvents(_ events: [EKEvent]) -> [EKEvent] {
+        events.sorted { left, right in
+            if left.startDate != right.startDate {
+                return left.startDate < right.startDate
+            }
+
+            if left.endDate != right.endDate {
+                return left.endDate < right.endDate
+            }
+
+            let leftTitle = left.title ?? ""
+            let rightTitle = right.title ?? ""
+            if leftTitle != rightTitle {
+                return leftTitle < rightTitle
+            }
+
+            if left.calendar.calendarIdentifier != right.calendar.calendarIdentifier {
+                return left.calendar.calendarIdentifier < right.calendar.calendarIdentifier
+            }
+
+            return (left.eventIdentifier ?? "") < (right.eventIdentifier ?? "")
+        }
     }
 }
 

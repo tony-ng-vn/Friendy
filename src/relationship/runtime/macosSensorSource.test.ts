@@ -80,6 +80,18 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain('return "unavailable"');
     expect(nativeSource).not.toContain('return "unknown"');
   });
+
+  it("sorts EventKit matches deterministically before applying the raw candidate cap", () => {
+    const nativeSource = readSwift("NativeMacosSensor.swift");
+
+    expect(nativeSource).toContain("sortedCalendarEvents(events)");
+    expect(nativeSource).toContain("left.startDate != right.startDate");
+    expect(nativeSource).toContain("left.endDate != right.endDate");
+    expect(nativeSource).toContain("left.calendar.calendarIdentifier");
+    expect(nativeSource.indexOf("sortedCalendarEvents(events).prefix(20)")).toBeGreaterThan(
+      nativeSource.indexOf("let events = eventStore.events(matching: predicate)")
+    );
+  });
 });
 
 function readSwift(filename: string): string {
