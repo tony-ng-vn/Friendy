@@ -1,3 +1,9 @@
+/**
+ * Snapshot-to-candidate ingestion pipeline.
+ *
+ * Converts contact diffs into pending candidates and calendar event guesses. Real macOS provider
+ * reads are allowed only through explicit CLI commands, not through this fixture-safe path.
+ */
 import type { createRelationshipTools } from "../tools";
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected, EventContextMatch } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
@@ -5,11 +11,13 @@ import { detectNewContactMethods } from "./contactSnapshot";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
+/** Calendar source abstraction used while syncing events before candidate matching. */
 export type CalendarEventProvider = {
   source: "fixture" | "apple_calendar";
   listEvents(userId: string): CalendarEvent[];
 };
 
+/** Input for running contact snapshot diffing through the candidate queue. */
 export type IngestContactSnapshotDiffInput = {
   before: ContactSnapshot;
   after: ContactSnapshot;
@@ -17,6 +25,7 @@ export type IngestContactSnapshotDiffInput = {
   tools: RelationshipTools;
 };
 
+/** Detected contacts, queued candidates, event guesses, and human-readable summary lines. */
 export type IngestContactSnapshotDiffResult = {
   detectedContacts: ContactCandidateDetected[];
   candidates: ContactCandidate[];

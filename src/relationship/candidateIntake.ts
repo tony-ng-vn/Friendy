@@ -1,3 +1,16 @@
+/**
+ * Pending-contact intake and confirmation routing.
+ *
+ * Callers: `agentCore.ts`, `interpretedAgent.ts`, ingestion pipeline after contact detection.
+ *
+ * Returns structured outcomes only — `responseComposer.ts` owns all user-facing wording.
+ *
+ * Candidate selection priority (when multiple pending):
+ * 1. Name mentioned in the reply text.
+ * 2. Single `prompted` candidate in the same Spectrum `spaceId` (ties on `promptedAt` → ambiguous).
+ * 3. Sole pending candidate with an event guess.
+ * 4. Otherwise ambiguous, or fall back to the only remaining candidate.
+ */
 import { resolveCandidateConfirmation } from "./candidateConfirmation";
 import type { createRelationshipTools } from "./tools";
 import type {
@@ -10,11 +23,13 @@ import type {
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
+/** User and optional messaging space for correlating proactive prompts with replies. */
 export type CandidateIntakeScope = {
   userId: string;
   spaceId?: string;
 };
 
+/** Structured payload for composing a proactive candidate review message. */
 export type CandidateReviewPrompt = {
   kind: "candidate_review";
   candidateId: string;
@@ -27,17 +42,20 @@ export type CandidateReviewPrompt = {
   };
 };
 
+/** Result of ingesting newly detected contacts into the pending review queue. */
 export type CandidateIntakeCreateResult = {
   kind: "reviewable_candidates_created";
   candidates: Array<Pick<ContactCandidate, "id" | "displayName" | "status">>;
   reviewPrompts: CandidateReviewPrompt[];
 };
 
+/** Outcome of resolving a user reply against pending candidates. */
 export type CandidateReplyResult =
   | { kind: "confirmed"; candidateId: string; memory: RelationshipMemory }
   | { kind: "ambiguous"; candidates: Array<Pick<ContactCandidate, "id" | "displayName">> }
   | { kind: "no_pending" };
 
+/** Outcome of ignoring a pending candidate. */
 export type CandidateIgnoreResult =
   | { kind: "ignored"; candidateId: string; displayName: string }
   | { kind: "no_pending" };
@@ -50,6 +68,7 @@ export type CandidateIgnoreResult =
  */
 export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
   return {
+    /** Syncs calendar context, creates candidates, and builds review prompts with event guesses. */
     createReviewableCandidates(input: {
       scope: CandidateIntakeScope;
       detectedContacts: ContactCandidateDetected[];
@@ -69,6 +88,7 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       };
     },
 
+    /** Resolves yes/no/event-correction replies using the selection priority documented above. */
     resolveCandidateReply(input: { scope: CandidateIntakeScope; replyText: string }): CandidateReplyResult {
       const candidates = tools.list_pending_candidates(input.scope.userId);
       if (candidates.length === 0) {
@@ -103,6 +123,7 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       return { kind: "confirmed", candidateId: candidate.id, memory };
     },
 
+    /** Marks a pending candidate ignored, optionally selected by id or name fragment. */
     ignoreCandidate(input: {
       scope: CandidateIntakeScope;
       candidateId?: string;
@@ -147,6 +168,10 @@ function selectCandidate(candidates: ContactCandidate[], text: string): ContactC
   });
 }
 
+/**
+ * Prefer the candidate already prompted in this Spectrum space when the user replies "yes"
+ * without repeating the contact name — ties on promptedAt stay ambiguous on purpose.
+ */
 function selectPromptedCandidateForSpace(
   candidates: ContactCandidate[],
   spaceId?: string

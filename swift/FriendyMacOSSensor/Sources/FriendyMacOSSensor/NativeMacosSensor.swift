@@ -1,3 +1,6 @@
+// Native macOS Contacts/Calendar sensor: CNChangeHistory → redacted NDJSON → durable outbox → ack → token advance.
+// NDJSON contract matches `src/relationship/runtime/sensorEvents.ts` (parsed by the Node runtime supervisor).
+
 import Foundation
 
 #if os(macOS) && canImport(Contacts) && canImport(EventKit) && canImport(CryptoKit)
@@ -53,6 +56,7 @@ struct AnyCodable: Codable {
     }
 }
 
+/// Watches Contacts history, emits redacted sensor events, and persists batches until the runtime acks.
 final class NativeMacosSensor {
     private let stateDir: URL
     private let identity: SensorIdentity
@@ -74,14 +78,17 @@ final class NativeMacosSensor {
         self.fileManager = fileManager
     }
 
+    /// CNContactStore history token; advanced only after the runtime writes the batch ack file.
     private var tokenURL: URL {
         stateDir.appendingPathComponent("contacts-history-token.data")
     }
 
+    /// Pending `history_batch_complete` payloads replayed on restart until acked.
     private var outboxDir: URL {
         stateDir.appendingPathComponent("outbox", isDirectory: true)
     }
 
+    /// Runtime-created `.ack` files that release the after-token and clear outbox entries.
     private var ackDir: URL {
         stateDir.appendingPathComponent("acks", isDirectory: true)
     }
@@ -294,6 +301,7 @@ final class NativeMacosSensor {
         }
     }
 
+    /// Polls for `ackPath` up to ~60s; on success writes `tokenAfter` to `tokenURL` and removes outbox artifacts.
     private func waitForAckAndAdvanceToken(batchId: String, tokenAfter: Data, ackPath: String, tokenAfterPath: String) {
         DispatchQueue.global().async {
             for _ in 0..<120 {
@@ -309,6 +317,7 @@ final class NativeMacosSensor {
         }
     }
 
+    /// Maps CNContact to the `contact` object: sha256 hashes plus last4/domain hints; no raw methods.
     private func redactedContactPayload(_ contact: CNContact) -> [String: Any] {
         let phoneNumberHashes = contact.phoneNumbers.compactMap { normalizedPhoneHash($0.value.stringValue) }
         let emailHashes = contact.emailAddresses.compactMap { normalizedEmailHash(String($0.value)) }

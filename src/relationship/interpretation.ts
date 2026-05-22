@@ -1,5 +1,13 @@
+/**
+ * LLM interpretation contract: JSON schema, Zod validation, and search-query helpers.
+ *
+ * The model interprets messy inbound text into structured intent; validated output is
+ * consumed by `interpretedAgent` before deterministic tools mutate state. The LLM never
+ * writes memories directly. See docs/ai-system-architecture.md.
+ */
 import { z } from "zod";
 
+/** OpenRouter/structured-output JSON schema for message interpretation. */
 export const messageInterpretationJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -109,6 +117,7 @@ const eventInterpretationSchema = z
   })
   .strict();
 
+/** Zod schema mirroring `messageInterpretationJsonSchema` for runtime validation. */
 export const messageInterpretationSchema = z
   .object({
     intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
@@ -149,8 +158,14 @@ export const messageInterpretationSchema = z
     }
   });
 
+/** Runtime-validated interpretation produced by the LLM layer or deterministic fallback. */
 export type MessageInterpretation = z.infer<typeof messageInterpretationSchema>;
 
+/**
+ * Parses and validates raw model output against `messageInterpretationSchema`.
+ *
+ * @throws When shape or intent-specific invariants fail (e.g. capture without people)
+ */
 export function validateMessageInterpretation(value: unknown): MessageInterpretation {
   const parsed = messageInterpretationSchema.safeParse(value);
   if (!parsed.success) {
@@ -160,6 +175,11 @@ export function validateMessageInterpretation(value: unknown): MessageInterpreta
   return parsed.data;
 }
 
+/**
+ * Builds a deduplicated search query from interpretation fields for `search_memories`.
+ *
+ * Combines explicit query, event name, and tags; lowercases for deduplication only.
+ */
 export function buildSearchQueryFromInterpretation(interpretation: MessageInterpretation): string {
   const seen = new Set<string>();
 

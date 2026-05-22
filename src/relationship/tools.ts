@@ -1,3 +1,12 @@
+/**
+ * Deterministic relationship-agent tools backed by {@link RelationshipRepository}.
+ *
+ * Callers: `agentCore.ts`, `interpretedAgent.ts`, `candidateIntake.ts`, evals, and tests.
+ *
+ * Search scoring is field-aware and intentionally transparent — weights favor person-specific
+ * facts over shared event words. {@link MemorySearchResult.reason} is diagnostic text for logs
+ * and tests; user-facing copy must come from `responseComposer.ts` and must never surface scores.
+ */
 import { randomUUID } from "node:crypto";
 import { createCandidateId } from "./eventMapper";
 import { extractTags, type RelationshipRepository } from "./repository";
@@ -6,7 +15,9 @@ import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, 
 /** Search hit with diagnostic explanation text for logs and tests, not direct user-facing copy. */
 export type MemorySearchResult = {
   memory: RelationshipMemory;
+  /** Aggregate field-weight score used for ranking and ambiguity detection. */
   score: number;
+  /** Lexical match summary — never show verbatim to users. */
   reason: string;
 };
 
@@ -139,9 +150,12 @@ function interactionIdFromManualKey(idempotencyKey: string | undefined): string 
 /**
  * Scores memories with deterministic field-aware matching for the MVP.
  *
- * Specific person facts such as role, project, school, and context need to outrank generic shared
- * event words. Event-wide "who did I meet" searches are the exception: those intentionally return
- * every matching event memory instead of collapsing to one top person.
+ * Weight table (per matched query term):
+ * - name 12, role 10, school 10, project 9, alias 7, free context 5, tags 4
+ * - event 8 when query is event-wide; otherwise event 1 (and context suppressed if event matched)
+ *
+ * Specific person facts must outrank generic shared event words. Event-wide "who did I meet"
+ * searches are the exception: those intentionally return every matching event memory.
  */
 function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): InternalMemorySearchResult {
   const fields = extractMemorySearchFields(memory);
@@ -153,18 +167,20 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
   for (const term of query.terms) {
     const eventMatch = fieldIncludes(fields.event, term);
     if (eventMatch) {
+      // Event-wide recall ("who did I meet at X") should surface every attendee memory;
+      // narrow searches down-weight event tokens so "designer from dinner" prefers role over venue.
       const weight = query.isEventWide ? 8 : 1;
       score += weight;
       eventScore += weight;
       matched.add(term);
     }
 
-    const nameScore = scoreSpecificField(fields.name, term, 12);
+    const nameScore = scoreSpecificField(fields.name, term, 12); // display name — strongest person signal
     const roleScore = scoreSpecificField(fields.role, term, 10);
     const projectScore = scoreSpecificField(fields.project, term, 9);
     const schoolScore = scoreSpecificField(fields.school, term, 10);
     const aliasScore = scoreSpecificField(fields.alias, term, 7);
-    const tagScore = scoreSpecificField(fields.tags, term, 4);
+    const tagScore = scoreSpecificField(fields.tags, term, 4); // lexical tags — weakest specific signal
     const contextScore = eventMatch ? 0 : scoreSpecificField(fields.context, term, 5);
     const termSpecificScore = nameScore + roleScore + projectScore + schoolScore + aliasScore + tagScore + contextScore;
 
@@ -210,6 +226,8 @@ function selectSearchResults(results: InternalMemorySearchResult[], query: Searc
   }
 
   const [top, second] = covered;
+  // A 6-point gap means the winner is clearly ahead on field-weight totals; collapse to one
+  // answer instead of asking the user to disambiguate near-ties (same threshold as agentCore).
   if (top.specificScore > 0 && top.score - second.score >= 6) {
     return [top];
   }
@@ -225,6 +243,12 @@ function stripInternalScores(result: InternalMemorySearchResult): MemorySearchRe
   };
 }
 
+/**
+ * Minimum fraction of query terms that must match before a memory is returned.
+ *
+ * Single-term queries require full coverage; multi-term queries allow 50% so partial clues like
+ * "CMU designer" still match when only one token hits, while unrelated one-token overlaps drop out.
+ */
 function minimumCoverage(termCount: number): number {
   if (termCount <= 1) {
     return 1;

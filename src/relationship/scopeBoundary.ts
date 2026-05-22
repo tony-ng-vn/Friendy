@@ -1,3 +1,10 @@
+/**
+ * Pre-tool scope gate: blocks general-assistant requests before relationship tools run.
+ *
+ * Runs before interpretation and deterministic tools. In-scope messages proceed to the
+ * agent layer; out-of-scope messages get a redirect without invoking memory tools.
+ * Callers: `agentCore`, `interpretedAgent`. See docs/ai-system-architecture.md.
+ */
 export type ScopeCapability =
   | "relationship_recall"
   | "relationship_memory_write"
@@ -7,6 +14,7 @@ export type ScopeCapability =
   | "followup_planning"
   | "social_reasoning";
 
+/** Discriminated result: proceed, ask a short clarifier, or redirect off-domain requests. */
 export type ScopeDecision =
   | {
       scope: "in_scope";
@@ -24,6 +32,7 @@ export type ScopeDecision =
       redirect: string;
     };
 
+/** Inputs for scope classification before any agent tool executes. */
 export type ScopeBoundaryInput = {
   text: string;
   hasPendingCandidate: boolean;
@@ -39,10 +48,11 @@ const RELATIONSHIP_THEORY_REDIRECT =
   "I am better at helping with your specific relationships than explaining relationships in general. If you mean someone specific, tell me who.";
 
 /**
- * Classifies whether Friendy should handle a message before any relationship tools run.
+ * Classifies whether Friendy should handle a message before relationship tools run.
  *
- * This is intentionally deterministic for the MVP. It blocks obvious general-assistant requests
- * while leaving relationship-specific interpretation to the existing agent layer.
+ * @param input.text - Raw inbound user message
+ * @param input.hasPendingCandidate - Whether a consent prompt is awaiting reply
+ * @returns In-scope capability, clarification question, or out-of-scope redirect
  */
 export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryInput): ScopeDecision {
   const normalized = text.trim();
@@ -192,6 +202,7 @@ function isGenericAdviceTask(text: string): boolean {
   return /\b(how do i|how can i|tips for)\b.*\b(charismatic|make friends|be popular|people like me)\b/.test(text);
 }
 
+// Treat short contextual replies as candidate confirmation only when a prompt is pending.
 function isCandidateContextAnswer(text: string): boolean {
   if (text.includes("?") || text.length > 140) {
     return false;

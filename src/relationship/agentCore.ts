@@ -1,3 +1,15 @@
+/**
+ * Deterministic relationship-memory router for the MVP agent.
+ *
+ * Callers: tests, evals, and transports that do not yet use LLM interpretation.
+ *
+ * Router order (first match wins):
+ * 1. Out-of-scope / needs-clarification from `scopeBoundary`.
+ * 2. Explicit candidate confirmation capability or confirmation-shaped reply.
+ * 3. `ignore` prefix for pending candidates.
+ * 4. Manual memory heuristics (`met ` / `remember ` / `i met ` / `i remember ` prefixes).
+ * 5. Default memory search with ambiguity when top-two scores differ by ≤6.
+ */
 import type { AgentCoreResult, AgentToolCall, InboundAgentMessage } from "./types";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import { isConfirmationReply } from "./candidateConfirmation";
@@ -151,6 +163,7 @@ function composeCandidateIgnoreReply(result: CandidateIgnoreResult): string {
   return composeIgnoreCandidateReply();
 }
 
+/** Prefixes that route to manual memory capture without LLM interpretation. */
 function looksLikeManualMemory(value: string): boolean {
   return (
     value.startsWith("met ") ||
@@ -187,6 +200,12 @@ function splitManualMemory(value: string): string[] {
   return [name, context];
 }
 
+/**
+ * Near-tie detection for search results.
+ *
+ * When the top two memories are within 6 field-weight points, the agent asks a narrowing
+ * question instead of pretending certainty — mirrors the collapse threshold in `tools.ts`.
+ */
 function isAmbiguous(matches: MemorySearchResult[]): boolean {
   if (matches.length < 2) {
     return false;

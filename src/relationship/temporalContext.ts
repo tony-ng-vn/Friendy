@@ -1,5 +1,13 @@
+/**
+ * Natural-language date parsing for relationship memories and interpretation.
+ *
+ * Wraps chrono-node with message `receivedAt` as reference instant. Callers:
+ * `openRouterInterpreter`, `interpretedAgent`, tests. Do not hand-roll relative-date
+ * rules elsewhere — use this module. Output shape aligns with `RelationshipDateContext`.
+ */
 import * as chrono from "chrono-node";
 
+/** Parsed temporal context storable on memories and interpretation payloads. */
 export type TemporalContext = {
   rawText: string;
   localDate: string;
@@ -8,6 +16,7 @@ export type TemporalContext = {
   timezone: string;
 };
 
+/** Reference instant and timezone for anchoring relative phrases ("last Tuesday"). */
 type ParseTemporalContextOptions = {
   receivedAt: string;
   timezone?: string;
@@ -16,8 +25,10 @@ type ParseTemporalContextOptions = {
 /**
  * Parses natural-language time references against the message timestamp.
  *
- * chrono-node owns phrase recognition; this wrapper only supplies the reference instant,
- * timezone, and stable storage shape that relationship memories can persist.
+ * @param text - User message containing a date phrase
+ * @param options.receivedAt - ISO instant used as chrono reference
+ * @param options.timezone - IANA timezone for local date extraction (default UTC)
+ * @returns Parsed context, or undefined when no complete date is found
  */
 export function parseTemporalContext(
   text: string,

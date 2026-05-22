@@ -1,3 +1,15 @@
+/**
+ * Foreground Friendy runtime CLI composition.
+ *
+ * Environment variables:
+ * - `FRIENDY_RUNTIME_STORE` — must be `sqlite` for shared local state
+ * - `FRIENDY_SQLITE_PATH` — relationship and runtime SQLite file (default `.friendy/friendy.sqlite`)
+ * - `FRIENDY_MACOS_SENSOR_STATE_DIR` — native sensor state root (default `.friendy/macos-sensor-state`)
+ * - `FRIENDY_SENSOR_MOCK=1` — run `fakeMacosSensor.ts` via `tsx` instead of the compiled binary
+ * - `FRIENDY_SENSOR_BINARY_PATH` — path to `friendy-macos-sensor` when mock is off
+ * - `FRIENDY_PROMPT_TRANSPORT` — `console` or `spectrum` (defaults to console in mock mode)
+ * - `FRIENDY_DISABLE_INBOUND_AGENT` / `FRIENDY_START_INBOUND_AGENT` — inbound Spectrum agent toggles
+ */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
@@ -26,6 +38,7 @@ export type FriendySensorLaunchConfig =
       args: string[];
     };
 
+/** Resolved local runtime paths and whether the sensor runs in mock or real mode. */
 export type FriendyRuntimeConfig = {
   runtimeStore: "sqlite" | string;
   sqlitePath: string;
@@ -65,7 +78,12 @@ export type FriendyInboundAgentStarter = (input: {
   logger: RuntimeLogger;
 }) => StartedInboundAgent;
 
-/** Resolves the foreground Friendy runtime config without starting Spectrum or a sensor process. */
+/**
+ * Resolves the foreground Friendy runtime config without starting Spectrum or a sensor process.
+ *
+ * Mock mode (`FRIENDY_SENSOR_MOCK=1`) launches the TypeScript fake sensor; real mode requires
+ * a built binary at `FRIENDY_SENSOR_BINARY_PATH` or `bin/friendy-macos-sensor`.
+ */
 export function resolveFriendyRuntimeConfig({
   cwd = process.cwd(),
   env = process.env
@@ -129,6 +147,7 @@ export async function startFriendyForegroundRuntime({
   };
 }
 
+/** Selects console or Spectrum prompt delivery from env and sensor mode. */
 export async function createRuntimePromptSender({
   env = process.env,
   sensorMode,
@@ -183,6 +202,7 @@ function resolveSensorLaunchConfig({
   };
 }
 
+/** CLI entrypoint for `npm run agent:friendy`. */
 export async function main(): Promise<void> {
   loadFriendyEnv();
   const started = await startFriendyForegroundRuntime();

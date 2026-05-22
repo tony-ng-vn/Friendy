@@ -1,3 +1,18 @@
+/**
+ * Friendy macOS sensor runtime orchestrator.
+ *
+ * Consumes validated NDJSON events, writes candidates and calendar context into
+ * the relationship repository, and sends deterministic prompts. Key protocols:
+ *
+ * - Idempotency: events with an `idempotencyKey` are processed once; duplicate
+ *   `contact_added` events may retry prompt delivery for pending candidates only.
+ * - Ack: `history_batch_complete` writes an ack file only after every listed
+ *   contact event has been recorded in runtime state.
+ * - Warning cooldown: owner warnings fire at most three times with a 24-hour gap
+ *   between notifications for the same warning code.
+ * - Privacy: contact methods are mapped to hashed values and redacted hints
+ *   before entering repository types; raw phone/email never leave the sensor.
+ */
 import type { RelationshipRepository } from "../repository";
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
@@ -9,10 +24,12 @@ export type RuntimePromptSendResult = {
   spaceId?: string;
 };
 
+/** Transport hook used to deliver candidate prompts and owner warnings. */
 export type RuntimePromptSender = {
   sendPrompt(input: { userId: string; candidateId?: string; text: string }): Promise<RuntimePromptSendResult> | RuntimePromptSendResult;
 };
 
+/** Writes sensor history-batch ack files so the native sensor can advance its outbox. */
 export type RuntimeAckWriter = {
   writeAck(path: string): Promise<void> | void;
 };
@@ -23,6 +40,7 @@ export type RuntimeLogger = {
   error(message: string): void;
 };
 
+/** Audit record for a processed sensor event; backs idempotent ingestion. */
 export type ProcessedSensorEvent = {
   idempotencyKey: string;
   sensorEventId?: string;
@@ -59,6 +77,7 @@ export type RuntimeSensorState = {
   updatedAt: string;
 };
 
+/** Durable store for processed events, per-device sensor state, and warning cooldowns. */
 export type RuntimeStateStore = {
   getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined;
   getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined;
@@ -102,6 +121,7 @@ type FriendySensorRuntimeContext = Omit<FriendySensorRuntimeInput, "logger" | "n
   now: () => string;
 };
 
+/** Creates the runtime line processor wired to repository, state, prompts, and acks. */
 export function createFriendySensorRuntime({
   userId,
   repo,
@@ -128,6 +148,7 @@ export function createFriendySensorRuntime({
   };
 }
 
+/** In-memory `RuntimeStateStore` for tests and local smoke checks. */
 export function createInMemoryRuntimeStateStore(): RuntimeStateStore {
   const processedByIdempotencyKey = new Map<string, ProcessedSensorEvent>();
   const processedBySensorEventId = new Map<string, ProcessedSensorEvent>();

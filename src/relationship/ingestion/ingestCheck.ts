@@ -1,3 +1,8 @@
+/**
+ * Deterministic fixture ingestion check for `npm run ingest:check`.
+ *
+ * Uses fixture snapshots and calendar events only; never reads real macOS Contacts or calendars.
+ */
 import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";

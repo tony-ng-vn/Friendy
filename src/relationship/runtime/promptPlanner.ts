@@ -1,5 +1,14 @@
+/**
+ * Deterministic iMessage prompt planner for newly detected contacts.
+ *
+ * Routing thresholds (see constants below):
+ * - `single`: top score >= 60 and lead over second place > 15
+ * - `disambiguate`: two or more events >= 45
+ * - `none`: no confident calendar match; ask an open-ended "where did you meet?" prompt
+ */
 import type { ScoredCalendarEvent } from "./calendarScorer";
 
+/** Prompt route and user-facing text for a contact candidate. */
 export type CandidatePromptPlan =
   | { route: "none"; text: string }
   | { route: "single"; eventMatchRank: 1; text: string }
@@ -10,11 +19,19 @@ export type PlanCandidatePromptInput = {
   scoredEvents: ScoredCalendarEvent[];
 };
 
+/** Minimum top score to assert a single calendar match in the prompt. */
 const SINGLE_EVENT_MIN_SCORE = 60;
+/** Minimum score gap between first and second place required for the single route. */
 const SINGLE_EVENT_GAP = 15;
+/** Minimum score to include an event in disambiguation options or stay in contention. */
 const DISAMBIGUATION_MIN_SCORE = 45;
 
-/** Builds the deterministic iMessage prompt for a newly detected contact candidate. */
+/**
+ * Builds the deterministic iMessage prompt for a newly detected contact candidate.
+ *
+ * Chooses `single`, `disambiguate`, or `none` from scored calendar context only;
+ * the LLM does not participate in this routing.
+ */
 export function planCandidatePrompt({ displayName, scoredEvents }: PlanCandidatePromptInput): CandidatePromptPlan {
   const [top, second] = scoredEvents;
 

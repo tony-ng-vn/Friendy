@@ -1,10 +1,14 @@
+// CLI for `friendy-macos-sensor`: `--state-dir` for live monitoring or `--emit-fixture` for contract smoke lines.
+
 import Foundation
 
+/// Parsed flags for state directory and optional fixture emission.
 struct SensorCLIOptions {
     let stateDir: String
     let emitFixture: String?
 }
 
+/// Entry: validates args, ensures state dir exists, then runs native sensor or prints fixture NDJSON.
 func runSensorCLI(arguments: [String]) {
     let identity = SensorIdentity.current()
 

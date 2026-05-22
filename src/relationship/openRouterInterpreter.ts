@@ -1,3 +1,11 @@
+/**
+ * OpenRouter structured-output interpreter with deterministic fallback.
+ *
+ * Callers: interpretedAgent.ts and tests that stub the HTTP client.
+ *
+ * Fallback chain: no API key uses rule-based immediately; otherwise two model attempts then
+ * rule-based with the last error kept for interaction logs. Temperature 0 keeps JSON stable.
+ */
 import {
   messageInterpretationJsonSchema,
   type MessageInterpretation,
@@ -5,24 +13,29 @@ import {
 } from "./interpretation";
 import type { InboundAgentMessage } from "./types";
 
+/** Default free-tier model when `OPENROUTER_MODEL` is unset. */
 export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
+/** Retry budget before falling back to the rule-based interpreter. */
 const MAX_MODEL_ATTEMPTS = 2;
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
+/** Resolved OpenRouter credentials and model id from environment. */
 export type OpenRouterConfig = {
   apiKey: string;
   model: string;
 };
 
+/** Interpreter output including model attribution and optional upstream error text. */
 export type MessageInterpreterResult = {
   interpretation: MessageInterpretation;
   modelUsed: string;
   error: string;
 };
 
+/** Contract for turning inbound agent text into validated {@link MessageInterpretation} JSON. */
 export type MessageInterpreter = {
   interpret(message: InboundAgentMessage): Promise<MessageInterpreterResult>;
 };
@@ -30,7 +43,9 @@ export type MessageInterpreter = {
 type OpenRouterInterpreterOptions = {
   apiKey: string;
   model: string;
+  /** Injectable HTTP client for tests; defaults to global fetch. */
   fetchImpl?: FetchLike;
+  /** Rule-based interpreter used when the API key is missing or model calls fail. */
   fallback?: MessageInterpreter;
 };
 
@@ -114,6 +129,7 @@ async function callOpenRouter({
     },
     body: JSON.stringify({
       model,
+      // Zero temperature keeps structured JSON classification stable across retries and eval replay.
       temperature: 0,
       provider: { require_parameters: true },
       response_format: {

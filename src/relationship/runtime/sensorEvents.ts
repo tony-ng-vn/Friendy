@@ -1,6 +1,18 @@
+/**
+ * Zod contract for macOS sensor NDJSON events.
+ *
+ * Field names and event shapes mirror the Swift emitter in
+ * `swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor/SensorEvents.swift` so
+ * TypeScript and the native sensor stay in parity without a shared codegen step.
+ *
+ * Privacy: contact payloads carry hashed methods and redacted hints only. Raw
+ * phone numbers and email addresses are rejected before Zod parsing.
+ */
 import { z } from "zod";
 
+/** Stable sensor identifier shared with the Swift emitter. */
 export const MACOS_SENSOR_NAME = "macos_contacts_calendar";
+/** Schema version enforced on every NDJSON line before type-specific parsing. */
 export const MACOS_SENSOR_SCHEMA_VERSION = 1;
 
 const permissionStatusSchema = z.enum(["authorized", "denied", "restricted", "notDetermined", "unavailable"]);
@@ -119,11 +131,19 @@ const sensorEventSchema = z.discriminatedUnion("type", [
 ]);
 
 export type MacosPermissionStatus = z.infer<typeof permissionStatusSchema>;
+/** Contact payload with hashed methods and redacted hints; never raw phone/email strings. */
 export type MacosContactPayload = z.infer<typeof contactSchema>;
 export type MacosCalendarMatch = z.infer<typeof calendarMatchSchema>;
+/** Discriminated union of all macOS sensor NDJSON event types. */
 export type MacosSensorEvent = z.infer<typeof sensorEventSchema>;
 export type MacosContactAddedEvent = Extract<MacosSensorEvent, { type: "contact_added" }>;
 
+/**
+ * Parses one NDJSON line from the macOS sensor stdout stream.
+ *
+ * Validates common contract fields, rejects forbidden raw contact method keys,
+ * then runs the full Zod schema for the event `type`.
+ */
 export function parseSensorEventLine(line: string): MacosSensorEvent {
   const parsed = parseJsonObject(line);
   assertCommonContract(parsed);
@@ -162,6 +182,7 @@ function assertCommonContract(payload: Record<string, unknown>): void {
   }
 }
 
+/** Rejects Swift regressions that leak raw phone/email fields before Zod runs. */
 function assertNoRawContactMethods(payload: Record<string, unknown>): void {
   if (payload.type !== "contact_added" || !isRecord(payload.contact)) {
     return;

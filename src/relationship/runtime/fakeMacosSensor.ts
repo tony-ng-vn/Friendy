@@ -1,3 +1,10 @@
+/**
+ * Fake macOS sensor that prints contract-valid NDJSON to stdout.
+ *
+ * Used when `FRIENDY_SENSOR_MOCK=1` so local development and CI can exercise the
+ * runtime without Contacts, Calendar, or a compiled Swift binary. Set
+ * `FRIENDY_SENSOR_MOCK_EVENT=contact_added` to emit a full contact batch fixture.
+ */
 import { MACOS_SENSOR_NAME, MACOS_SENSOR_SCHEMA_VERSION } from "./sensorEvents";
 
 export type FakeSensorMode = "ready" | "contact_added";
@@ -7,10 +14,12 @@ type FakeSensorEvent = Record<string, unknown> & {
   sensorName: string;
 };
 
+/** Chooses whether the fake sensor emits only `ready` or a full `contact_added` batch. */
 export function resolveFakeSensorMode(env: Partial<NodeJS.ProcessEnv> = process.env): FakeSensorMode {
   return env.FRIENDY_SENSOR_MOCK_EVENT === "contact_added" ? "contact_added" : "ready";
 }
 
+/** Builds deterministic mock sensor events that satisfy the Zod contract in `sensorEvents.ts`. */
 export function createFakeMacosSensorEvents({
   mode = "ready",
   now = new Date().toISOString()

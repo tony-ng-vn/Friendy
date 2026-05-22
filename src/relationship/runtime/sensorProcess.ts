@@ -1,3 +1,10 @@
+/**
+ * Child-process bridge for macOS sensor NDJSON stdout.
+ *
+ * Stdout is buffered into lines and fed to the runtime sequentially: each line
+ * waits for the previous `processLine` promise to settle before the next runs.
+ * This preserves event ordering and avoids concurrent writes to SQLite state.
+ */
 import { spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
@@ -28,7 +35,12 @@ export type StartedSensorProcess = {
   child: SensorChildProcess;
 };
 
-/** Starts a macOS sensor child process and streams NDJSON stdout into Friendy's runtime. */
+/**
+ * Starts a macOS sensor child process and streams NDJSON stdout into Friendy's runtime.
+ *
+ * Lines are trimmed, empty lines are skipped, and stderr is logged without blocking
+ * stdout processing.
+ */
 export function startSensorProcess({
   launch,
   runtime,

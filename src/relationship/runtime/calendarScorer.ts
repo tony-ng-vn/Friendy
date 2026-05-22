@@ -1,3 +1,11 @@
+/**
+ * Heuristic calendar scorer for macOS sensor `contact_added` events.
+ *
+ * Raw EventKit snapshots are filtered and ranked with additive weights (overlap,
+ * social title, location, attendees, duration) and penalties (logistics, work
+ * blocks, all-day, long events). Only events above `MIN_SURVIVING_SCORE` survive;
+ * the top three deduplicated matches feed `promptPlanner`.
+ */
 import type { MacosCalendarMatch } from "./sensorEvents";
 
 export type ScoredCalendarEvent = {
@@ -50,11 +58,19 @@ const WORK_BLOCK_TERMS = ["focus", "deep work", "heads down", "work block"];
 const NOISE_CALENDAR_TERMS = ["holidays", "holiday", "birthday", "birthdays", "weather", "sports"];
 const GENERIC_AVAILABILITY_TITLES = new Set(["busy", "hold", "blocked", "ooo"]);
 
+/** Minimum score required to keep an event in the ranked shortlist. */
 const MIN_SURVIVING_SCORE = 35;
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
-/** Scores raw EventKit snapshots for product-safe Friendy prompt routing. */
+/**
+ * Scores raw EventKit snapshots for product-safe Friendy prompt routing.
+ *
+ * Weight highlights: +40 overlap with detection time, +25 strong social title,
+ * +15 location, +10 attendees, +10 social-length duration; penalties include
+ * -35 logistics titles, -25 work blocks, -30 all-day, and -15 when there is
+ * no location or attendee signal.
+ */
 export function scoreCalendarContext({ detectedAt, calendarMatches }: ScoreCalendarContextInput): ScoredCalendarEvent[] {
   const detectedAtMs = new Date(detectedAt).getTime();
   const scored = calendarMatches

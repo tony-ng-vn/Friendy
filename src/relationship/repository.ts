@@ -1,3 +1,15 @@
+/**
+ * In-memory relationship persistence boundary for the MVP agent loop.
+ *
+ * Callers: `createRuntimeRelationshipRepository` (default store), tests, and eval fixtures.
+ * Production SQLite persistence lives in `sqliteRepository.ts` but must honor this interface.
+ *
+ * Invariants:
+ * - One `RelationshipMemory` per confirmed candidate (`assertCandidateHasNoMemory`).
+ * - Memories require a confirmed candidate (`assertMemoryHasConfirmedCandidate`).
+ * - Pending/prompted candidates expire after {@link CANDIDATE_EXPIRATION_DAYS} so stale contact
+ *   prompts do not linger indefinitely.
+ */
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 import type {
   CalendarEvent,
@@ -11,6 +23,7 @@ import type {
   User
 } from "./types";
 
+/** Optional bootstrap data for tests and local fixtures. */
 export type RepositorySeed = {
   users?: User[];
   calendarEvents?: CalendarEvent[];
@@ -21,19 +34,32 @@ export type RepositorySeed = {
   interactions?: AgentInteraction[];
 };
 
+/** Optional overrides when confirming a detected contact into a durable memory. */
 export type ConfirmCandidateOptions = {
   eventTitle?: string;
   relationshipContext?: string;
   dateContext?: RelationshipDateContext;
 };
 
+/** Links a proactive review prompt to the Spectrum space that received it. */
 export type MarkCandidatePromptedOptions = {
   spaceId?: string;
   promptedAt?: string;
 };
 
+/**
+ * Pending candidates older than this are auto-expired on read.
+ *
+ * Two weeks balances giving the user time to reply in iMessage against not keeping ambiguous
+ * contact prompts in the review queue forever.
+ */
 const CANDIDATE_EXPIRATION_DAYS = 14;
 
+/**
+ * Persistence contract for calendar context, contact candidates, memories, and agent interactions.
+ *
+ * Implementations must preserve candidate lifecycle ordering and the one-memory-per-candidate rule.
+ */
 export type RelationshipRepository = {
   listCalendarEvents(userId: string): CalendarEvent[];
   addCalendarEvents(events: CalendarEvent[]): CalendarEvent[];
@@ -269,10 +295,16 @@ function assertCandidateHasNoMemory(memory: RelationshipMemory, memories: Relati
   }
 }
 
+/** Computes the ISO expiry timestamp from a contact detection time. */
 export function calculateCandidateExpiresAt(detectedAt: string): string {
   return new Date(Date.parse(detectedAt) + CANDIDATE_EXPIRATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
+/**
+ * Mutates reviewable candidates to `expired` when past {@link CANDIDATE_EXPIRATION_DAYS}.
+ *
+ * Called lazily on read so callers do not need a background sweeper in the MVP store.
+ */
 export function expireCandidateIfStale(candidate: ContactCandidate, now = new Date()): ContactCandidate {
   if (
     isReviewableCandidateStatus(candidate.status) &&

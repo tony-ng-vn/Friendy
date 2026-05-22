@@ -1,5 +1,13 @@
+/**
+ * Legacy Vite demo fixtures.
+ *
+ * Production fixtures and test data live under `src/relationship/`. Domain types are
+ * in `src/relationship/types.ts`; agent behavior is in `src/relationship/agentCore.ts`
+ * and `src/relationship/interpretedAgent.ts`.
+ */
 import type { CalendarEvent, CandidateConnection, User } from "./types";
 
+/** Demo user that owns the seeded calendar event and contact delta. */
 export const fixtureUser: User = {
   id: "user_thien",
   name: "Thien",
@@ -7,6 +15,7 @@ export const fixtureUser: User = {
   createdAt: "2026-05-19T09:00:00.000Z"
 };
 
+/** Calendar event used to bootstrap the demo memory session. */
 export const fixtureCalendarEvent: CalendarEvent = {
   id: "event_photon_dinner",
   userId: fixtureUser.id,
@@ -17,6 +26,7 @@ export const fixtureCalendarEvent: CalendarEvent = {
   source: "mock_calendar"
 };
 
+/** Mock contact deltas loaded after the user approves event tracking. */
 export const fixtureContactDelta: CandidateConnection[] = [
   {
     id: "candidate_maya",

@@ -1,3 +1,11 @@
+/**
+ * LLM-interpreted relationship agent with interaction logging.
+ *
+ * Callers: production transports and eval harnesses.
+ *
+ * Wraps {@link createInterpretedRelationshipAgent} — see that factory for carryover,
+ * MIN_CAPTURE_CONFIDENCE, and AgentInteraction persistence details.
+ */
 import { createHash } from "node:crypto";
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import { isConfirmationReply } from "./candidateConfirmation";
@@ -21,6 +29,7 @@ import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMess
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type CandidateIntake = ReturnType<typeof createCandidateIntake>;
 
+/** Injectable dependencies for the interpreted agent, including optional clock and timezone. */
 type InterpretedRelationshipAgentOptions = {
   repo: RelationshipRepository;
   tools: RelationshipTools;
@@ -29,23 +38,36 @@ type InterpretedRelationshipAgentOptions = {
   timezone?: string;
 };
 
+/** Agent result plus the persisted interaction row for this turn. */
 type InterpretedAgentResult = AgentCoreResult & {
   interaction: AgentInteraction;
 };
 
+/**
+ * Per-user conversation state for multi-turn capture without re-asking event/date context.
+ *
+ * Retains the last 10 people names so "also met Sam" can inherit the active event.
+ */
 type ConversationContext = {
   activeEventName?: string;
   activeDateContext?: TemporalContext;
   recentPeople: string[];
 };
 
+/**
+ * Minimum interpreter confidence required before `capture_memory` writes a memory.
+ *
+ * Below this threshold the agent asks for clarification rather than saving a guess.
+ */
 const MIN_CAPTURE_CONFIDENCE = 0.5;
 
 /**
  * Creates the LLM-interpreted relationship agent.
  *
- * The interpreter can classify messy text, but deterministic tools remain the only layer that
- * creates, ignores, or searches memories. This keeps model mistakes observable and reversible.
+ * The interpreter classifies messy text; deterministic tools create, ignore, or search memories.
+ * Conversation carryover merges recent event/date when the user says "also" or names a recent
+ * person. Captures below {@link MIN_CAPTURE_CONFIDENCE} ask for clarification instead of writing.
+ * Every turn persists an {@link AgentInteraction} for debugging and eval replay.
  */
 export function createInterpretedRelationshipAgent({
   repo,
@@ -354,6 +376,11 @@ function buildMemoryNote(
   return details.map((detail) => detail.trim()).filter(Boolean).join(" | ");
 }
 
+/**
+ * Carries active event/date and recent people across turns for multi-message capture flows.
+ *
+ * Only applied to `capture_memory` when the user says "also" or names someone saved recently.
+ */
 function enrichInterpretationWithContext(
   interpretation: MessageInterpretation,
   context: ConversationContext,

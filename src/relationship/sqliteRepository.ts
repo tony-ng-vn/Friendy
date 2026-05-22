@@ -1,3 +1,15 @@
+/**
+ * SQLite-backed relationship and sensor-runtime persistence.
+ *
+ * Callers: `createRuntimeRelationshipRepository` when `FRIENDY_RUNTIME_STORE=sqlite`, local
+ * macOS sensor runtime, and integration tests that need durable state across restarts.
+ *
+ * Design choices:
+ * - WAL plus busy_timeout lets the sensor process and agent loop share one file.
+ * - raw_json columns keep indexed columns queryable while JSON remains the round-trip source.
+ * - SQL triggers enforce one-memory-per-confirmed-candidate if TypeScript guards are bypassed.
+ * - Runtime tables colocate relationship memory with sensor idempotency in one file.
+ */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -28,16 +40,19 @@ import type {
   User
 } from "./types";
 
+/** Connection options for a file-backed relationship repository. */
 export type SqliteRelationshipRepositoryOptions = {
   path: string;
   seed?: RepositorySeed;
   busyTimeoutMs?: number;
 };
 
+/** SQLite implementation of {@link RelationshipRepository} with an explicit close hook. */
 export type SqliteRelationshipRepository = RelationshipRepository & {
   close(): void;
 };
 
+/** SQLite implementation of sensor-runtime idempotency and warning deduplication state. */
 export type SqliteRuntimeStateStore = RuntimeStateStore & {
   close(): void;
 };
@@ -54,6 +69,7 @@ type InsertOrderedTable =
   | "memories"
   | "interactions";
 
+/** Retryable lock error surfaced when SQLite returns `SQLITE_BUSY` under concurrent access. */
 export class SqliteRepositoryBusyError extends Error {
   readonly code = "SQLITE_BUSY";
   readonly retryable = true;
@@ -66,6 +82,12 @@ export class SqliteRepositoryBusyError extends Error {
   }
 }
 
+/**
+ * Creates a durable {@link RelationshipRepository} backed by a single SQLite file.
+ *
+ * Multi-step writes (confirm candidate + insert memory, create candidate + event matches) run
+ * inside `BEGIN IMMEDIATE` transactions so partial state cannot leak on crash.
+ */
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
   const seed = options.seed;
   const db = openSqliteRuntimeDatabase(options.path, { busyTimeoutMs: options.busyTimeoutMs });
@@ -314,6 +336,14 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
   };
 }
 
+/**
+ * Opens (or creates) the shared Friendy runtime database with production-oriented pragmas.
+ *
+ * - `journal_mode=WAL`: readers do not block writers — required when sensors write while the
+ *   agent reads pending candidates.
+ * - `synchronous=NORMAL`: safe with WAL while avoiding full fsync on every row for local MVP.
+ * - `busy_timeout`: converts lock contention into waits instead of immediate failures.
+ */
 export function openSqliteRuntimeDatabase(
   path: string,
   options: { busyTimeoutMs?: number } = {}
@@ -340,6 +370,7 @@ export function openSqliteRuntimeDatabase(
   }
 }
 
+/** Creates the sensor-runtime store using the same schema file as relationship data. */
 export function createSqliteRuntimeStateStore({ path }: { path: string }): SqliteRuntimeStateStore {
   const db = openSqliteRuntimeDatabase(path);
 
@@ -622,6 +653,9 @@ function setupSchema(db: DatabaseSync): void {
       ON memories(candidate_id)
       WHERE candidate_id IS NOT NULL;
 
+    -- Belt-and-suspenders guard: memories must point at a confirmed candidate for the same user.
+    -- The app layer also checks this, but the trigger prevents duplicate or premature inserts if
+    -- a future tool bypasses TypeScript helpers.
     CREATE TRIGGER IF NOT EXISTS memory_requires_confirmed_candidate
     BEFORE INSERT ON memories
     FOR EACH ROW

@@ -1,3 +1,4 @@
+/** CLI for `npm run ingest:contacts:smoke -- --name Friendy-<number>`. Exits 0 on success, 1 on failure. */
 import { runContactsSmoke } from "./contactsSmoke";
 
 const result = runContactsSmoke({ argv: process.argv.slice(2) });

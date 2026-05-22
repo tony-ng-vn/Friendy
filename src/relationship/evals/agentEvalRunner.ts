@@ -1,3 +1,7 @@
+/**
+ * Trajectory-level relationship-agent evals.
+ * Assertions check repository state, tool calls, and bounded reply substrings — not exact user-facing prose.
+ */
 import { createRelationshipAgent } from "../agentCore";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
@@ -83,6 +87,7 @@ type ExecutableEvalCase = RelationshipAgentEvalCase & {
 
 const timezone = "America/Los_Angeles";
 
+/** Catalog of eval case ids, modes, and assertion names (implementations live in `executableEvalCases`). */
 export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("clear-event-contact-confirmation", "deterministic", [
     "uses confirm tool for queued contact",
@@ -527,6 +532,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
   }
 ];
 
+/** Runs all executable eval cases and optional repeated model-backed samples. */
 export async function runRelationshipAgentEvals(options: RunOptions = {}): Promise<RelationshipAgentEvalSummary> {
   const now = options.now ?? (() => "2026-05-20T12:00:00.000Z");
   const interpreter = options.interpreter ?? createRuleBasedInterpreter();
@@ -536,14 +542,17 @@ export async function runRelationshipAgentEvals(options: RunOptions = {}): Promi
   return summarizeResults(results, optionalModelBacked);
 }
 
+/** Non-zero when any required eval case failed. */
 export function getEvalExitCode(summary: Pick<RelationshipAgentEvalSummary, "requiredFailed">): number {
   return summary.requiredFailed > 0 ? 1 : 0;
 }
 
+/** True when OpenRouter is configured and `FRIENDY_EVAL_RUN_MODEL=1`. */
 export function shouldRunModelBackedEvals(env: Partial<NodeJS.ProcessEnv>): boolean {
   return Boolean(env.OPENROUTER_API_KEY?.trim() && env.FRIENDY_EVAL_RUN_MODEL === "1");
 }
 
+/** Human-readable PASS/FAIL report for `npm run eval:agent`. */
 export function formatEvalSummary(summary: RelationshipAgentEvalSummary): string {
   const lines = [
     "Friendy relationship-agent evals",

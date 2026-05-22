@@ -1,5 +1,13 @@
+/**
+ * Legacy Vite demo in-memory state transitions.
+ *
+ * Production persistence and repository boundaries live in `src/relationship/`.
+ * See `src/relationship/types.ts` for domain types and `src/relationship/agentCore.ts`
+ * / `src/relationship/interpretedAgent.ts` for agent routing.
+ */
 import type { CalendarEvent, CandidateConnection, MemorySession, RelationshipMemory, User } from "./types";
 
+/** In-browser demo state: user, events, sessions, candidates, and saved memories. */
 export type MemoryState = {
   user: User;
   calendarEvents: CalendarEvent[];
@@ -10,6 +18,7 @@ export type MemoryState = {
 
 const STOP_WORDS = new Set(["about", "with", "from", "that", "this", "there", "their", "should", "up"]);
 
+/** Seeds demo state from a user and calendar event with a suggested session. */
 export function createInitialState(user: User, calendarEvent: CalendarEvent): MemoryState {
   return {
     user,
@@ -31,6 +40,7 @@ export function createInitialState(user: User, calendarEvent: CalendarEvent): Me
   };
 }
 
+/** Marks the session for the given calendar event as active after user approval. */
 export function approveSession(state: MemoryState, calendarEventId: string): MemoryState {
   return {
     ...state,
@@ -40,6 +50,7 @@ export function approveSession(state: MemoryState, calendarEventId: string): Mem
   };
 }
 
+/** Attaches contact deltas to the active session and moves it to review_ready. */
 export function loadContactDelta(state: MemoryState, candidates: CandidateConnection[]): MemoryState {
   const activeSession = state.sessions.find((session) => session.status === "active");
   if (!activeSession) {
@@ -59,6 +70,7 @@ export function loadContactDelta(state: MemoryState, candidates: CandidateConnec
   };
 }
 
+/** Confirms a candidate, saves a relationship memory, and extracts search tags. */
 export function confirmCandidate(state: MemoryState, candidateId: string, contextNote: string): MemoryState {
   const candidate = state.candidates.find((item) => item.id === candidateId);
   if (!candidate) {
@@ -89,6 +101,7 @@ export function confirmCandidate(state: MemoryState, candidateId: string, contex
   };
 }
 
+/** Marks a pending candidate as ignored without creating a memory. */
 export function ignoreCandidate(state: MemoryState, candidateId: string): MemoryState {
   return {
     ...state,
@@ -98,6 +111,7 @@ export function ignoreCandidate(state: MemoryState, candidateId: string): Memory
   };
 }
 
+/** Derives lowercase search tokens from free-text context, dropping common stop words. */
 export function extractTags(text: string): string[] {
   const tokens = text
     .toLowerCase()

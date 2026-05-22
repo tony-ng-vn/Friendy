@@ -1,3 +1,10 @@
+/**
+ * Pre-flight diagnostics for the compiled macOS sensor binary.
+ *
+ * Checks Swift toolchain presence, required source files, TCC Info.plist and
+ * entitlement packaging, binary existence, and codesign output on macOS hosts.
+ * Does not read Contacts or Calendar.
+ */
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,6 +22,7 @@ export type MacosSensorDoctorReport = {
   lines: string[];
 };
 
+/** Runs macOS sensor doctor checks and returns a human-readable report. */
 export function runMacosSensorDoctor({
   cwd = process.cwd(),
   env = process.env,

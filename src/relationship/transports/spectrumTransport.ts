@@ -1,3 +1,10 @@
+/**
+ * Spectrum/iMessage transport for the relationship agent.
+ *
+ * Transports adapt external channels into `InboundAgentMessage` and must stay thin: normalize
+ * inbound text, call the agent, send replies, and log compact traces. Product decisions stay in
+ * the agent core and deterministic tools.
+ */
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
@@ -16,7 +23,7 @@ import type { AgentInteraction, InboundAgentMessage } from "../types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
-/** Small transport input shape so Spectrum specifics do not leak into the agent core. */
+/** Minimal Spectrum event shape before conversion to `InboundAgentMessage`. */
 export type SpectrumInboundInput = {
   interactionId?: string;
   userId?: string;
@@ -25,6 +32,7 @@ export type SpectrumInboundInput = {
   receivedAt: string;
 };
 
+/** Dependencies injectable for tests and fixture runs of the Spectrum runtime. */
 export type SpectrumRuntimeOptions = {
   interpreter: MessageInterpreter;
   now?: () => string;
@@ -33,6 +41,7 @@ export type SpectrumRuntimeOptions = {
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
+/** Options for starting the live Spectrum message loop. */
 export type StartSpectrumFriendyAgentOptions = {
   interpreter?: MessageInterpreter;
   now?: () => string;
@@ -41,6 +50,7 @@ export type StartSpectrumFriendyAgentOptions = {
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
+/** Compact backend trace emitted after each handled inbound message. */
 export type CompactInteractionLog = {
   interactionId: string;
   userId: string;

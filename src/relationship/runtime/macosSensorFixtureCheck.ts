@@ -1,3 +1,10 @@
+/**
+ * Integration check for the compiled macOS sensor fixture emitter.
+ *
+ * Runs `friendy-macos-sensor --emit-fixture contact_batch`, validates NDJSON event
+ * ordering and schema parity via `parseSensorEventLine`, and confirms contact methods
+ * are redacted to hashes and hints. Skips gracefully on non-macOS hosts without a binary.
+ */
 import { execFileSync as nodeExecFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +29,7 @@ export type MacosSensorFixtureCheckReport = {
   lines: string[];
 };
 
+/** Executes the compiled sensor fixture check and returns structured pass/skip/fail output. */
 export function runMacosSensorFixtureCheck({
   cwd = process.cwd(),
   env = process.env,

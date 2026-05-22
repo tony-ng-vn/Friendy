@@ -1,3 +1,12 @@
+/**
+ * Legacy Vite demo domain types.
+ *
+ * Production relationship types live in `src/relationship/types.ts`.
+ * Agent routing and interpretation live in `src/relationship/agentCore.ts` and
+ * `src/relationship/interpretedAgent.ts`.
+ */
+
+/** Demo user record scoped to the in-browser mock store. */
 export type User = {
   id: string;
   name: string;
@@ -5,6 +14,7 @@ export type User = {
   createdAt: string;
 };
 
+/** Calendar event that seeds a memory session in the demo flow. */
 export type CalendarEvent = {
   id: string;
   userId: string;
@@ -15,6 +25,7 @@ export type CalendarEvent = {
   source: "mock_calendar" | "native_calendar";
 };
 
+/** Tracks an approved event window from suggestion through candidate review. */
 export type MemorySession = {
   id: string;
   userId: string;
@@ -26,6 +37,7 @@ export type MemorySession = {
   createdAt: string;
 };
 
+/** New contact detected after an event window; pending user confirmation. */
 export type CandidateConnection = {
   id: string;
   userId: string;
@@ -38,6 +50,7 @@ export type CandidateConnection = {
   status: "pending" | "confirmed" | "ignored";
 };
 
+/** Confirmed relationship memory saved from a candidate and context note. */
 export type RelationshipMemory = {
   id: string;
   userId: string;
@@ -51,6 +64,7 @@ export type RelationshipMemory = {
   confirmedAt: string;
 };
 
+/** Logged chat turn in the demo UI; not persisted beyond the session. */
 export type AgentInteraction = {
   id: string;
   userId: string;

@@ -1,3 +1,10 @@
+/**
+ * CLI entry point for explicit macOS Contacts/Calendar local checks.
+ *
+ * Real provider reads happen only when invoked via `npm run ingest:local:check` without `--mock`.
+ * The first run writes a baseline snapshot file; subsequent runs diff against it. Set
+ * `FRIENDY_LOCAL_CHECK_SEND=1` to deliver review prompts over iMessage.
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { dirname, resolve } from "node:path";
@@ -53,6 +60,7 @@ async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
   const capturedAt = new Date().toISOString();
   const after = readMacContactsSnapshot({ userId: args.userId, capturedAt });
   if (!existsSync(args.stateFile)) {
+    // Baseline file seeds the before snapshot for the next explicit CLI run.
     writeSnapshot(args.stateFile, after);
     return {
       candidates: [],
@@ -93,6 +101,7 @@ function createAppleCalendarProvider(userId: string, nowIso: string): CalendarEv
 }
 
 async function maybeCreateLiveSender(env: NodeJS.ProcessEnv): Promise<LocalPromptSender | undefined> {
+  // FRIENDY_LOCAL_CHECK_SEND gates real Spectrum/iMessage delivery off by default.
   if (env.FRIENDY_LOCAL_CHECK_SEND !== "1") {
     return undefined;
   }

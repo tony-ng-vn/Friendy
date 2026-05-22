@@ -1,5 +1,13 @@
+/**
+ * Deterministic parsing for pending-contact consent replies and event correction.
+ *
+ * Consent actions bypass the LLM: approval, ignore routing, numbered event picks, and
+ * conservative title matching feed `confirm_candidate` tool inputs. Callers: `agentCore`,
+ * `interpretedAgent`, scope boundary heuristics. See docs/ai-system-architecture.md.
+ */
 import type { EventContextMatch } from "./types";
 
+/** Structured fields extracted from a confirmation reply for memory creation. */
 export type CandidateConfirmationResolution = {
   contextNote: string;
   relationshipContext?: string;
@@ -8,10 +16,12 @@ export type CandidateConfirmationResolution = {
 };
 
 /**
- * Detects lightweight approval replies before routing through search or manual capture.
+ * Detects lightweight approval replies before search or manual capture routing.
  *
- * This remains deterministic because pending-contact confirmation is a consent action; the agent
- * should not need an LLM to decide that a direct "yes" is approving the queued candidate.
+ * Consent must stay deterministic — a direct "yes" or "1" approves the queued candidate
+ * without model judgment.
+ *
+ * @param value - Raw inbound user text
  */
 export function isConfirmationReply(value: string): boolean {
   const normalized = value.trim().toLowerCase();
@@ -27,10 +37,13 @@ export function isConfirmationReply(value: string): boolean {
 }
 
 /**
- * Converts a natural confirmation into the event correction and note used for memory creation.
+ * Converts a natural confirmation into event correction and note fields for memory creation.
  *
- * Event correction is intentionally conservative: exact event-title matches win before substring
- * matches so "Photon Residency" does not accidentally keep the more specific dinner guess.
+ * Resolution order: numbered option → named option ("dinner one") → free-text event correction.
+ * Exact event-title matches win before substring matches to avoid keeping a overly specific guess.
+ *
+ * @param value - User confirmation text (may include yes-prefix and comma-separated note)
+ * @param eventMatches - Ranked calendar guesses from `mapCandidateToEvents`
  */
 export function resolveCandidateConfirmation(
   value: string,
@@ -133,6 +146,11 @@ function eventTitleMatchesDescriptor(eventTitle: string, descriptor: string): bo
   return descriptorTokens.length > 0 && descriptorTokens.every((token) => title.includes(token));
 }
 
+/**
+ * Strips leading yes/yep/yeah prefixes from confirmation text for note extraction.
+ *
+ * @returns Remaining note text, or `"met at event"` when nothing remains
+ */
 export function cleanConfirmationNote(value: string): string {
   return value.replace(/^(yes|yep|yeah)\s*,?\s*/i, "").trim() || "met at event";
 }

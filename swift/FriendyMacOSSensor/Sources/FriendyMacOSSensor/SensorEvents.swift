@@ -1,8 +1,14 @@
+// FriendyMacOSSensor — NDJSON event builders and stdout emission.
+// Schema parity: each printed line must validate against `src/relationship/runtime/sensorEvents.ts`
+// (`MACOS_SENSOR_SCHEMA_VERSION`, `MACOS_SENSOR_NAME`, discriminated `type`, no raw phone/email fields).
+
 import Foundation
 
+/// Sensor identifier shared with the TypeScript runtime (`macos_contacts_calendar`).
 let friendySensorName = "macos_contacts_calendar"
 let friendySensorVersion = "0.1.0"
 
+/// Per-run identity fields included on every emitted event.
 struct SensorIdentity {
     let runId: String
     let deviceId: String
@@ -15,6 +21,7 @@ struct SensorIdentity {
     }
 }
 
+/// Encodes one JSON object and prints a single NDJSON line to stdout (flushed immediately).
 func emitSensorEvent(_ event: [String: Any]) {
     guard JSONSerialization.isValidJSONObject(event),
           let data = try? JSONSerialization.data(withJSONObject: event, options: []),
@@ -27,6 +34,7 @@ func emitSensorEvent(_ event: [String: Any]) {
     fflush(stdout)
 }
 
+/// Common envelope: schemaVersion, eventId, type, sensorName, sensorVersion, runId, deviceId, emittedAt.
 func commonSensorEvent(_ type: String, identity: SensorIdentity, now: Date = Date()) -> [String: Any] {
     [
         "schemaVersion": 1,
@@ -105,6 +113,7 @@ func contactAddedFixtureEvent(identity: SensorIdentity) -> [String: Any] {
     )
 }
 
+/// `contact_added` payload; contact uses hashes/hints only (never raw phoneNumbers or emails).
 func contactAddedEvent(
     identity: SensorIdentity,
     eventId: String,

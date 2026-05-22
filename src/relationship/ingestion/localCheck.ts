@@ -1,3 +1,11 @@
+/**
+ * Explicit local contact/calendar check orchestration.
+ *
+ * Composes snapshot diffing, event matching, and optional prompt delivery for one-off CLI runs.
+ * Prompt wording comes from `buildCandidateReviewPrompt` here; the durable runtime sensor path
+ * uses `runtime/promptPlanner` instead. Neither path reads real macOS APIs unless the caller
+ * supplies live snapshots from `localCheckCli`.
+ */
 import { buildCandidateReviewPrompt } from "../agentCore";
 import { fixtureUser } from "../fixtures";
 import { createRelationshipRepository, type RelationshipRepository } from "../repository";
@@ -7,16 +15,19 @@ import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEventProvider } from "./ingestionPipeline";
 import { createFixtureCalendarEventProvider, ingestContactSnapshotDiff } from "./ingestionPipeline";
 
+/** Outbound review prompt payload for a queued contact candidate. */
 export type LocalPromptPayload = {
   userId: string;
   candidateId: string;
   text: string;
 };
 
+/** Injectable sender used when live prompt delivery is explicitly enabled. */
 export type LocalPromptSender = {
   sendPrompt(payload: LocalPromptPayload): Promise<void> | void;
 };
 
+/** Input for running one local check from before/after snapshots. */
 export type RunLocalContactCalendarCheckInput = {
   before: ContactSnapshot;
   after: ContactSnapshot;
@@ -26,19 +37,26 @@ export type RunLocalContactCalendarCheckInput = {
   env?: Partial<Pick<NodeJS.ProcessEnv, "FRIENDY_LOCAL_CHECK_SEND">>;
 };
 
+/** Queued candidates, event guesses, and narrated CLI output lines. */
 export type LocalContactCalendarCheckResult = {
   candidates: ContactCandidate[];
   eventMatchesByCandidate: Record<string, EventContextMatch[]>;
   lines: string[];
 };
 
+/** Deterministic before/after snapshots and calendar fixture for `--mock` runs. */
 export type MockLocalCheckScenario = {
   before: ContactSnapshot;
   after: ContactSnapshot;
   calendarProvider: CalendarEventProvider;
 };
 
-/** Runs one explicit local check from contact snapshots into Friendy's existing candidate queue. */
+/**
+ * Runs one explicit local check from contact snapshots into Friendy's existing candidate queue.
+ *
+ * Builds review prompts with `buildCandidateReviewPrompt`; the runtime sensor path uses
+ * `runtime/promptPlanner` for the same product wording contract.
+ */
 export async function runLocalContactCalendarCheck({
   before,
   after,
@@ -65,6 +83,7 @@ export async function runLocalContactCalendarCheck({
   ];
 
   if (env.FRIENDY_LOCAL_CHECK_SEND === "1" && sender) {
+    // Live iMessage delivery is opt-in; default runs stay dry and fixture-safe.
     for (const payload of promptPayloads) {
       await sender.sendPrompt(payload);
     }

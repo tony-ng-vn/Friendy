@@ -1,3 +1,9 @@
+/**
+ * Terminal transport harness for local smoke tests and fixture scripts.
+ *
+ * Transports normalize inbound messages and delegate to the relationship agent. They must not
+ * own memory parsing, search ranking, candidate intake, or other product logic.
+ */
 import { buildCandidateReviewPrompt, createRelationshipAgent } from "../agentCore";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createRelationshipRepository } from "../repository";
@@ -6,7 +12,11 @@ import type { AgentCoreResult } from "../types";
 
 type RelationshipAgent = ReturnType<typeof createRelationshipAgent>;
 
-/** Lightweight transport harness used for local fixtures and tests without Spectrum credentials. */
+/**
+ * Wraps a relationship agent so stdin/CLI text can be sent as terminal-platform messages.
+ *
+ * No Spectrum credentials or macOS APIs are required.
+ */
 export function createTerminalHarness(agent: RelationshipAgent, userId: string) {
   return {
     send(text: string): AgentCoreResult {

@@ -1,3 +1,4 @@
+/** CLI entry for `npm run eval:agent`; prints summary and sets exit code from required failures. */
 import { formatEvalSummary, getEvalExitCode, runRelationshipAgentEvals, shouldRunModelBackedEvals } from "./agentEvalRunner";
 
 const summary = await runRelationshipAgentEvals({

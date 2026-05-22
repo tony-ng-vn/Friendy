@@ -1,12 +1,20 @@
+/**
+ * Outbound Spectrum/iMessage prompt sender for the runtime and local-check flows.
+ *
+ * Sends pre-composed prompt text only; prompt wording and candidate selection belong to
+ * `promptPlanner` and ingestion, not this transport adapter.
+ */
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { readSpectrumCredentials } from "../env";
 import type { RuntimePromptSender } from "../runtime/friendyRuntime";
 
+/** Runtime prompt sender backed by a Spectrum iMessage space. */
 export type SpectrumPromptSender = RuntimePromptSender & {
   kind: "spectrum";
 };
 
+/** Injectable Spectrum iMessage client for tests and live wiring. */
 export type SpectrumImessageClient = {
   user(phoneNumber: string): Promise<unknown> | unknown;
   space(user: unknown): Promise<SpectrumPromptSpace> | SpectrumPromptSpace;
@@ -17,17 +25,20 @@ type SpectrumPromptSpace = {
   send(text: string): Promise<unknown> | unknown;
 };
 
+/** Input for constructing a testable Spectrum prompt sender. */
 export type CreateSpectrumPromptSenderInput = {
   toPhone: string;
   imessageClient: SpectrumImessageClient;
   now?: () => string;
 };
 
+/** Input for constructing a live Spectrum prompt sender from env credentials. */
 export type CreateLiveSpectrumPromptSenderInput = {
   env?: Partial<NodeJS.ProcessEnv>;
   now?: () => string;
 };
 
+/** Resolves the outbound iMessage recipient from `FRIENDY_PROMPT_TO_PHONE` or `FRIENDY_OWNER_PHONE`. */
 export function resolveSpectrumPromptRecipient(env: Partial<NodeJS.ProcessEnv>): string {
   const recipient = env.FRIENDY_PROMPT_TO_PHONE?.trim() || env.FRIENDY_OWNER_PHONE?.trim();
   if (!recipient) {
@@ -37,6 +48,7 @@ export function resolveSpectrumPromptRecipient(env: Partial<NodeJS.ProcessEnv>):
   return recipient;
 }
 
+/** Creates a reusable Spectrum prompt sender that lazily resolves the target iMessage space. */
 export function createSpectrumPromptSender({
   toPhone,
   imessageClient,
@@ -66,6 +78,7 @@ export function createSpectrumPromptSender({
   }
 }
 
+/** Creates a live Spectrum prompt sender using credentials from the process environment. */
 export async function createLiveSpectrumPromptSender({
   env = process.env,
   now

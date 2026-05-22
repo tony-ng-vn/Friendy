@@ -1,3 +1,12 @@
+/**
+ * Deterministic user-facing copy for relationship-agent replies.
+ *
+ * Callers: `agentCore.ts`, `interpretedAgent.ts`, transports after tool execution.
+ *
+ * Format-only boundary: inputs are already-selected memories, matches, or structured intake
+ * outcomes. This module must never choose matches, write memories, or expose raw search scores,
+ * `reason` strings, or tool diagnostics — those stay in logs and tests.
+ */
 import type { MemorySearchResult } from "./tools";
 import type { RelationshipMemory } from "./types";
 

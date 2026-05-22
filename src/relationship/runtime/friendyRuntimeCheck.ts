@@ -1,3 +1,10 @@
+/**
+ * End-to-end smoke test for the Friendy sensor runtime without macOS APIs.
+ *
+ * Feeds fake NDJSON events through SQLite-backed runtime state, asserts that one
+ * pending candidate is created, a calendar-aware prompt is sent, and the history
+ * batch ack path is written. Used by `npm run check:friendy-runtime`.
+ */
 import { mkdirSync, mkdtempSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore } from "../sqliteRepository";
@@ -18,6 +25,7 @@ export type FriendyRuntimeCheckInput = {
   now?: () => string;
 };
 
+/** Runs the runtime smoke check in a temporary SQLite directory and returns pass/fail details. */
 export async function runFriendyRuntimeCheck({
   cwd = process.cwd(),
   now = () => "2026-05-22T00:00:00.000Z"

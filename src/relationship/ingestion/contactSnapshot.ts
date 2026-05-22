@@ -1,6 +1,13 @@
+/**
+ * Contact snapshot types and method-centric diffing for ingestion.
+ *
+ * Diffing is method-centric, not contact-row-centric: a newly normalized phone or email can create
+ * a candidate. Name-only edits and duplicate normalized methods are intentionally ignored.
+ */
 import { fixtureUser } from "../fixtures";
 import type { ContactCandidateDetected } from "../types";
 
+/** One contact row captured in a snapshot. */
 export type ContactSnapshotContact = {
   stableId: string;
   displayName: string;
@@ -9,6 +16,7 @@ export type ContactSnapshotContact = {
   updatedAt: string;
 };
 
+/** Point-in-time Contacts export for a single Friendy user. */
 export type ContactSnapshot = {
   userId: string;
   capturedAt: string;
@@ -22,6 +30,7 @@ type ContactMethodRecord = {
   value: string;
 };
 
+/** Fixture snapshot before new contact methods appear. */
 export const fixtureBeforeContactSnapshot: ContactSnapshot = {
   userId: fixtureUser.id,
   capturedAt: "2026-05-15T19:00:00-07:00",
@@ -36,6 +45,7 @@ export const fixtureBeforeContactSnapshot: ContactSnapshot = {
   ]
 };
 
+/** Fixture snapshot after new phones, emails, and name edits. */
 export const fixtureAfterContactSnapshot: ContactSnapshot = {
   userId: fixtureUser.id,
   capturedAt: "2026-06-01T12:00:00-07:00",
@@ -104,6 +114,7 @@ export function detectNewContactMethods(
     .filter((item): item is ContactCandidateDetected => Boolean(item));
 }
 
+/** Normalizes a phone or email so method-centric diffing can compare stable keys. */
 export function normalizeContactMethod(kind: ContactMethodKind, value: string): string {
   if (kind === "email") {
     return value.trim().toLowerCase();
