@@ -255,6 +255,7 @@ function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
 
 /** Removes recall phrasing that carries intent but should not count as lexical memory clues. */
 export function normalizeMemorySearchQuery(raw: string): string {
+  const seen = new Set<string>();
   return raw
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, " ")
@@ -262,6 +263,13 @@ export function normalizeMemorySearchQuery(raw: string): string {
     .map((term) => term.trim())
     .filter(Boolean)
     .filter((term) => !GENERIC_MEMORY_QUERY_TERMS.has(term))
+    .filter((term) => {
+      if (seen.has(term)) {
+        return false;
+      }
+      seen.add(term);
+      return true;
+    })
     .join(" ");
 }
 

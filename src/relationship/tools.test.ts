@@ -110,6 +110,7 @@ describe("relationship tools", () => {
     expect(normalizeMemorySearchQuery("Who was from the Mac sensor debugging thing?")).toBe(
       "mac sensor debugging thing"
     );
+    expect(normalizeMemorySearchQuery("friendy friendy")).toBe("friendy");
   });
 
   it("searches saved memories from broad related-contact wording", () => {
