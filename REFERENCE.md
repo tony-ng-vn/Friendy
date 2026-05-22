@@ -78,6 +78,7 @@ npm run eval:agent
 npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
+npm run doctor:friendy
 npm run agent:spectrum
 ```
 

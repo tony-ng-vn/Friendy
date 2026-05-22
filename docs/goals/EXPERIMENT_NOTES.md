@@ -3,3 +3,4 @@
 - 2026-05-22: The runbook contains 13 task goals. They should mostly run sequentially because later tasks build on repository, runtime, prompt, and eval surfaces changed by earlier tasks.
 - 2026-05-22: Started with Task 1 because Node/CI is the least coupled reliability foundation and does not depend on future behavior work.
 - 2026-05-22: Task 1 updates `package-lock.json` as well as `package.json` so `npm ci` and package metadata stay aligned.
+- 2026-05-22: Task 2 keeps `doctor:friendy` structured internally through `FriendyDoctorCheck[]`, then renders stable human-readable lines so future UI/setup surfaces do not need to scrape ad hoc text.

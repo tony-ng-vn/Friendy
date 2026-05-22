@@ -2,7 +2,7 @@
 
 - [x] Inspect current worktree, runbook, and final implementation plan.
 - [x] Execute Task 1: pin Node version and add safe CI.
-- [ ] Execute Task 2: add structured `doctor:friendy`.
+- [x] Execute Task 2: add structured `doctor:friendy`.
 - [ ] Execute Task 3: add inspectable runtime lifecycle logs.
 - [ ] Execute Task 4: add behavior contract artifacts.
 - [ ] Execute Task 5: add event guess strength and prompt routing.
