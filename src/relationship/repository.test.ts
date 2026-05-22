@@ -196,6 +196,24 @@ describe("relationship repository", () => {
     });
   });
 
+  it("soft deletes memories while preserving an audit revision", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    const deleted = repo.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(deleted.deletedAt).toBe("2026-05-22T12:00:00.000Z");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "delete Maya memory"
+    });
+  });
+
   it("rejects direct memory writes without a confirmed candidate", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

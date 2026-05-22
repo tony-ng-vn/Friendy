@@ -5,7 +5,7 @@ import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
-import type { InboundAgentMessage } from "./types";
+import type { InboundAgentMessage, RelationshipMemory } from "./types";
 
 describe("interpreted relationship agent", () => {
   it("redirects out-of-scope messages before calling the interpreter", async () => {
@@ -405,6 +405,53 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Which person");
   });
 
+  it("updates a saved memory from a natural correction through bounded tools", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Maya", "old note from dinner")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Maya actually works on recruiting agents"));
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(result.toolCalls).toEqual(["search_memories", "update_memory"]);
+    expect(result.outbound.text).toContain("updated Maya");
+    expect(memory.contextNote).toContain("works on recruiting agents");
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "user_correction",
+      userText: "Maya actually works on recruiting agents"
+    });
+  });
+
+  it("deletes a saved memory from a natural forget request through bounded tools", async () => {
+    const original = memoryFixture("Maya", "building recruiting agents");
+    const { agent, repo, tools } = createTestAgentWithMemories([original]);
+
+    const result = await agent.handleMessage(inbound("delete Maya memory"));
+
+    expect(result.toolCalls).toEqual(["search_memories", "delete_memory"]);
+    expect(result.outbound.text).toContain("Deleted Maya");
+    expect(tools.search_memories(fixtureUser.id, "recruiting agents")).toEqual([]);
+    expect(repo.listMemoryRevisions(original.id).at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "delete Maya memory"
+    });
+  });
+
+  it("asks which memory to delete when the request is ambiguous", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Maya", "recruiting agents founder"),
+      memoryFixture("Sarah", "hardware founder")
+    ]);
+
+    const result = await agent.handleMessage(inbound("delete the founder"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("Maya");
+    expect(result.outbound.text).toContain("Sarah");
+    expect(result.outbound.text).toContain("Which person");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+  });
+
   it("asks clarification for vague references and does not save a fake memory", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -478,6 +525,38 @@ function createTestAgent() {
   });
 
   return { agent, repo };
+}
+
+function createTestAgentWithMemories(memories: RelationshipMemory[]) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    memories
+  });
+  const tools = createRelationshipTools(repo);
+  const agent = createInterpretedRelationshipAgent({
+    repo,
+    tools,
+    interpreter: createRuleBasedInterpreter(),
+    now: () => "2026-05-20T12:00:00.000Z",
+    timezone: "America/Los_Angeles"
+  });
+
+  return { agent, repo, tools };
+}
+
+function memoryFixture(displayName: string, contextNote: string): RelationshipMemory {
+  return {
+    id: `memory_${displayName.toLowerCase()}`,
+    userId: fixtureUser.id,
+    displayName,
+    primaryContactLabel: "manual contact",
+    eventTitle: "Photon Residency Dinner",
+    contextNote,
+    tags: [],
+    confidence: 0.8,
+    createdAt: "2026-05-20T12:00:00.000Z",
+    updatedAt: "2026-05-20T12:00:00.000Z"
+  };
 }
 
 async function saveAmayaAndZhiyuan(agent: ReturnType<typeof createTestAgent>["agent"]) {

@@ -39,6 +39,17 @@ type CreateManualMemoryOptions = {
   createdFromInteractionId?: string;
 };
 
+type UpdateMemoryOptions = {
+  reason: "user_correction" | "user_note_added";
+  userText?: string;
+  now?: string;
+};
+
+type DeleteMemoryOptions = {
+  userText?: string;
+  now?: string;
+};
+
 /**
  * Builds bounded tools for the relationship agent.
  *
@@ -137,6 +148,32 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return repo.confirmCandidate(candidate.id, contextNote, undefined, {
         eventTitle: options.eventTitle,
         dateContext: options.dateContext
+      });
+    },
+
+    update_memory(userId: string, memoryId: string, contextNote: string, options: UpdateMemoryOptions) {
+      const memory = repo.listMemories(userId).find((item) => item.id === memoryId);
+      if (!memory) {
+        throw new Error(`Memory not found for user: ${memoryId}`);
+      }
+
+      return repo.updateMemory(memoryId, {
+        contextNote,
+        reason: options.reason,
+        userText: options.userText,
+        updatedAt: options.now ?? new Date().toISOString()
+      });
+    },
+
+    delete_memory(userId: string, memoryId: string, options: DeleteMemoryOptions = {}) {
+      const memory = repo.listMemories(userId).find((item) => item.id === memoryId);
+      if (!memory) {
+        throw new Error(`Memory not found for user: ${memoryId}`);
+      }
+
+      return repo.deleteMemory(memoryId, {
+        userText: options.userText,
+        deletedAt: options.now ?? new Date().toISOString()
       });
     }
   };

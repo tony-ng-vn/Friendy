@@ -17,6 +17,8 @@ import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
   composeIgnoreCandidateReply,
+  composeMemoryDeleteReply,
+  composeMemoryUpdateReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
   composeOnboardingControlReply,
@@ -30,6 +32,9 @@ import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMess
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type CandidateIntake = ReturnType<typeof createCandidateIntake>;
+type MemoryMutationRequest =
+  | { kind: "delete"; query: string }
+  | { kind: "update"; query: string; contextNote: string };
 
 /** Injectable dependencies for the interpreted agent, including optional clock and timezone. */
 type InterpretedRelationshipAgentOptions = {
@@ -117,6 +122,41 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls: [],
+          interaction
+        };
+      }
+
+      const memoryMutationRequest = detectMemoryMutationRequest(message.text);
+      if (memoryMutationRequest) {
+        const toolCalls: AgentToolCall[] = [];
+        const outboundText = executeMemoryMutationRequest(message, memoryMutationRequest, tools, toolCalls, now());
+        const interaction = repo.addInteraction({
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: memoryMutationRequest.kind === "delete" ? "delete_memory" : "update_memory",
+            memoryMutationRequest,
+            confidence: 1
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
           interaction
         };
       }
@@ -231,6 +271,64 @@ export function createInterpretedRelationshipAgent({
       };
     }
   };
+}
+
+function executeMemoryMutationRequest(
+  message: InboundAgentMessage,
+  request: MemoryMutationRequest,
+  tools: RelationshipTools,
+  toolCalls: AgentToolCall[],
+  now: string
+): string {
+  toolCalls.push("search_memories");
+  const matches = tools.search_memories(message.userId, request.query);
+  if (matches.length === 0) {
+    return composeNoMatchReply();
+  }
+
+  if (matches.length > 1) {
+    return composeSearchReply({ matches: matches.slice(0, 3), ambiguous: true });
+  }
+
+  const memory = matches[0].memory;
+  if (request.kind === "delete") {
+    toolCalls.push("delete_memory");
+    const deleted = tools.delete_memory(message.userId, memory.id, {
+      userText: message.text,
+      now
+    });
+    return composeMemoryDeleteReply({ memory: deleted });
+  }
+
+  toolCalls.push("update_memory");
+  const updated = tools.update_memory(message.userId, memory.id, request.contextNote, {
+    reason: "user_correction",
+    userText: message.text,
+    now
+  });
+  return composeMemoryUpdateReply({ memory: updated });
+}
+
+function detectMemoryMutationRequest(text: string): MemoryMutationRequest | undefined {
+  const trimmed = text.trim();
+  const deleteMatch = trimmed.match(/^(?:delete|remove|forget)\s+(.+?)(?:\s+memory)?$/i);
+  if (deleteMatch) {
+    const query = deleteMatch[1].trim();
+    if (query.length > 0 && !/\b(previous|system|instruction|rules?)\b/i.test(query)) {
+      return { kind: "delete", query };
+    }
+  }
+
+  const updateMatch = trimmed.match(/^([a-z][a-z .'-]{0,60}?)\s+(?:actually|really|now)\s+(.+)$/i);
+  if (updateMatch) {
+    const query = updateMatch[1].trim();
+    const contextNote = updateMatch[2].trim();
+    if (query.length > 0 && contextNote.length > 0) {
+      return { kind: "update", query, contextNote };
+    }
+  }
+
+  return undefined;
 }
 
 function scopeOnlyLog(scopeDecision: ScopeDecision): unknown {

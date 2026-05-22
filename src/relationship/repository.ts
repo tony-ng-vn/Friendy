@@ -58,6 +58,11 @@ export type UpdateMemoryInput = {
   updatedAt: string;
 };
 
+export type DeleteMemoryInput = {
+  userText?: string;
+  deletedAt: string;
+};
+
 /**
  * Pending candidates older than this are auto-expired on read.
  *
@@ -96,6 +101,7 @@ export type RelationshipRepository = {
   listMemories(userId?: string): RelationshipMemory[];
   addMemory(memory: RelationshipMemory): RelationshipMemory;
   updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory;
+  deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory;
   listMemoryRevisions(memoryId: string): MemoryRevision[];
   addInteraction(interaction: AgentInteraction): AgentInteraction;
   listInteractions(userId?: string): AgentInteraction[];
@@ -273,7 +279,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
     },
 
     listMemories(userId?: string): RelationshipMemory[] {
-      return userId ? memories.filter((memory) => memory.userId === userId) : [...memories];
+      const visibleMemories = memories.filter((memory) => !memory.deletedAt);
+      return userId ? visibleMemories.filter((memory) => memory.userId === userId) : [...visibleMemories];
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -294,6 +301,9 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       }
 
       const previous = memories[index];
+      if (previous.deletedAt) {
+        throw new Error(`Memory is deleted: ${memoryId}`);
+      }
       const updated: RelationshipMemory = {
         ...previous,
         contextNote: updates.contextNote,
@@ -304,6 +314,27 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       memories[index] = updated;
       memoryRevisions.push(createUpdatedMemoryRevision(previous, updated, updates, memoryRevisions.length + 1));
       return updated;
+    },
+
+    deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory {
+      const index = memories.findIndex((memory) => memory.id === memoryId);
+      if (index < 0) {
+        throw new Error(`Memory not found: ${memoryId}`);
+      }
+
+      const previous = memories[index];
+      if (previous.deletedAt) {
+        return previous;
+      }
+
+      const deleted: RelationshipMemory = {
+        ...previous,
+        deletedAt: input.deletedAt,
+        updatedAt: input.deletedAt
+      };
+      memories[index] = deleted;
+      memoryRevisions.push(createDeletedMemoryRevision(previous, deleted, input, memoryRevisions.length + 1));
+      return deleted;
     },
 
     listMemoryRevisions(memoryId: string): MemoryRevision[] {
@@ -368,6 +399,23 @@ function createUpdatedMemoryRevision(
   };
 }
 
+function createDeletedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  input: DeleteMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, "deleted", input.deletedAt, sequence),
+    memoryId: next.id,
+    createdAt: input.deletedAt,
+    reason: "deleted",
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: input.userText
+  };
+}
+
 function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMemory> {
   return {
     displayName: memory.displayName,
@@ -378,7 +426,8 @@ function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMe
     relationshipContext: memory.relationshipContext,
     tags: memory.tags,
     confidence: memory.confidence,
-    updatedAt: memory.updatedAt
+    updatedAt: memory.updatedAt,
+    deletedAt: memory.deletedAt
   };
 }
 

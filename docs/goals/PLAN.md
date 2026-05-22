@@ -9,7 +9,7 @@
 - [x] Execute Task 6: add candidate lifecycle timing fields.
 - [x] Execute Task 7: add active start gate and pause/resume.
 - [x] Execute Task 8: add append-only memory revisions.
-- [ ] Execute Task 9: add bounded update and delete tools.
+- [x] Execute Task 9: add bounded update and delete tools.
 - [ ] Execute Task 10: add follow-up search context TTL and correction routing.
 - [ ] Execute Task 11: add redacted runtime traces.
 - [ ] Execute Task 12: add required behavior evals and demo check.

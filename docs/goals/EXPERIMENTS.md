@@ -23,6 +23,24 @@
 - `npm run build`: passed.
 - `git diff --check`: passed.
 
+## Task 9 Red Tests
+
+- Date: 2026-05-22
+- Added tool tests for bounded memory update and soft delete with revision records.
+- Added interpreted-agent tests for natural correction, natural delete, and ambiguous delete clarification.
+- Red run: `npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts` failed because `update_memory`, `delete_memory`, and natural update/delete routing do not exist yet.
+
+## Task 9 Green Verification
+
+- Date: 2026-05-22
+- Added bounded `update_memory` and `delete_memory` tools that first verify the target memory belongs to the user.
+- Added soft-delete support to in-memory and SQLite repositories; deleted memories are hidden from `listMemories` and search but retain append-only revisions.
+- Added deterministic interpreted-agent routing for clear correction/delete requests, with ambiguity routed to a clarification instead of mutation.
+- `npm test -- src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts`: passed with 4 files and 73 tests.
+- `npm test`: passed with 45 files and 263 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
+
 ## Task 2 Red Test
 
 - Date: 2026-05-22

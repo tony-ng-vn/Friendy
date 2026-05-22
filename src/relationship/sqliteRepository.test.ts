@@ -234,6 +234,34 @@ describe("sqlite relationship repository", () => {
     });
   });
 
+  it("persists soft deletes and keeps deleted memories out of search", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id);
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    reopened.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    const finalRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+
+    expect(finalRepo.listMemories(fixtureUser.id)).toEqual([]);
+    expect(createRelationshipTools(finalRepo).search_memories(fixtureUser.id, "recruiting agents")).toEqual([]);
+    expect(finalRepo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "delete Maya memory"
+    });
+  });
+
   it("persists candidate expiration and expires stale candidates on pending lookup", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({

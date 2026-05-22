@@ -10,3 +10,4 @@
 - 2026-05-22: Task 6 intentionally does not rename `detectedAt`; it keeps it for candidate identity/expiry compatibility and adds `eventMatchAnchorAt` for the calendar-matching decision.
 - 2026-05-22: Task 7 keeps start/pause/resume as a per-process gate for the foreground MVP runtime. Held contact events are not marked processed or acked, so the native outbox can replay them after the user starts or resumes Friendy.
 - 2026-05-22: Task 8 stores memory revision snapshots as partial memory projections rather than raw inbound text. User correction text is kept only when explicitly provided to `updateMemory`.
+- 2026-05-22: Task 9 treats delete as a soft delete on the current projection, not physical removal. Search and normal memory lists hide deleted rows, while revisions remain available for audit.

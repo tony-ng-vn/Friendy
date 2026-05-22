@@ -103,6 +103,39 @@ describe("relationship tools", () => {
     expect(results[0].reason).toContain("piano");
   });
 
+  it("updates a memory through a bounded tool and records a revision", () => {
+    const { repo, tools, memory } = seededMemoryHarness("building recruiting agents");
+
+    const updated = tools.update_memory(memory.userId, memory.id, "working on hiring workflows", {
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(updated.contextNote).toBe("working on hiring workflows");
+    expect(tools.search_memories(memory.userId, "hiring workflows")[0].memory.id).toBe(memory.id);
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows."
+    });
+  });
+
+  it("soft deletes a memory through a bounded tool", () => {
+    const { repo, tools, memory } = seededMemoryHarness("building recruiting agents");
+
+    const deleted = tools.delete_memory(memory.userId, memory.id, {
+      userText: "forget Maya",
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(deleted.deletedAt).toBe("2026-05-22T12:00:00.000Z");
+    expect(tools.search_memories(memory.userId, "recruiting agents")).toEqual([]);
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "forget Maya"
+    });
+  });
+
   it("ranks role and project matches above generic shared event matches", () => {
     const tools = createToolsWithMemories([
       memory("Maya", "Photon Residency II", "event: Photon Residency II | I met Maya at Photon Residency II dinner, founder working on recruiting agents | role: founder"),
@@ -149,6 +182,18 @@ function createToolsWithMemories(memories: RelationshipMemory[]) {
   });
 
   return createRelationshipTools(repo);
+}
+
+function seededMemoryHarness(contextNote: string) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+  });
+  const tools = createRelationshipTools(repo);
+  const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+  const memory = tools.confirm_candidate(fixtureUser.id, candidate.id, contextNote, fixtureShortEvent.id);
+
+  return { repo, tools, memory };
 }
 
 function memory(displayName: string, eventTitle: string, contextNote: string): RelationshipMemory {

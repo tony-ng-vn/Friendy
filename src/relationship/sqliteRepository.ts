@@ -25,6 +25,7 @@ import {
   expireCandidateIfStale,
   extractTags,
   type ConfirmCandidateOptions,
+  type DeleteMemoryInput,
   type MarkCandidatePromptedOptions,
   type RelationshipRepository,
   type RepositorySeed,
@@ -307,10 +308,12 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       if (userId) {
         return readRows<RelationshipMemory>(
           db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY insert_order, id").all(userId)
-        );
+        ).filter((memory) => !memory.deletedAt);
       }
 
-      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all()).filter(
+        (memory) => !memory.deletedAt
+      );
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -330,6 +333,9 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         if (!previous) {
           throw new Error(`Memory not found: ${memoryId}`);
         }
+        if (previous.deletedAt) {
+          throw new Error(`Memory is deleted: ${memoryId}`);
+        }
 
         const updated: RelationshipMemory = {
           ...previous,
@@ -341,6 +347,29 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         updateMemoryRow(db, updated);
         insertMemoryRevision(db, createUpdatedMemoryRevision(previous, updated, updates, countMemoryRevisions(db, memoryId) + 1));
         return updated;
+      });
+    },
+
+    deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory {
+      return runTransaction(db, () => {
+        const previous = readOptionalRow<RelationshipMemory>(
+          db.prepare("SELECT raw_json FROM memories WHERE id = ?").get(memoryId)
+        );
+        if (!previous) {
+          throw new Error(`Memory not found: ${memoryId}`);
+        }
+        if (previous.deletedAt) {
+          return previous;
+        }
+
+        const deleted: RelationshipMemory = {
+          ...previous,
+          deletedAt: input.deletedAt,
+          updatedAt: input.deletedAt
+        };
+        updateMemoryRow(db, deleted);
+        insertMemoryRevision(db, createDeletedMemoryRevision(previous, deleted, input, countMemoryRevisions(db, memoryId) + 1));
+        return deleted;
       });
     },
 
@@ -1048,6 +1077,23 @@ function createUpdatedMemoryRevision(
   };
 }
 
+function createDeletedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  input: DeleteMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, "deleted", input.deletedAt, sequence),
+    memoryId: next.id,
+    createdAt: input.deletedAt,
+    reason: "deleted",
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: input.userText
+  };
+}
+
 function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMemory> {
   return {
     displayName: memory.displayName,
@@ -1058,7 +1104,8 @@ function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMe
     relationshipContext: memory.relationshipContext,
     tags: memory.tags,
     confidence: memory.confidence,
-    updatedAt: memory.updatedAt
+    updatedAt: memory.updatedAt,
+    deletedAt: memory.deletedAt
   };
 }
 

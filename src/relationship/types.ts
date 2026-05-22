@@ -148,6 +148,7 @@ export type RelationshipMemory = {
   confidence: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
 };
 
 export type MemoryRevisionReason = "created" | "user_correction" | "user_note_added" | "deleted";
@@ -216,7 +217,9 @@ export type AgentToolCall =
   | "get_candidate"
   | "confirm_candidate"
   | "ignore_candidate"
-  | "create_manual_memory";
+  | "create_manual_memory"
+  | "update_memory"
+  | "delete_memory";
 
 /**
  * Result envelope returned after scope check, interpretation, and tool execution.

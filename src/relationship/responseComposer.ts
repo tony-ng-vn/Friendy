@@ -23,6 +23,10 @@ type IgnoreCandidateReplyInput = {
   candidateName?: string;
 };
 
+type MemoryMutationReplyInput = {
+  memory: RelationshipMemory;
+};
+
 type CandidateAmbiguityReplyInput = {
   candidates: Array<{ displayName: string }>;
 };
@@ -116,6 +120,17 @@ export function composeIgnoreCandidateReply({ candidateName }: IgnoreCandidateRe
   }
 
   return `Ignored ${candidateName}.`;
+}
+
+/** Formats successful user-requested memory corrections. */
+export function composeMemoryUpdateReply({ memory }: MemoryMutationReplyInput): string {
+  const context = summarizeMemoryContext(memory);
+  return context ? `Got it, updated ${memory.displayName}. I'll remember ${context}.` : `Got it, updated ${memory.displayName}.`;
+}
+
+/** Formats explicit user-requested memory deletes without exposing storage internals. */
+export function composeMemoryDeleteReply({ memory }: MemoryMutationReplyInput): string {
+  return `Deleted ${memory.displayName} from Friendy memory.`;
 }
 
 /** Formats start/pause/resume setup controls without exposing internal runtime state. */
