@@ -92,6 +92,19 @@ describe("macOS sensor Swift source contract", () => {
       nativeSource.indexOf("let events = eventStore.events(matching: predicate)")
     );
   });
+
+  it("hashes contact phone numbers and emails before emitting sensor events", () => {
+    const nativeSource = readSwift("NativeMacosSensor.swift");
+
+    expect(nativeSource).toContain("import CryptoKit");
+    expect(nativeSource).toContain("SHA256.hash");
+    expect(nativeSource).toContain("phoneNumberHashes");
+    expect(nativeSource).toContain("emailHashes");
+    expect(nativeSource).toContain("normalizedPhoneHash");
+    expect(nativeSource).toContain("normalizedEmailHash");
+    expect(nativeSource).not.toContain('"phoneNumberHashes": []');
+    expect(nativeSource).not.toContain('"emailHashes": []');
+  });
 });
 
 function readSwift(filename: string): string {

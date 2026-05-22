@@ -20,7 +20,9 @@ export function isConfirmationReply(value: string): boolean {
     normalized.startsWith("yes,") ||
     normalized.startsWith("yep") ||
     normalized.startsWith("yeah") ||
-    /^[1-3](?:\b|[,.])/.test(normalized)
+    /^[1-3](?:\b|[,.])/.test(normalized) ||
+    /^(?:the\s+)?(?:first|second|third)(?:\s+one)?(?:\b|[,.])/.test(normalized) ||
+    /^(?:the\s+)?\w+\s+one(?:\b|[,.])/.test(normalized)
   );
 }
 
@@ -39,6 +41,10 @@ export function resolveCandidateConfirmation(
   if (numbered) {
     return numbered;
   }
+  const namedOption = resolveNamedEventOption(cleaned, eventMatches);
+  if (namedOption) {
+    return namedOption;
+  }
 
   const extracted = extractEventCorrection(cleaned);
   const selectedMatch = extracted.eventTitle ? findEventMatch(extracted.eventTitle, eventMatches) : undefined;
@@ -52,6 +58,28 @@ export function resolveCandidateConfirmation(
   };
 }
 
+function resolveNamedEventOption(
+  value: string,
+  eventMatches: EventContextMatch[]
+): CandidateConfirmationResolution | undefined {
+  const rank = ordinalRank(value);
+  if (rank) {
+    return selectedEventOption(eventMatches.find((eventMatch) => eventMatch.rank === rank));
+  }
+
+  const descriptor = eventOptionDescriptor(value);
+  if (!descriptor) {
+    return undefined;
+  }
+
+  const matches = eventMatches.filter((eventMatch) => eventTitleMatchesDescriptor(eventMatch.eventTitle, descriptor));
+  if (matches.length !== 1) {
+    return undefined;
+  }
+
+  return selectedEventOption(matches[0]);
+}
+
 function resolveNumberedEventOption(
   value: string,
   eventMatches: EventContextMatch[]
@@ -62,18 +90,47 @@ function resolveNumberedEventOption(
   }
 
   const rank = Number(match[1]);
-  const selectedMatch = eventMatches.find((eventMatch) => eventMatch.rank === rank);
+  const note = match[2]?.trim();
+  return selectedEventOption(eventMatches.find((eventMatch) => eventMatch.rank === rank), note);
+}
+
+function selectedEventOption(
+  selectedMatch: EventContextMatch | undefined,
+  note?: string
+): CandidateConfirmationResolution | undefined {
   if (!selectedMatch) {
     return undefined;
   }
 
-  const note = match[2]?.trim();
   const contextNote = normalizeKnownPlaces(note || `met at ${selectedMatch.eventTitle}`);
   return {
     contextNote,
     relationshipContext: extractRelationshipBackstory(contextNote),
     eventId: selectedMatch.calendarEventId
   };
+}
+
+function ordinalRank(value: string): number | undefined {
+  const match = /^(?:the\s+)?(first|second|third)(?:\s+one)?(?:\b|[,.])/i.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+
+  return { first: 1, second: 2, third: 3 }[match[1].toLowerCase() as "first" | "second" | "third"];
+}
+
+function eventOptionDescriptor(value: string): string | undefined {
+  const match = /^(?:the\s+)?(.+?)\s+one(?:\b|[,.])?$/i.exec(value.trim());
+  return match?.[1]?.trim();
+}
+
+function eventTitleMatchesDescriptor(eventTitle: string, descriptor: string): boolean {
+  const title = normalizeTitle(eventTitle);
+  const descriptorTokens = normalizeTitle(descriptor)
+    .split(" ")
+    .filter((token) => token.length > 0);
+
+  return descriptorTokens.length > 0 && descriptorTokens.every((token) => title.includes(token));
 }
 
 export function cleanConfirmationNote(value: string): string {

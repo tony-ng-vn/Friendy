@@ -1,7 +1,8 @@
 import Foundation
 
-#if os(macOS) && canImport(Contacts) && canImport(EventKit)
+#if os(macOS) && canImport(Contacts) && canImport(EventKit) && canImport(CryptoKit)
 import Contacts
+import CryptoKit
 import EventKit
 
 struct HistoryOutboxBatch: Codable {
@@ -309,16 +310,41 @@ final class NativeMacosSensor {
     }
 
     private func redactedContactPayload(_ contact: CNContact) -> [String: Any] {
+        let phoneNumberHashes = contact.phoneNumbers.compactMap { normalizedPhoneHash($0.value.stringValue) }
+        let emailHashes = contact.emailAddresses.compactMap { normalizedEmailHash(String($0.value)) }
+
         [
             "stableId": contact.identifier,
             "unifiedStableId": contact.identifier,
             "containerId": "unknown",
             "displayName": CNContactFormatter.string(from: contact, style: .fullName) ?? "Unnamed Contact",
-            "phoneNumberHashes": [],
+            "phoneNumberHashes": phoneNumberHashes,
             "phoneNumberHints": contact.phoneNumbers.map { ["last4": String($0.value.stringValue.suffix(4)), "label": $0.label ?? "phone"] },
-            "emailHashes": [],
+            "emailHashes": emailHashes,
             "emailHints": contact.emailAddresses.map { ["domain": String($0.value).components(separatedBy: "@").last ?? "", "label": $0.label ?? "email"] }
         ]
+    }
+
+    private func normalizedPhoneHash(_ value: String) -> String? {
+        let digits = value.filter { $0.isNumber }
+        guard !digits.isEmpty else {
+            return nil
+        }
+        return sha256Hash(digits)
+    }
+
+    private func normalizedEmailHash(_ value: String) -> String? {
+        let email = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !email.isEmpty else {
+            return nil
+        }
+        return sha256Hash(email)
+    }
+
+    private func sha256Hash(_ value: String) -> String {
+        let digest = SHA256.hash(data: Data(value.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "sha256:\(hex)"
     }
 
     private func queryCalendarContext(detectedAt: Date) -> (query: [String: Any], matches: [[String: Any]]) {

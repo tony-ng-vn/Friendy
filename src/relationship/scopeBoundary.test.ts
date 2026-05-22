@@ -39,6 +39,10 @@ describe("relationship agent scope boundary", () => {
       scope: "in_scope",
       capability: "candidate_confirmation"
     });
+    expect(decideMessageScope({ text: "first", hasPendingCandidate: true })).toMatchObject({
+      scope: "in_scope",
+      capability: "candidate_confirmation"
+    });
     expect(decideMessageScope({ text: "yes, met her at Photon dinner", hasPendingCandidate: false })).toMatchObject({
       scope: "needs_clarification"
     });
