@@ -154,6 +154,26 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("scope-adversarial-instruction", "interpreted", [
     "adversarial general-assistant request is redirected before interpreter tools",
     "adversarial request does not mutate memory"
+  ]),
+  evalCase("follow-up-search-narrowing", "interpreted", [
+    "follow-up clue narrows previous ambiguous search",
+    "narrowed answer excludes non-matching prior options"
+  ]),
+  evalCase("follow-up-search-expiry", "interpreted", [
+    "stale follow-up asks for previous-search context",
+    "stale follow-up does not return an old match"
+  ]),
+  evalCase("active-memory-correction", "interpreted", [
+    "pronoun correction updates active single search result",
+    "active correction preserves other memories"
+  ]),
+  evalCase("ambiguous-memory-correction", "interpreted", [
+    "ambiguous correction asks which memory to update",
+    "ambiguous correction does not mutate memory"
+  ]),
+  evalCase("untargeted-memory-correction", "interpreted", [
+    "untargeted correction asks for a clearer memory target",
+    "untargeted correction does not mutate memory"
   ])
 ];
 
@@ -529,6 +549,129 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[17],
+    async run({ interpreter, now }) {
+      const { agent } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInbound("I met Maya at dinner, recruiting founder who played piano after dinner"));
+      await agent.handleMessage(interpretedInbound("I met Sarah at dinner, hardware founder who played cello after dinner"));
+      const ambiguous = await agent.handleMessage(interpretedInbound("Who was the founder from dinner?"));
+      const narrowed = await agent.handleMessage(
+        interpretedInboundAt("the one who played piano", "2026-05-20T12:05:00.000Z")
+      );
+
+      return [
+        assertion(
+          "follow-up clue narrows previous ambiguous search",
+          "searchRecall",
+          ambiguous.outbound.text.includes("Which person") &&
+            includesAll(narrowed.outbound.text, ["That was Maya", "played piano"])
+        ),
+        assertion(
+          "narrowed answer excludes non-matching prior options",
+          "searchRecall",
+          !narrowed.outbound.text.includes("Sarah")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[18],
+    async run({ interpreter, now }) {
+      const { agent } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInboundAt("I met Maya at dinner, recruiting founder who played piano after dinner", "2026-05-20T11:58:00.000Z"));
+      await agent.handleMessage(interpretedInboundAt("I met Sarah at dinner, hardware founder who played cello after dinner", "2026-05-20T11:59:00.000Z"));
+      await agent.handleMessage(interpretedInboundAt("Who was the founder from dinner?", "2026-05-20T12:00:00.000Z"));
+      const stale = await agent.handleMessage(
+        interpretedInboundAt("the one who played piano", "2026-05-20T12:16:00.000Z")
+      );
+
+      return [
+        assertion(
+          "stale follow-up asks for previous-search context",
+          "clarification",
+          includesAll(stale.outbound.text, ["previous search", "one more clue"]) && stale.toolCalls.length === 0
+        ),
+        assertion(
+          "stale follow-up does not return an old match",
+          "hallucination",
+          !stale.outbound.text.includes("Maya")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[19],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInbound("I met Maya at dinner, building recruiting agents"));
+      await agent.handleMessage(interpretedInbound("I met Sarah at dinner, hardware founder"));
+      await agent.handleMessage(interpretedInbound("Who was building recruiting agents?"));
+      const updated = await agent.handleMessage(
+        interpretedInbound("Actually she was working on hiring workflows, not recruiting agents")
+      );
+      const maya = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Maya");
+      const sarah = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Sarah");
+
+      return [
+        assertion(
+          "pronoun correction updates active single search result",
+          "memoryWrite",
+          updated.toolCalls.includes("update_memory") && Boolean(maya?.contextNote.includes("hiring workflows"))
+        ),
+        assertion(
+          "active correction preserves other memories",
+          "unsafeMutation",
+          sarah?.contextNote.includes("hardware founder") === true
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[20],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInbound("I met Maya at dinner, recruiting founder who played piano after dinner"));
+      await agent.handleMessage(interpretedInbound("I met Sarah at dinner, hardware founder who played cello after dinner"));
+      await agent.handleMessage(interpretedInbound("Who was the founder from dinner?"));
+      const result = await agent.handleMessage(interpretedInbound("Actually she was working on hiring workflows"));
+
+      return [
+        assertion(
+          "ambiguous correction asks which memory to update",
+          "clarification",
+          includesAll(result.outbound.text, ["Who should I update", "Maya", "Sarah"]) && result.toolCalls.length === 0
+        ),
+        assertion(
+          "ambiguous correction does not mutate memory",
+          "unsafeMutation",
+          repo.listMemories(fixtureUser.id).every((memory) => !memory.contextNote.includes("hiring workflows"))
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[21],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createInterpretedHarness({ interpreter, now });
+      await agent.handleMessage(interpretedInbound("I met Maya at dinner, building recruiting agents"));
+      const result = await agent.handleMessage(interpretedInbound("Actually she was working on hiring workflows"));
+      const [memory] = repo.listMemories(fixtureUser.id);
+
+      return [
+        assertion(
+          "untargeted correction asks for a clearer memory target",
+          "clarification",
+          result.toolCalls.length === 0 && result.outbound.text.includes("I don't have enough")
+        ),
+        assertion(
+          "untargeted correction does not mutate memory",
+          "unsafeMutation",
+          memory?.contextNote.includes("building recruiting agents") === true
+        )
+      ];
+    }
   }
 ];
 
@@ -714,6 +857,13 @@ function inbound(text: string, platform: InboundAgentMessage["platform"]): Inbou
 
 function interpretedInbound(text: string): InboundAgentMessage {
   return inbound(text, "terminal");
+}
+
+function interpretedInboundAt(text: string, receivedAt: string): InboundAgentMessage {
+  return {
+    ...interpretedInbound(text),
+    receivedAt
+  };
 }
 
 function includesAll(value: string, expectedParts: string[]): boolean {

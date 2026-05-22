@@ -405,6 +405,100 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Which person");
   });
 
+  it("narrows a previous ambiguous search with a follow-up clue", async () => {
+    const { agent } = createTestAgentWithMemories([
+      memoryFixture("Maya", "recruiting founder who played piano after dinner"),
+      memoryFixture("Sarah", "hardware founder who played cello after dinner")
+    ]);
+
+    const ambiguous = await agent.handleMessage(inbound("Who was the founder from dinner?"));
+    const narrowed = await agent.handleMessage(inbound("the one who played piano", "2026-05-20T12:05:00.000Z"));
+
+    expect(ambiguous.outbound.text).toContain("Which person");
+    expect(narrowed.toolCalls).toEqual(["search_memories"]);
+    expect(narrowed.outbound.text).toContain("That was Maya");
+    expect(narrowed.outbound.text).toContain("played piano");
+    expect(narrowed.outbound.text).not.toContain("Sarah");
+  });
+
+  it("asks a clarifying question when a follow-up clue still has multiple matches", async () => {
+    const { agent } = createTestAgentWithMemories([
+      memoryFixture("Maya", "recruiting founder who played piano after dinner"),
+      memoryFixture("Nina", "hardware founder who played piano after dinner"),
+      memoryFixture("Sarah", "operations founder who played cello after dinner")
+    ]);
+
+    await agent.handleMessage(inbound("Who was the founder from dinner?"));
+    const narrowed = await agent.handleMessage(inbound("the one who played piano", "2026-05-20T12:05:00.000Z"));
+
+    expect(narrowed.toolCalls).toEqual(["search_memories"]);
+    expect(narrowed.outbound.text).toContain("Maya");
+    expect(narrowed.outbound.text).toContain("Nina");
+    expect(narrowed.outbound.text).toContain("Which person");
+  });
+
+  it("does not reuse stale search context after the follow-up window expires", async () => {
+    const { agent } = createTestAgentWithMemories([
+      memoryFixture("Maya", "recruiting founder who played piano after dinner"),
+      memoryFixture("Sarah", "hardware founder who played cello after dinner")
+    ]);
+
+    await agent.handleMessage(inbound("Who was the founder from dinner?", "2026-05-20T12:00:00.000Z"));
+    const stale = await agent.handleMessage(inbound("the one who played piano", "2026-05-20T12:16:00.000Z"));
+
+    expect(stale.toolCalls).toEqual([]);
+    expect(stale.outbound.text).toContain("previous search");
+    expect(stale.outbound.text).not.toContain("Maya");
+  });
+
+  it("routes a pronoun correction to the active single search result", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Maya", "building recruiting agents"),
+      memoryFixture("Sarah", "hardware founder")
+    ]);
+
+    await agent.handleMessage(inbound("Who was building recruiting agents?"));
+    const result = await agent.handleMessage(inbound("Actually she was working on hiring workflows, not recruiting agents"));
+
+    const maya = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Maya");
+    const sarah = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Sarah");
+    expect(result.toolCalls).toEqual(["update_memory"]);
+    expect(result.outbound.text).toContain("updated Maya");
+    expect(maya?.contextNote).toContain("hiring workflows");
+    expect(sarah?.contextNote).toBe("hardware founder");
+  });
+
+  it("asks who to update when a correction follows an ambiguous search", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Maya", "recruiting founder who played piano after dinner"),
+      memoryFixture("Sarah", "hardware founder who played cello after dinner")
+    ]);
+
+    await agent.handleMessage(inbound("Who was the founder from dinner?"));
+    const result = await agent.handleMessage(inbound("Actually she was working on hiring workflows"));
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("Who should I update");
+    expect(result.outbound.text).toContain("Maya");
+    expect(result.outbound.text).toContain("Sarah");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.contextNote)).toEqual([
+      "recruiting founder who played piano after dinner",
+      "hardware founder who played cello after dinner"
+    ]);
+  });
+
+  it("does not update memory when a pronoun correction has no active target", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Maya", "building recruiting agents")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Actually she was working on hiring workflows"));
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("I don't have enough");
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("building recruiting agents");
+  });
+
   it("updates a saved memory from a natural correction through bounded tools", async () => {
     const { agent, repo } = createTestAgentWithMemories([
       memoryFixture("Maya", "old note from dinner")

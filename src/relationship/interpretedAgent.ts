@@ -28,13 +28,21 @@ import {
 import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import type { MemorySearchResult, createRelationshipTools } from "./tools";
-import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage } from "./types";
+import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage, RelationshipMemory } from "./types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type CandidateIntake = ReturnType<typeof createCandidateIntake>;
 type MemoryMutationRequest =
   | { kind: "delete"; query: string }
-  | { kind: "update"; query: string; contextNote: string };
+  | { kind: "update"; query?: string; contextNote: string };
+type SearchContext = {
+  searchContextId: string;
+  createdAt: string;
+  expiresAt: string;
+  originalQuery: string;
+  candidateMemoryIds: string[];
+  lastQuestion: string;
+};
 
 /** Injectable dependencies for the interpreted agent, including optional clock and timezone. */
 type InterpretedRelationshipAgentOptions = {
@@ -59,6 +67,8 @@ type InterpretedAgentResult = AgentCoreResult & {
 type ConversationContext = {
   activeEventName?: string;
   activeDateContext?: TemporalContext;
+  lastSearch?: SearchContext;
+  activeMemoryId?: string;
   recentPeople: string[];
 };
 
@@ -68,6 +78,7 @@ type ConversationContext = {
  * Below this threshold the agent asks for clarification rather than saving a guess.
  */
 const MIN_CAPTURE_CONFIDENCE = 0.5;
+const SEARCH_CONTEXT_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Creates the LLM-interpreted relationship agent.
@@ -91,6 +102,8 @@ export function createInterpretedRelationshipAgent({
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
       const startedAt = Date.now();
+      const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
+      let turnContext = existingContext;
       const onboardingControl = detectOnboardingControl(message.text);
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
@@ -126,10 +139,51 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
+      if (isSearchContextReset(message.text)) {
+        turnContext = clearSearchContext(existingContext);
+        conversationContexts.set(message.userId, turnContext);
+      } else {
+        const followUp = executeFollowUpSearchIfPresent(message, turnContext, tools, message.receivedAt);
+        if (followUp) {
+          conversationContexts.set(message.userId, followUp.nextContext);
+          const interaction = repo.addInteraction({
+            id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            inboundText: message.text,
+            interpretedIntentJson: {
+              intent: "followup_search",
+              confidence: 1,
+              searchContextId: existingContext.lastSearch?.searchContextId
+            },
+            outboundText: followUp.outboundText,
+            toolCalls: followUp.toolCalls,
+            modelUsed: "deterministic-scope",
+            confidence: 1,
+            latencyMs: Date.now() - startedAt,
+            createdAt: now()
+          });
+
+          return {
+            outbound: {
+              userId: message.userId,
+              platform: message.platform,
+              spaceId: message.spaceId,
+              text: followUp.outboundText
+            },
+            toolCalls: followUp.toolCalls,
+            interaction
+          };
+        }
+      }
+
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
       if (memoryMutationRequest) {
         const toolCalls: AgentToolCall[] = [];
-        const outboundText = executeMemoryMutationRequest(message, memoryMutationRequest, tools, toolCalls, now());
+        const mutation = executeMemoryMutationRequest(message, memoryMutationRequest, repo, tools, turnContext, toolCalls, now());
+        const outboundText = mutation.outboundText;
+        conversationContexts.set(message.userId, mutation.nextContext);
         const interaction = repo.addInteraction({
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -232,16 +286,18 @@ export function createInterpretedRelationshipAgent({
       }
 
       const interpreted = await interpreter.interpret(message);
-      const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
       const interpretation = enrichInterpretationWithContext(
         interpreted.interpretation,
-        existingContext,
+        turnContext,
         parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
         message.text
       );
       const toolCalls: AgentToolCall[] = [];
       const outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls);
-      conversationContexts.set(message.userId, updateConversationContext(existingContext, interpretation));
+      conversationContexts.set(
+        message.userId,
+        updateSearchContext(message, tools, updateConversationContext(turnContext, interpretation), interpretation)
+      );
 
       const interaction = repo.addInteraction({
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -276,28 +332,30 @@ export function createInterpretedRelationshipAgent({
 function executeMemoryMutationRequest(
   message: InboundAgentMessage,
   request: MemoryMutationRequest,
+  repo: RelationshipRepository,
   tools: RelationshipTools,
+  context: ConversationContext,
   toolCalls: AgentToolCall[],
   now: string
-): string {
-  toolCalls.push("search_memories");
-  const matches = tools.search_memories(message.userId, request.query);
-  if (matches.length === 0) {
-    return composeNoMatchReply();
+): { outboundText: string; nextContext: ConversationContext } {
+  const target = resolveMemoryMutationTarget(message, request, repo, tools, context, toolCalls, message.receivedAt);
+  if (target.kind === "none") {
+    return { outboundText: composeNoMatchReply(), nextContext: context };
   }
 
-  if (matches.length > 1) {
-    return composeSearchReply({ matches: matches.slice(0, 3), ambiguous: true });
+  if (target.kind === "ambiguous") {
+    return { outboundText: target.message, nextContext: context };
   }
 
-  const memory = matches[0].memory;
+  const memory = target.memory;
+  const nextContext = { ...context, activeMemoryId: memory.id, lastSearch: undefined };
   if (request.kind === "delete") {
     toolCalls.push("delete_memory");
     const deleted = tools.delete_memory(message.userId, memory.id, {
       userText: message.text,
       now
     });
-    return composeMemoryDeleteReply({ memory: deleted });
+    return { outboundText: composeMemoryDeleteReply({ memory: deleted }), nextContext: clearSearchContext(nextContext) };
   }
 
   toolCalls.push("update_memory");
@@ -306,7 +364,55 @@ function executeMemoryMutationRequest(
     userText: message.text,
     now
   });
-  return composeMemoryUpdateReply({ memory: updated });
+  return { outboundText: composeMemoryUpdateReply({ memory: updated }), nextContext: { ...nextContext, activeMemoryId: updated.id } };
+}
+
+function resolveMemoryMutationTarget(
+  message: InboundAgentMessage,
+  request: MemoryMutationRequest,
+  repo: RelationshipRepository,
+  tools: RelationshipTools,
+  context: ConversationContext,
+  toolCalls: AgentToolCall[],
+  now: string
+): { kind: "single"; memory: RelationshipMemory } | { kind: "ambiguous"; message: string } | { kind: "none" } {
+  if (!request.query) {
+    const candidateIds = validRecentSearchCandidateIds(context, now);
+    if (context.activeMemoryId) {
+      const activeMemory = repo.listMemories(message.userId).find((memory) => memory.id === context.activeMemoryId);
+      if (activeMemory) {
+        return { kind: "single", memory: activeMemory };
+      }
+    }
+
+    if (candidateIds.length === 1) {
+      const [candidateId] = candidateIds;
+      const memory = repo.listMemories(message.userId).find((item) => item.id === candidateId);
+      return memory ? { kind: "single", memory } : { kind: "none" };
+    }
+
+    if (candidateIds.length > 1) {
+      const candidates = repo.listMemories(message.userId).filter((memory) => candidateIds.includes(memory.id));
+      return {
+        kind: "ambiguous",
+        message: `Who should I update - ${candidates.map((memory) => memory.displayName).join(" or ")}?`
+      };
+    }
+
+    return { kind: "none" };
+  }
+
+  toolCalls.push("search_memories");
+  const matches = tools.search_memories(message.userId, request.query);
+  if (matches.length === 0) {
+    return { kind: "none" };
+  }
+
+  if (matches.length > 1) {
+    return { kind: "ambiguous", message: composeSearchReply({ matches: matches.slice(0, 3), ambiguous: true }) };
+  }
+
+  return { kind: "single", memory: matches[0].memory };
 }
 
 function detectMemoryMutationRequest(text: string): MemoryMutationRequest | undefined {
@@ -316,6 +422,23 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
     const query = deleteMatch[1].trim();
     if (query.length > 0 && !/\b(previous|system|instruction|rules?)\b/i.test(query)) {
       return { kind: "delete", query };
+    }
+  }
+
+  const leadingActuallyMatch = trimmed.match(/^(?:actually|correction|update),?\s+([a-z][a-z .'-]{0,60}?)\s+(.+)$/i);
+  if (leadingActuallyMatch) {
+    const query = leadingActuallyMatch[1].trim();
+    const contextNote = leadingActuallyMatch[2].trim();
+    if (query.length > 0 && contextNote.length > 0 && !/^(she|he|they|them|her|him)$/i.test(query)) {
+      return { kind: "update", query, contextNote };
+    }
+  }
+
+  const pronounCorrectionMatch = trimmed.match(/^(?:actually|correction|update),?\s+(?:she|he|they|them|her|him)\s+(.+)$/i);
+  if (pronounCorrectionMatch) {
+    const contextNote = pronounCorrectionMatch[1].trim();
+    if (contextNote.length > 0) {
+      return { kind: "update", contextNote };
     }
   }
 
@@ -329,6 +452,167 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
   }
 
   return undefined;
+}
+
+function executeFollowUpSearchIfPresent(
+  message: InboundAgentMessage,
+  context: ConversationContext,
+  tools: RelationshipTools,
+  receivedAt: string
+): { outboundText: string; toolCalls: AgentToolCall[]; nextContext: ConversationContext } | undefined {
+  if (!looksLikeFollowUpSearchClue(message.text)) {
+    return undefined;
+  }
+
+  const candidateIds = validRecentSearchCandidateIds(context, receivedAt);
+  if (candidateIds.length === 0) {
+    return {
+      outboundText: "I'm not sure which previous search you mean. Give me one more clue or start a new search.",
+      toolCalls: [],
+      nextContext: clearSearchContext(context)
+    };
+  }
+
+  const toolCalls: AgentToolCall[] = ["search_memories"];
+  const matches = tools
+    .search_memories(message.userId, message.text)
+    .filter((match) => candidateIds.includes(match.memory.id));
+
+  if (matches.length === 0) {
+    return {
+      outboundText: "I could not narrow that previous search. Which person do you mean?",
+      toolCalls,
+      nextContext: context
+    };
+  }
+
+  if (matches.length > 1) {
+    return {
+      outboundText: composeSearchReply({ matches, ambiguous: true }),
+      toolCalls,
+      nextContext: {
+        ...context,
+        activeMemoryId: undefined,
+        lastSearch: createSearchContext({
+          message,
+          query: message.text,
+          matches,
+          receivedAt
+        })
+      }
+    };
+  }
+
+  const [match] = matches;
+  return {
+    outboundText: composeDefinitiveFollowUpReply(match),
+    toolCalls,
+    nextContext: {
+      ...clearSearchContext(context),
+      activeMemoryId: match.memory.id
+    }
+  };
+}
+
+function updateSearchContext(
+  message: InboundAgentMessage,
+  tools: RelationshipTools,
+  context: ConversationContext,
+  interpretation: MessageInterpretation
+): ConversationContext {
+  if (interpretation.intent !== "search_memory") {
+    return context;
+  }
+
+  const query = buildSearchQueryFromInterpretation(interpretation) || message.text;
+  const matches = tools.search_memories(message.userId, query);
+  if (matches.length === 0) {
+    return { ...clearSearchContext(context), activeMemoryId: undefined };
+  }
+
+  if (matches.length === 1) {
+    return { ...clearSearchContext(context), activeMemoryId: matches[0].memory.id };
+  }
+
+  if (!isEventWideRecallQuery(message.text) && isAmbiguous(matches)) {
+    return {
+      ...context,
+      activeMemoryId: undefined,
+      lastSearch: createSearchContext({
+        message,
+        query,
+        matches,
+        receivedAt: message.receivedAt
+      })
+    };
+  }
+
+  return { ...clearSearchContext(context), activeMemoryId: undefined };
+}
+
+function createSearchContext({
+  message,
+  query,
+  matches,
+  receivedAt
+}: {
+  message: InboundAgentMessage;
+  query: string;
+  matches: MemorySearchResult[];
+  receivedAt: string;
+}): SearchContext {
+  const createdAtMs = Date.parse(receivedAt);
+  const createdAt = Number.isNaN(createdAtMs) ? new Date().toISOString() : new Date(createdAtMs).toISOString();
+  const expiresAt = new Date((Number.isNaN(createdAtMs) ? Date.now() : createdAtMs) + SEARCH_CONTEXT_TTL_MS).toISOString();
+
+  return {
+    searchContextId: searchContextId(message, query, receivedAt),
+    createdAt,
+    expiresAt,
+    originalQuery: query,
+    candidateMemoryIds: matches.slice(0, 3).map((match) => match.memory.id),
+    lastQuestion: message.text
+  };
+}
+
+function searchContextId(message: InboundAgentMessage, query: string, receivedAt: string): string {
+  const hash = createHash("sha256")
+    .update([message.userId, message.spaceId ?? "", receivedAt, query].join("\0"))
+    .digest("hex")
+    .slice(0, 16);
+  return `search_context_${hash}`;
+}
+
+function composeDefinitiveFollowUpReply(match: MemorySearchResult): string {
+  return composeSearchReply({ matches: [match] }).replace(/^I think that was/, "That was");
+}
+
+function validRecentSearchCandidateIds(context: ConversationContext, now: string): string[] {
+  if (!context.lastSearch) {
+    return [];
+  }
+
+  const nowMs = Date.parse(now);
+  const expiresAtMs = Date.parse(context.lastSearch.expiresAt);
+  if (Number.isNaN(nowMs) || Number.isNaN(expiresAtMs) || nowMs > expiresAtMs) {
+    return [];
+  }
+
+  return context.lastSearch.candidateMemoryIds;
+}
+
+function clearSearchContext(context: ConversationContext): ConversationContext {
+  return { ...context, lastSearch: undefined };
+}
+
+function isSearchContextReset(text: string): boolean {
+  return /\b(?:new search|start over|reset search|clear search|different search|never mind|nevermind)\b/i.test(text);
+}
+
+function looksLikeFollowUpSearchClue(text: string): boolean {
+  return /^(?:the one|that one|one who|the person|the guy|the girl|the founder|she\b|he\b|they\b|them\b)/i.test(
+    text.trim()
+  );
 }
 
 function scopeOnlyLog(scopeDecision: ScopeDecision): unknown {

@@ -26,10 +26,15 @@ describe("relationship agent eval runner", () => {
       "scope-person-laundered-coding",
       "scope-in-scope-refusal-draft",
       "scope-ambiguous-message-draft",
-      "scope-adversarial-instruction"
+      "scope-adversarial-instruction",
+      "follow-up-search-narrowing",
+      "follow-up-search-expiry",
+      "active-memory-correction",
+      "ambiguous-memory-correction",
+      "untargeted-memory-correction"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(17);
+    expect(relationshipAgentEvalCases).toHaveLength(22);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -45,8 +50,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(17);
-    expect(summary.requiredTotal).toBe(17);
+    expect(summary.total).toBe(22);
+    expect(summary.requiredTotal).toBe(22);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);

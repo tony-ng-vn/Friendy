@@ -169,3 +169,20 @@
 - `npm run agent:friendy:check`: passed and reported the held pre-start event plus replayed unacked batch ack.
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `git diff --check`: passed.
+
+## Task 10 Red Tests
+
+- Date: 2026-05-22
+- Added interpreted-agent coverage for follow-up search narrowing, multiple remaining matches, stale follow-up expiry, active pronoun correction, and ambiguous correction clarification.
+- Red run: `npm test -- src/relationship/interpretedAgent.test.ts` failed because the search-context helper boundary was not implemented (`isSearchContextReset` was undefined).
+
+## Task 10 Green Verification
+
+- Date: 2026-05-22
+- Added a 15-minute search-context window for ambiguous searches, deterministic follow-up narrowing, stale follow-up clarification, and bounded correction routing through active or unambiguous memory targets.
+- Added trajectory eval cases for follow-up narrowing, follow-up expiry, active-memory correction, ambiguous-memory correction, and untargeted correction safety.
+- `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/evals/agentEvalRunner.test.ts`: passed with 2 files and 33 tests.
+- `npm test`: passed with 45 files and 269 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 22/22 with zero unsafe mutations and zero hallucinations.
+- `git diff --check`: passed.
