@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
 import { resolveConfiguredUserId } from "../identity";
+import type { RelationshipRepository } from "../repository";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
 import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
 import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
 import { createLiveSpectrumPromptSender } from "../transports/spectrumPromptSender";
+import { startSpectrumFriendyAgent } from "../transports/spectrumTransport";
 
 export type FriendyRuntimeConfigInput = {
   cwd?: string;
@@ -35,6 +37,7 @@ export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
   sender?: RuntimePromptSender;
   logger?: RuntimeLogger;
   startSensor?: (input: { launch: FriendySensorLaunchConfig; runtime: SensorRuntimeLineProcessor }) => StartedSensorProcess;
+  startInboundAgent?: FriendyInboundAgentStarter;
   ackWriter?: RuntimeAckWriter;
 };
 
@@ -47,8 +50,20 @@ export type StartedFriendyForegroundRuntime = {
   repo: SqliteRelationshipRepository;
   state: SqliteRuntimeStateStore;
   sensor: StartedSensorProcess;
+  inboundAgent?: StartedInboundAgent;
   close(): void;
 };
+
+export type StartedInboundAgent = {
+  close?(): void;
+} | void;
+
+export type FriendyInboundAgentStarter = (input: {
+  repo: RelationshipRepository;
+  userId: string;
+  env: Partial<NodeJS.ProcessEnv>;
+  logger: RuntimeLogger;
+}) => StartedInboundAgent;
 
 /** Resolves the foreground Friendy runtime config without starting Spectrum or a sensor process. */
 export function resolveFriendyRuntimeConfig({
@@ -74,7 +89,8 @@ export async function startFriendyForegroundRuntime({
   sender,
   logger = console,
   ackWriter = createFileAckWriter(cwd),
-  startSensor = defaultStartSensor
+  startSensor = defaultStartSensor,
+  startInboundAgent = defaultStartInboundAgent
 }: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
   const config = resolveFriendyRuntimeConfig({ cwd, env });
   if (config.runtimeStore !== "sqlite") {
@@ -93,6 +109,9 @@ export async function startFriendyForegroundRuntime({
     ackWriter,
     logger
   });
+  const inboundAgent = shouldStartInboundAgent(config, env)
+    ? startInboundAgent({ repo, userId, env, logger })
+    : undefined;
   const sensor = startSensor({ launch: config.sensor, runtime });
 
   return {
@@ -100,7 +119,9 @@ export async function startFriendyForegroundRuntime({
     repo,
     state,
     sensor,
+    inboundAgent,
     close() {
+      inboundAgent?.close?.();
       repo.close();
       state.close();
     }
@@ -189,6 +210,30 @@ function defaultStartSensor({
     },
     runtime
   });
+}
+
+function defaultStartInboundAgent({
+  repo,
+  env,
+  logger
+}: {
+  repo: RelationshipRepository;
+  env: Partial<NodeJS.ProcessEnv>;
+  logger: RuntimeLogger;
+}): StartedInboundAgent {
+  void startSpectrumFriendyAgent({ repo, env }).catch((error) => {
+    logger.error(`[friendy:inbound_agent:error] ${error instanceof Error ? error.message : String(error)}`);
+  });
+
+  return undefined;
+}
+
+function shouldStartInboundAgent(config: FriendyRuntimeConfig, env: Partial<NodeJS.ProcessEnv>): boolean {
+  if (env.FRIENDY_DISABLE_INBOUND_AGENT === "1") {
+    return false;
+  }
+
+  return config.sensor.mode === "real" || env.FRIENDY_START_INBOUND_AGENT === "1";
 }
 
 function createConsolePromptSender(): RuntimePromptSenderWithKind {

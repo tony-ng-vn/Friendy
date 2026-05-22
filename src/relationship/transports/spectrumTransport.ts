@@ -32,6 +32,14 @@ export type SpectrumRuntimeOptions = {
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
+export type StartSpectrumFriendyAgentOptions = {
+  interpreter?: MessageInterpreter;
+  now?: () => string;
+  repo?: RelationshipRepository;
+  tools?: RelationshipTools;
+  env?: Partial<NodeJS.ProcessEnv>;
+};
+
 export type CompactInteractionLog = {
   interactionId: string;
   userId: string;
@@ -98,12 +106,22 @@ export function createSpectrumFriendyRuntime({
  * This is a transport scaffold for the fixture number. User identity and durable memory are still
  * fixture-scoped here; the agent core is already separated so those pieces can be swapped later.
  */
-export async function startSpectrumFriendyAgent() {
+export async function startSpectrumFriendyAgent({
+  interpreter,
+  now,
+  repo,
+  tools,
+  env = process.env
+}: StartSpectrumFriendyAgentOptions = {}) {
   loadFriendyEnv();
-  const { projectId, projectSecret } = readSpectrumCredentials();
-  const openRouterConfig = readOpenRouterConfig();
+  const { projectId, projectSecret } = readSpectrumCredentials(env as NodeJS.ProcessEnv);
+  const openRouterConfig = readOpenRouterConfig(env);
   const runtime = createSpectrumFriendyRuntime({
-    interpreter: createOpenRouterInterpreter(openRouterConfig)
+    interpreter: interpreter ?? createOpenRouterInterpreter(openRouterConfig),
+    now,
+    repo,
+    tools,
+    env
   });
 
   // Keep Spectrum as a communication surface; relationship-memory decisions stay in the core agent.

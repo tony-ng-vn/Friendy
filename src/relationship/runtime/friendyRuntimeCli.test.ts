@@ -99,6 +99,44 @@ describe("Friendy foreground runtime CLI configuration", () => {
     started.close();
   });
 
+  it("starts the inbound iMessage agent with the same repository for real sensors", async () => {
+    const cwd = tempDir();
+    const sensorBinaryPath = join(cwd, "friendy-macos-sensor");
+    writeFileSync(sensorBinaryPath, "");
+    let inboundRepo: unknown;
+    let inboundUserId: string | undefined;
+    let inboundClosed = false;
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_BINARY_PATH: sensorBinaryPath,
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      startSensor({ launch }) {
+        expect(launch.mode).toBe("real");
+        return { child: fakeChildProcess() };
+      },
+      startInboundAgent({ repo, userId }) {
+        inboundRepo = repo;
+        inboundUserId = userId;
+        return {
+          close() {
+            inboundClosed = true;
+          }
+        };
+      },
+      logger: testLogger()
+    });
+
+    expect(inboundRepo).toBe(started.repo);
+    expect(inboundUserId).toBe("user_friendy");
+
+    started.close();
+    expect(inboundClosed).toBe(true);
+  });
+
   it("uses console prompt delivery for mock sensors by default", async () => {
     const sender = await createRuntimePromptSender({
       env: { FRIENDY_SENSOR_MOCK: "1" },
