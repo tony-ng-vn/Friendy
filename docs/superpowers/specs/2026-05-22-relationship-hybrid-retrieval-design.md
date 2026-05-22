@@ -7,7 +7,7 @@ Friendy should eventually retrieve people from vague human memory, not just exac
 The retrieval upgrade should be staged:
 
 1. generate a stable searchable document for each relationship memory;
-2. add local SQLite FTS5 retrieval when available;
+2. add local SQLite FTS5 retrieval over those documents when available;
 3. merge FTS/current field-aware lexical results through deterministic scoring;
 4. add optional embeddings through an explicit adapter after local retrieval quality is proven;
 5. optionally rerank only the retrieved candidates, never the whole memory database.
@@ -140,7 +140,7 @@ Rules:
 
 ## SQLite FTS5 Layer
 
-The first concrete retrieval upgrade should be local full-text search.
+The first concrete retrieval upgrade should be local full-text search. FTS5 is still lexical: it improves tokenization, field coverage, and local ranking over generated retrieval documents, but it does not understand true paraphrases by itself. Query planning from Spec A and later optional embeddings are still needed for semantic similarity.
 
 Add a SQLite FTS table if the runtime SQLite build supports FTS5:
 
@@ -166,6 +166,42 @@ Design constraints:
 - Tests should not require a platform-specific SQLite build feature unless the test first verifies FTS5 support.
 
 FTS scoring should not replace field-aware scoring. It should add candidates and evidence.
+
+## Migration and Backfill
+
+Existing confirmed memories need derived search state after this spec lands.
+
+On startup or migration:
+
+1. find confirmed memories without search documents;
+2. build deterministic `MemorySearchDocument` rows;
+3. insert or update FTS rows if FTS5 is available;
+4. skip embeddings unless an embedding provider is explicitly configured;
+5. log counts and status codes, not private memory contents.
+
+Backfill must be idempotent. Re-running it should update stale derived rows without duplicating documents, FTS rows, or embedding records.
+
+## Transaction Consistency
+
+Canonical memory state and derived search state should stay consistent.
+
+For synchronous local retrieval state, write in one transaction when possible:
+
+```text
+1. write canonical memory create/update/delete;
+2. write/update/delete search document;
+3. write/update/delete FTS row when available;
+4. write/update/delete embedding row only if enabled and synchronous;
+5. commit.
+```
+
+If embeddings later become asynchronous, track status explicitly:
+
+```ts
+type EmbeddingStatus = "not_configured" | "pending" | "ready" | "failed";
+```
+
+Async embedding failures must not roll back canonical memory writes. They should leave lexical/FTS retrieval usable and mark embedding status for retry or diagnostics.
 
 ## Optional Embedding Layer
 
@@ -368,7 +404,7 @@ Expected:
 
 - Existing field-aware search behavior still passes.
 - Search documents are deterministic and exclude private transport/contact internals.
-- FTS-backed search improves vague recall when FTS5 is available and falls back cleanly when not.
+- FTS-backed search improves local lexical retrieval over generated retrieval documents and falls back cleanly when FTS5 is unavailable.
 - Hybrid ranking preserves exact-name and exact-tag precision.
 - Optional embeddings never run by default and never run in tests without a fake provider.
 - Memory update/delete operations keep derived retrieval state consistent.

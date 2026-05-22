@@ -139,6 +139,8 @@ domain?: RouteDomain;
 search?: SearchPlan;
 ```
 
+Terms like `related` and `connected` should be preserved as intent, not as search clues. For example, `Anyone in my contacts related to Friendy?` should route as `list_related_people`, while `friendy` becomes the exact/normalized search clue.
+
 Existing fields remain:
 
 ```ts
@@ -174,6 +176,47 @@ For the live failure, the interpreter should produce an equivalent of:
   "needsClarification": false
 }
 ```
+
+## Memory Search Request
+
+Bridge interpreter output to retrieval with an explicit internal request type. This keeps the interpreter, policy validator, and retrieval/ranking layer separated.
+
+```ts
+type MemorySearchRequest = {
+  userId: string;
+  rawMessage: string;
+  interpretedQuery?: string;
+  normalizedQuery?: string;
+  exactTerms: string[];
+  semanticQuery?: string;
+  mode?:
+    | "lookup_person"
+    | "list_people"
+    | "list_related_people"
+    | "event_recall"
+    | "semantic_recall";
+  filters?: {
+    personName?: string;
+    eventName?: string;
+    topic?: string;
+    companyOrSchool?: string;
+    dateText?: string;
+    tags?: string[];
+  };
+  topK: number;
+};
+```
+
+Execution path:
+
+```text
+MessageInterpretation.search
+-> MemorySearchRequest
+-> search_memories tool
+-> repository retrieval/ranking
+```
+
+For Spec A, `MemorySearchRequest` may remain an internal helper that the current `search_memories` tool translates back into the existing lexical scorer. Spec B can deepen the retrieval implementation behind the same request shape.
 
 ## Deterministic Fast Paths
 
@@ -269,6 +312,8 @@ Anyone in my contacts related to friendy?
 -> friendy
 ```
 
+Normalization should not discard route intent. In that example, `related` means `mode: "list_related_people"` while `friendy` is the search clue.
+
 The normalizer must not erase the query completely:
 
 ```ts
@@ -286,6 +331,71 @@ Search execution should prefer route-provided clues:
 ```
 
 The existing field-aware scorer remains in place. The implementation may add an internal `MemorySearchRequest` overload or helper, but the public tool behavior must stay bounded and auditable.
+
+## Trace Shape
+
+Interaction traces should make routing failures debuggable without exposing private message content. Add a redacted route/policy/tool shape equivalent to:
+
+```ts
+type RouteTrace = {
+  hardBlock?: {
+    blocked: boolean;
+    reason?: string;
+  };
+  route?: {
+    domain?: RouteDomain;
+    intent: string;
+    confidence: number;
+    searchMode?: string;
+    exactTerms?: string[];
+    normalizedQuery?: string;
+  };
+  policy?: {
+    decision: "allow" | "reject" | "clarify";
+    reason?: string;
+  };
+  tools: Array<{
+    name: string;
+    status: "called" | "skipped" | "failed";
+  }>;
+};
+```
+
+For the live failure, the desired future trace is:
+
+```json
+{
+  "route": {
+    "domain": "relationship_memory",
+    "intent": "search_memory",
+    "confidence": 0.95,
+    "searchMode": "list_related_people",
+    "exactTerms": ["friendy"],
+    "normalizedQuery": "friendy"
+  },
+  "policy": {
+    "decision": "allow"
+  },
+  "tools": [
+    {
+      "name": "search_memories",
+      "status": "called"
+    }
+  ]
+}
+```
+
+The undesired trace remains:
+
+```json
+{
+  "hardBlock": {
+    "blocked": true,
+    "reason": "outside_relationship_memory_domain"
+  },
+  "tools": []
+}
+```
 
 ## Expected Behavior
 
