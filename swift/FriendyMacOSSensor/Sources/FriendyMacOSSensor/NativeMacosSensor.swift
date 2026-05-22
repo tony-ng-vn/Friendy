@@ -98,14 +98,20 @@ final class NativeMacosSensor {
                     exit(1)
                 }
             }
-            RunLoop.current.run()
         default:
             emitContactsPermissionError(identity: identity)
             exit(1)
         }
+        RunLoop.current.run()
     }
 
     private func startAuthorized() {
+        requestCalendarPermissionIfNeeded { [weak self] calendarPermissionStatus in
+            self?.startMonitoring(calendarPermissionStatus: calendarPermissionStatus)
+        }
+    }
+
+    private func startMonitoring(calendarPermissionStatus resolvedCalendarPermissionStatus: String) {
         do {
             try fileManager.createDirectory(at: outboxDir, withIntermediateDirectories: true)
             try fileManager.createDirectory(at: ackDir, withIntermediateDirectories: true)
@@ -113,9 +119,9 @@ final class NativeMacosSensor {
 
             if loadHistoryToken() == nil {
                 try saveBaselineToken()
-                emitSensorEvent(readySensorEvent(identity: identity, baselineCreated: true, calendarPermissionStatus: calendarPermissionStatus(eventStore)))
+                emitSensorEvent(readySensorEvent(identity: identity, baselineCreated: true, calendarPermissionStatus: resolvedCalendarPermissionStatus))
             } else {
-                emitSensorEvent(readySensorEvent(identity: identity, baselineCreated: false, calendarPermissionStatus: calendarPermissionStatus(eventStore)))
+                emitSensorEvent(readySensorEvent(identity: identity, baselineCreated: false, calendarPermissionStatus: resolvedCalendarPermissionStatus))
             }
 
             NotificationCenter.default.addObserver(
@@ -125,10 +131,27 @@ final class NativeMacosSensor {
             ) { [weak self] _ in
                 self?.handleContactsChanged()
             }
-            RunLoop.current.run()
         } catch {
             emitSensorEvent(fatalSensorEvent(code: "state_dir_unwritable", message: error.localizedDescription, identity: identity))
             exit(1)
+        }
+    }
+
+    private func requestCalendarPermissionIfNeeded(_ completion: @escaping (String) -> Void) {
+        let current = calendarPermissionStatus(eventStore)
+        guard current == "notDetermined" else {
+            completion(current)
+            return
+        }
+
+        if #available(macOS 14.0, *) {
+            eventStore.requestFullAccessToEvents { granted, _ in
+                completion(granted ? "authorized" : calendarPermissionStatus(self.eventStore))
+            }
+        } else {
+            eventStore.requestAccess(to: .event) { granted, _ in
+                completion(granted ? "authorized" : calendarPermissionStatus(self.eventStore))
+            }
         }
     }
 
@@ -362,7 +385,7 @@ func calendarPermissionStatus(_ eventStore: EKEventStore) -> String {
     case .notDetermined:
         return "notDetermined"
     @unknown default:
-        return "unknown"
+        return "unavailable"
     }
 }
 

@@ -68,10 +68,15 @@ describe("macOS sensor Swift source contract", () => {
   it("keeps Calendar permission degradation non-fatal while Contacts denial exits", () => {
     const nativeSource = readSwift("NativeMacosSensor.swift");
 
+    expect(nativeSource).toContain("requestCalendarPermissionIfNeeded");
+    expect(nativeSource).toContain("requestFullAccessToEvents");
+    expect(nativeSource).toContain("requestAccess(to: .event");
     expect(nativeSource).toContain('guard permission == "authorized" else');
     expect(nativeSource).toContain('"permissionStatus": permission');
     expect(nativeSource).toContain("emitContactsPermissionError");
     expect(nativeSource).toContain("exit(1)");
+    expect(nativeSource).toContain('return "unavailable"');
+    expect(nativeSource).not.toContain('return "unknown"');
   });
 });
 
