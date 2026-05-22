@@ -310,10 +310,14 @@ async function processEvent({
     const onboardingState = getOnboardingState();
     if (!isContactAutomationActive(onboardingState)) {
       const eventNow = now();
-      logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
       // Before first `start`, mark ignored so the sensor history batch can ack and stop re-emitting backlog.
       if (onboardingState === "ready_pending_user_start") {
+        logger.info(
+          "Contact automation paused (ready_pending_user_start); ignoring pre-start contact event so history can ack. Text start, then add a new contact."
+        );
         recordProcessed(state, event, "ignored", eventNow);
+      } else {
+        logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
       }
       return;
     }

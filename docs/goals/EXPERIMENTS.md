@@ -46,6 +46,19 @@
 - `git diff --check`: passed.
 - Manual real Mac E2E evidence is still required for goal completion: named iMessage prompt 5-15s after Done, confirmation creates a `memories` row, recall returns the person, and the terminal shows a new batch ack.
 
+## Option B Live Mac Partial Evidence
+
+- Date: 2026-05-22
+- User log showed the real runtime launching the signed app bundle via `open`: `bin/Friendy macOS Sensor.app`.
+- Runtime config reported `sensor.mode=real`, `kind=app_bundle`, and `eventLogPath=.friendy/macos-sensor-state/sensor-events.ndjson`.
+- Spectrum startup succeeded: `[friendy:startup_message] sent`.
+- Native sensor reached ready state: `macOS sensor ready: baselineCreated=false`.
+- A contact event arrived while onboarding was still `ready_pending_user_start`; runtime recorded it as ignored so the history batch could ack, then later processed the user's `start` message as `onboarding_control`.
+- Observed ids from the user log: contact event `sensor_evt_contact_33CF7601-71ED-4531-965D-8DF7039CA130`; batch `history_batch_D3857812-1A54-4DB8-B546-9319B6ACC277`; `start` interaction at `2026-05-22T08:54:23.751Z`.
+- Result: app-bundle launch, TCC identity, startup iMessage, ready event, and pre-start ignore/ack are live-proven. This does not complete the goal because it does not yet prove a brand-new post-start contact produces a named prompt, confirmation, memory row, and recall.
+- Follow-up source adjustment: pre-start contact logs now say the contact was ignored and instruct the operator to text `start`, then add a new contact, instead of incorrectly saying the event was being held.
+- Verification after the log adjustment: `npm test -- src/relationship/runtime/friendyRuntime.test.ts` passed with 14 tests; `npm test` passed with 48 files and 284 tests; `npm run build` passed; `npm run eval:agent` passed 29/29 with zero unsafe mutations and zero hallucinations; `npm run agent:friendy:check` passed with the clearer pre-start ignore log; `npm run check:mac-mvp-demo` passed; `git diff --check` passed.
+
 ## Baseline
 
 - Date: 2026-05-22

@@ -242,6 +242,9 @@ describe("Friendy macOS sensor runtime", () => {
     expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
       status: "ignored"
     });
+    expect(harness.logs.join("\n")).toContain(
+      "Contact automation paused (ready_pending_user_start); ignoring pre-start contact event so history can ack. Text start, then add a new contact."
+    );
   });
 
   it("pauses contact automation without deleting pending state and resumes without duplicates", async () => {
