@@ -22,6 +22,10 @@ Use `mac-mvp-final-goal-runbook.md` for exact copy/paste `/goal` prompts.
 12. `mac-mvp-task-12-behavior-evals-demo-check-goal.md`
 13. `mac-mvp-task-13-docs-alignment-goal.md`
 
+**Active E2E follow-up (real Mac, Option B):**
+
+- `mac-mvp-e2e-contact-detection-goal.md` — finish live contact detect → prompt → confirm → memory on user hardware (see commits `1098345`, `de48f03`).
+
 Earlier completed goal files:
 
 1. `contextual-memory-capture-v2-goal.md`

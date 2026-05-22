@@ -35,6 +35,7 @@ Transport message
 - Current Mac-only MVP behavior spec: `docs/superpowers/specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md`
 - Current Mac-only MVP implementation plan: `docs/superpowers/plans/2026-05-22-mac-only-mvp-final-implementation.md`
 - Current Mac-only MVP goal prompts: `docs/goals/mac-mvp-final-goal-runbook.md`
+- Mac MVP live E2E (Option B) goal: `docs/goals/mac-mvp-e2e-contact-detection-goal.md`
 - Completed iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
 - Completed local macOS checker goal: `docs/goals/local-macos-contact-calendar-checker-goal.md`
 - Current system audit: `docs/reviews/current-system-audit.md`
