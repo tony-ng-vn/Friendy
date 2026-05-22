@@ -1,6 +1,6 @@
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
-import { createRelationshipTools } from "./tools";
+import { createRelationshipTools, normalizeMemorySearchQuery } from "./tools";
 import type { RelationshipMemory } from "./types";
 
 describe("relationship tools", () => {
@@ -101,6 +101,26 @@ describe("relationship tools", () => {
 
     expect(results[0].memory.displayName).toBe("Maya Chen");
     expect(results[0].reason).toContain("piano");
+  });
+
+  it("normalizes broad relationship recall queries to useful clues", () => {
+    expect(normalizeMemorySearchQuery("Anyone in my contacts related to friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("Who is connected to Friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("People related to Friendy?")).toBe("friendy");
+    expect(normalizeMemorySearchQuery("Who was from the Mac sensor debugging thing?")).toBe(
+      "mac sensor debugging thing"
+    );
+  });
+
+  it("searches saved memories from broad related-contact wording", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 1", "Testing Friendy", "Testing Friendy"),
+      memory("Testing 12", "testing Friendy", "Met them during testing Friendy")
+    ]);
+
+    const results = tools.search_memories(fixtureUser.id, "Anyone in my contacts related to friendy?");
+
+    expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 1", "Testing 12"]);
   });
 
   it("updates a memory through a bounded tool and records a revision", () => {

@@ -241,7 +241,9 @@ function scoreMemory(memory: RelationshipMemory, query: SearchQueryAnalysis): In
 }
 
 function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
-  const terms = extractTags(rawQuery)
+  const normalizedQuery = normalizeMemorySearchQuery(rawQuery);
+  const termSource = normalizedQuery.length > 0 ? normalizedQuery : rawQuery;
+  const terms = extractTags(termSource)
     .map((term) => normalizeSearchText(term))
     .filter((term) => term.length > 0 && !GENERIC_QUERY_TERMS.has(term));
 
@@ -249,6 +251,18 @@ function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
     terms,
     isEventWide: /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery)
   };
+}
+
+/** Removes recall phrasing that carries intent but should not count as lexical memory clues. */
+export function normalizeMemorySearchQuery(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .filter((term) => !GENERIC_MEMORY_QUERY_TERMS.has(term))
+    .join(" ");
 }
 
 function selectSearchResults(results: InternalMemorySearchResult[], query: SearchQueryAnalysis): InternalMemorySearchResult[] {
@@ -392,4 +406,35 @@ const GENERIC_QUERY_TERMS = new Set([
   "show",
   "work",
   "working"
+]);
+
+const GENERIC_MEMORY_QUERY_TERMS = new Set([
+  "anyone",
+  "anybody",
+  "any",
+  "people",
+  "person",
+  "someone",
+  "somebody",
+  "contact",
+  "contacts",
+  "related",
+  "connected",
+  "connection",
+  "about",
+  "relevant",
+  "my",
+  "mine",
+  "in",
+  "to",
+  "with",
+  "from",
+  "who",
+  "which",
+  "find",
+  "show",
+  "list",
+  "was",
+  "is",
+  "the"
 ]);

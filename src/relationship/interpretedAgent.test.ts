@@ -229,6 +229,20 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).not.toContain("manual contact");
   });
 
+  it("finds saved contacts from broad related-contact recall phrasing", async () => {
+    const { agent } = createTestAgentWithMemories([
+      memoryFixture("Testing 1", "Testing Friendy"),
+      memoryFixture("Testing 12", "Met them during testing Friendy")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Anyone in my contacts related to friendy?"));
+
+    expect(result.toolCalls).toContain("search_memories");
+    expect(result.outbound.text).toContain("Testing 1");
+    expect(result.outbound.text).toContain("Testing 12");
+    expect(result.outbound.text).not.toContain("people you know");
+  });
+
   it("handles ignore without a pending candidate through the interpreted path", async () => {
     const { agent } = createTestAgent();
 
