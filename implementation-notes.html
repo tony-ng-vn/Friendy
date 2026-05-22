@@ -80,6 +80,7 @@
       <li>Expanded the TypeScript fake macOS sensor so <code>FRIENDY_SENSOR_MOCK_EVENT=contact_added</code> emits a full <code>ready</code>, <code>contact_added</code>, and <code>history_batch_complete</code> sequence. This gives <code>agent:friendy</code> a fresh end-to-end local smoke path without real macOS permissions.</li>
       <li>Added Swift source-level structure for Contacts history token baselining, change-history fetch, EventKit context query, durable outbox replay, and Node ack-based token advancement. This is source-contract covered in Linux CI but still needs <code>swift build</code> and TCC verification on macOS before it can be treated as a working native sensor.</li>
       <li>Expanded <code>doctor:macos-sensor</code> so it reports Swift toolchain availability, Swift package/source presence, and whether native Contacts/EventKit verification is possible on the current host before reporting binary/signing status.</li>
+      <li>Added <code>agent:friendy:check</code> as a deterministic foreground runtime check. It runs the fake <code>contact_added</code> sensor sequence through a disposable SQLite runtime, verifies the Photon Residency prompt path, and confirms the history batch ack path without requiring macOS permissions or Spectrum credentials.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -152,6 +153,8 @@
       <li>For fake sensor contact fixtures, first ran a RED test where importing <code>fakeMacosSensor.ts</code> emitted stdout and exported no fixture helpers. After implementation, <code>npm test -- src/relationship/runtime/fakeMacosSensor.test.ts</code> passed with 3 tests.</li>
       <li>For native Contacts token/outbox structure, added a RED source-contract assertion for <code>contacts-history-token.data</code>, <code>currentHistoryToken</code>, <code>CNChangeHistoryFetchRequest.startingToken</code>, <code>CNChangeHistoryAddContactEvent</code>, durable outbox writing, ack-based token advancement, and <code>history_reset</code>. After implementation, <code>npm test -- src/relationship/runtime/macosSensorSource.test.ts</code> passed with 4 tests.</li>
       <li>For macOS sensor readiness diagnostics, first ran RED doctor tests showing Swift/package/source readiness was not reported when the binary was missing. After implementation, <code>npm test -- src/relationship/runtime/macosSensorDoctor.test.ts</code> passed with 6 tests.</li>
+      <li>For the deterministic foreground runtime check, first ran a RED test where <code>friendyRuntimeCheck.ts</code> was missing. After implementation, <code>npm test -- src/relationship/runtime/friendyRuntimeCheck.test.ts</code> passed with 2 tests and <code>npm run agent:friendy:check</code> passed, printing the SQLite runtime path, ready event, ack event, and success line.</li>
+      <li>Ran runtime-check verification: <code>npm test</code> passed with 40 files and 186 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 required cases, <code>npm run doctor:macos-sensor</code> passed with expected Linux/native verification guidance, <code>npm run agent:friendy:check</code> passed, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>
