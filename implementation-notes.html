@@ -94,6 +94,7 @@
       <li>Added <code>doctor:friendy</code> as a structured local runtime readiness check. It reports Node version, <code>.env.local</code> presence, SQLite and sensor-state writability, prompt transport/recipient readiness, macOS sensor binary or mock mode, and native permission availability without starting Spectrum or the sensor.</li>
       <li>Added inspectable <code>agent:friendy</code> lifecycle logs for env loading, config resolution, SQLite readiness, prompt transport readiness, macOS sensor launch mode, and watching state.</li>
       <li>Added the Agent Behavior Contract as both Markdown and TypeScript prompt helpers. The interpreter now combines product behavior rules with separate structured-output instructions, and saved-memory replies use natural <code>Got it, saved...</code> wording.</li>
+      <li>Added event-guess strength to calendar scoring. Strong guesses can still use direct confirmation prompts, weak guesses are phrased as suggestions, and no-event contacts keep the open-ended meeting-context prompt.</li>
     </ul>
     <h2>Verification</h2>
     <ul>
@@ -239,6 +240,7 @@
       <li>For Mac MVP Task 2, first ran a RED doctor test showing <code>friendyDoctor.ts</code> was missing. After adding <code>doctor:friendy</code>, <code>npm test -- src/relationship/runtime/friendyDoctor.test.ts</code> passed with 5 tests, <code>FRIENDY_SENSOR_MOCK=1 FRIENDY_PROMPT_TRANSPORT=console npm run doctor:friendy</code> passed, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>For Mac MVP Task 3, first ran a RED lifecycle-log test showing startup logs were missing. After adding lifecycle logs, <code>npm test -- src/relationship/runtime/friendyRuntimeCli.test.ts</code> passed with 10 tests, <code>npm test -- src/relationship/runtime/friendyRuntimeCheck.test.ts</code> passed with 2 tests, <code>npm run agent:friendy:check</code> passed, <code>npm run build</code> passed, and <code>git diff --check</code> passed.</li>
       <li>For Mac MVP Task 4, first ran RED tests showing <code>behaviorContract.ts</code> was missing and saved-memory replies still used <code>Saved.</code> wording. After implementation, contract/interpreter/composer tests passed with 10 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 with zero unsafe mutations, and <code>git diff --check</code> passed.</li>
+      <li>For Mac MVP Task 5, first ran RED tests showing scored events lacked <code>strength</code> and weak guesses routed to no-event prompts. After implementation, calendar scorer and prompt planner tests passed with 11 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 17/17 with zero unsafe mutations, and <code>git diff --check</code> passed.</li>
     </ul>
   </body>
 </html>

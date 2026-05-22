@@ -52,6 +52,27 @@ describe("candidate prompt planner", () => {
     ]);
   });
 
+  it("asks a weak event guess as a suggestion instead of confirmation", () => {
+    const plan = planCandidatePrompt({
+      displayName: "Maya",
+      scoredEvents: [
+        scoredEvent({
+          rank: 1,
+          title: "Photon Residency Dinner",
+          score: 50,
+          strength: "weak",
+          reason: "Nearby but not clearly overlapping."
+        })
+      ]
+    });
+
+    expect(plan).toMatchObject({
+      route: "weak",
+      eventMatchRank: 1,
+      text: "I noticed you added Maya. Was this from Photon Residency Dinner, or somewhere else?"
+    });
+  });
+
   it("falls back to no-event prompt when only weak events remain", () => {
     const plan = planCandidatePrompt({
       displayName: "Maya",
@@ -64,10 +85,12 @@ describe("candidate prompt planner", () => {
 
 function scoredEvent(overrides: Partial<ScoredCalendarEvent>): ScoredCalendarEvent {
   const title = overrides.title ?? "Photon Residency Dinner";
+  const score = overrides.score ?? 90;
   return {
     eventId: `event_${title.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
     title,
-    score: 90,
+    score,
+    strength: strengthForScore(score),
     rank: 1,
     reason: "test event",
     snapshot: {
@@ -87,4 +110,16 @@ function scoredEvent(overrides: Partial<ScoredCalendarEvent>): ScoredCalendarEve
     },
     ...overrides
   };
+}
+
+function strengthForScore(score: number): ScoredCalendarEvent["strength"] {
+  if (score >= 60) {
+    return "strong";
+  }
+
+  if (score >= 45) {
+    return "weak";
+  }
+
+  return "none";
 }

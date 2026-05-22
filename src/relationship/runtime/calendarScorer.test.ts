@@ -39,7 +39,30 @@ describe("macOS calendar context scorer", () => {
       rank: 1
     });
     expect(event.score).toBeGreaterThanOrEqual(60);
+    expect(event.strength).toBe("strong");
     expect(event.reason).toContain("overlaps detection time");
+  });
+
+  it("labels plausible nearby events as weak when they do not clearly overlap", () => {
+    const [event] = scoreCalendarContext({
+      detectedAt: "2026-05-21T21:30:00-07:00",
+      calendarMatches: [
+        calendarMatch({
+          title: "Coffee nearby",
+          startsAt: "2026-05-21T18:00:00-07:00",
+          endsAt: "2026-05-21T20:00:00-07:00",
+          location: "San Francisco",
+          attendeeCount: 0
+        })
+      ]
+    });
+
+    expect(event).toMatchObject({
+      title: "Coffee nearby",
+      strength: "weak"
+    });
+    expect(event.score).toBeGreaterThanOrEqual(45);
+    expect(event.score).toBeLessThan(60);
   });
 
   it("penalizes logistics and work blocks even when they overlap", () => {

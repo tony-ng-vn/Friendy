@@ -8,10 +8,13 @@
  */
 import type { MacosCalendarMatch } from "./sensorEvents";
 
+export type EventGuessStrength = "strong" | "weak" | "none";
+
 export type ScoredCalendarEvent = {
   eventId: string;
   title: string;
   score: number;
+  strength: EventGuessStrength;
   rank: number;
   reason: string;
   snapshot: MacosCalendarMatch;
@@ -58,8 +61,6 @@ const WORK_BLOCK_TERMS = ["focus", "deep work", "heads down", "work block"];
 const NOISE_CALENDAR_TERMS = ["holidays", "holiday", "birthday", "birthdays", "weather", "sports"];
 const GENERIC_AVAILABILITY_TITLES = new Set(["busy", "hold", "blocked", "ooo"]);
 
-/** Minimum score required to keep an event in the ranked shortlist. */
-const MIN_SURVIVING_SCORE = 35;
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 
@@ -75,7 +76,7 @@ export function scoreCalendarContext({ detectedAt, calendarMatches }: ScoreCalen
   const detectedAtMs = new Date(detectedAt).getTime();
   const scored = calendarMatches
     .map((event) => scoreEvent(event, detectedAtMs))
-    .filter((event): event is Omit<ScoredCalendarEvent, "rank"> => event !== undefined && event.score > MIN_SURVIVING_SCORE);
+    .filter((event): event is Omit<ScoredCalendarEvent, "rank"> => event !== undefined);
 
   return collapseDuplicates(scored)
     .sort((a, b) => compareScoredEvents(a, b, detectedAtMs))
@@ -181,13 +182,31 @@ function scoreEvent(event: MacosCalendarMatch, detectedAtMs: number): Omit<Score
     reasons.push("all-day penalty");
   }
 
+  const strength = eventGuessStrength(score);
+  if (strength === "none") {
+    return undefined;
+  }
+
   return {
     eventId: event.eventIdentifier || snapshotId(event),
     title,
     score,
+    strength,
     reason: reasons.join("; "),
     snapshot: event
   };
+}
+
+function eventGuessStrength(score: number): EventGuessStrength {
+  if (score >= 60) {
+    return "strong";
+  }
+
+  if (score >= 45) {
+    return "weak";
+  }
+
+  return "none";
 }
 
 function collapseDuplicates(events: Array<Omit<ScoredCalendarEvent, "rank">>): Array<Omit<ScoredCalendarEvent, "rank">> {

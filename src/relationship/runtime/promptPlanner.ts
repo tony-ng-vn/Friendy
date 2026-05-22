@@ -3,6 +3,7 @@
  *
  * Routing thresholds (see constants below):
  * - `single`: top score >= 60 and lead over second place > 15
+ * - `weak`: one plausible event survives but is not strong enough to confirm
  * - `disambiguate`: two or more events >= 45
  * - `none`: no confident calendar match; ask an open-ended "where did you meet?" prompt
  */
@@ -12,6 +13,7 @@ import type { ScoredCalendarEvent } from "./calendarScorer";
 export type CandidatePromptPlan =
   | { route: "none"; text: string }
   | { route: "single"; eventMatchRank: 1; text: string }
+  | { route: "weak"; eventMatchRank: 1; text: string }
   | { route: "disambiguate"; options: Array<{ rank: number; title: string }>; text: string };
 
 export type PlanCandidatePromptInput = {
@@ -35,11 +37,11 @@ const DISAMBIGUATION_MIN_SCORE = 45;
 export function planCandidatePrompt({ displayName, scoredEvents }: PlanCandidatePromptInput): CandidatePromptPlan {
   const [top, second] = scoredEvents;
 
-  if (!top || top.score < DISAMBIGUATION_MIN_SCORE) {
+  if (!top || top.strength === "none" || top.score < DISAMBIGUATION_MIN_SCORE) {
     return noEventPrompt(displayName);
   }
 
-  if (top.score >= SINGLE_EVENT_MIN_SCORE && (!second || top.score - second.score > SINGLE_EVENT_GAP)) {
+  if (top.strength === "strong" && top.score >= SINGLE_EVENT_MIN_SCORE && (!second || top.score - second.score > SINGLE_EVENT_GAP)) {
     return {
       route: "single",
       eventMatchRank: 1,
@@ -47,8 +49,16 @@ export function planCandidatePrompt({ displayName, scoredEvents }: PlanCandidate
     };
   }
 
+  if (top.strength === "weak") {
+    return {
+      route: "weak",
+      eventMatchRank: 1,
+      text: `I noticed you added ${displayName}. Was this from ${top.title}, or somewhere else?`
+    };
+  }
+
   const options = scoredEvents
-    .filter((event) => event.score >= DISAMBIGUATION_MIN_SCORE)
+    .filter((event) => event.strength !== "none" && event.score >= DISAMBIGUATION_MIN_SCORE)
     .slice(0, 3)
     .map((event) => ({ rank: event.rank, title: event.title }));
 

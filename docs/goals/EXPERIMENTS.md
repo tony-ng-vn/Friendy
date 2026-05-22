@@ -72,3 +72,21 @@
 - `npm run build`: passed.
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `git diff --check`: passed.
+
+## Task 5 Red Tests
+
+- Date: 2026-05-22
+- Added weak event prompt routing coverage to `src/relationship/runtime/promptPlanner.test.ts`.
+- Added weak event strength coverage to `src/relationship/runtime/calendarScorer.test.ts`.
+- Red run: `npm test -- src/relationship/runtime/calendarScorer.test.ts src/relationship/runtime/promptPlanner.test.ts` failed because scored events did not carry `strength` and weak single guesses routed to `none`.
+
+## Task 5 Green Verification
+
+- Date: 2026-05-22
+- Added `EventGuessStrength` with `strong`, `weak`, and `none`.
+- Calendar scorer now filters out `none` strength and returns strength on surviving scored events.
+- Prompt planner now routes weak top guesses as suggestions: `Was this from ..., or somewhere else?`.
+- `npm test -- src/relationship/runtime/calendarScorer.test.ts src/relationship/runtime/promptPlanner.test.ts`: passed with 2 files and 11 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
+- `git diff --check`: passed.
