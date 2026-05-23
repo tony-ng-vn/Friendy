@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   composeClarificationReply,
   composeIgnoreCandidateReply,
+  composeListPeopleReply,
   composeOnboardingControlReply,
   composeRuntimeStartupReply,
   composeNoMatchReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
-import type { MemorySearchResult } from "./tools";
+import type { ListPeopleResult, MemorySearchResult } from "./tools";
 import type { RelationshipMemory } from "./types";
 
 describe("relationship response composer", () => {
@@ -85,6 +86,50 @@ describe("relationship response composer", () => {
     [saved, noMatch, clarification, ignored, noPendingIgnore].forEach(expectNoInternalLanguage);
   });
 
+  it("formats filtered people lists with bullets and duplicate groups", () => {
+    const reply = composeListPeopleReply({
+      result: listPeopleResult({
+        appliedFilterLabel: "testing friendy",
+        people: [
+          { displayName: "Testing 12", memories: [{ memoryId: "memory_testing_12", summary: "Met them during testing Friendy" }] },
+          {
+            displayName: "Testing 1",
+            memories: [{ memoryId: "memory_testing_1", summary: "Testing Friendy" }],
+            duplicateGroupId: "duplicate_testing_1"
+          }
+        ],
+        duplicateGroups: [
+          {
+            duplicateGroupId: "duplicate_testing_1",
+            reason: "same_display_name",
+            displayNames: ["Testing 1"],
+            memoryIds: ["memory_testing_1", "memory_testing_1_retry"],
+            pendingCandidateIds: []
+          }
+        ]
+      }),
+      preferBullets: true
+    });
+
+    expect(reply).toContain("I remember these people from testing friendy:");
+    expect(reply).toContain("- Testing 12 - Met them during testing Friendy");
+    expect(reply).toContain("- Testing 1 - Testing Friendy");
+    expect(reply).toContain("I also see possible duplicates:");
+    expect(reply).toContain("- Testing 1 appears twice");
+    expectNoInternalLanguage(reply);
+  });
+
+  it("formats unsupported Apple Contacts source without pretending it checked contacts", () => {
+    const reply = composeListPeopleReply({
+      result: listPeopleResult({
+        people: [],
+        unsupportedSources: ["apple_contacts"]
+      })
+    });
+
+    expect(reply).toBe("I can list people from Friendy memory right now. Apple Contacts listing is not connected yet.");
+  });
+
   it("formats the foreground runtime startup message without technical language", () => {
     expect(composeRuntimeStartupReply()).toContain("Reply start");
     expect(composeRuntimeStartupReply()).not.toMatch(/sqlite|sensor|runtime/i);
@@ -123,6 +168,15 @@ function searchResult(memoryValue: RelationshipMemory, reason: string, score = 6
     memory: memoryValue,
     reason,
     score
+  };
+}
+
+function listPeopleResult(overrides: Partial<ListPeopleResult>): ListPeopleResult {
+  return {
+    people: [],
+    duplicateGroups: [],
+    pendingCandidates: [],
+    ...overrides
   };
 }
 
