@@ -221,6 +221,7 @@ describe("relationship tools", () => {
       ...repo,
       searchMemoryDocuments
     });
+    const searchMemories = vi.spyOn(tools, "search_memories");
 
     const result = tools.list_people(fixtureUser.id, {
       source: "friendy_memory",
@@ -240,6 +241,7 @@ describe("relationship tools", () => {
     ]);
     expect(result.duplicateGroups).toEqual([]);
     expect(result.pendingCandidates).toEqual([]);
+    expect(searchMemories).not.toHaveBeenCalled();
     expect(searchMemoryDocuments).not.toHaveBeenCalled();
   });
 
