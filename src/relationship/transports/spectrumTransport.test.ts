@@ -23,7 +23,8 @@ describe("spectrum transport", () => {
   it("routes normalized iMessage text through the interpreted agent and returns a compact log", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),
-      now: () => "2026-05-20T12:00:00.000Z"
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
     });
 
     const result = await runtime.handleInboundText({
@@ -83,7 +84,8 @@ describe("spectrum transport", () => {
   it("does not duplicate a manual memory when the same inbound message is retried", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),
-      now: () => "2026-05-20T12:00:00.000Z"
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
     });
     const inbound = {
       userId: fixtureUser.id,
@@ -112,7 +114,8 @@ describe("spectrum transport", () => {
   it("uses the first inbound Spectrum space as conversation identity when no user exists yet", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),
-      now: () => "2026-05-20T12:00:00.000Z"
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
     });
 
     await runtime.handleInboundText({
@@ -140,7 +143,8 @@ describe("spectrum transport", () => {
     const dir = mkdtempSync(join(tmpdir(), "friendy-spectrum-runtime-"));
     const env = {
       FRIENDY_RUNTIME_STORE: "sqlite",
-      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite")
+      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite"),
+      FRIENDY_STRICT_MODE: "0"
     };
     let first: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;
     let second: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;

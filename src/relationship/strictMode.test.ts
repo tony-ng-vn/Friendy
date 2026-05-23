@@ -3,12 +3,16 @@ import { FriendyStrictModeError, readFriendyStrictMode } from "./strictMode";
 import type { FriendyTrace } from "./trace";
 
 describe("readFriendyStrictMode", () => {
-  it("treats missing, empty, and false-like values as disabled", () => {
-    expect(readFriendyStrictMode({})).toBe(false);
-    expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "" })).toBe(false);
+  it("treats missing and empty values as enabled", () => {
+    expect(readFriendyStrictMode({})).toBe(true);
+    expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "" })).toBe(true);
+  });
+
+  it("treats explicit false-like values as disabled", () => {
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "0" })).toBe(false);
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "false" })).toBe(false);
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "off" })).toBe(false);
+    expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "no" })).toBe(false);
   });
 
   it("treats supported truthy values as enabled case-insensitively", () => {
@@ -17,6 +21,7 @@ describe("readFriendyStrictMode", () => {
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "TRUE" })).toBe(true);
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "yes" })).toBe(true);
     expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "on" })).toBe(true);
+    expect(readFriendyStrictMode({ FRIENDY_STRICT_MODE: "unexpected" })).toBe(true);
   });
 });
 

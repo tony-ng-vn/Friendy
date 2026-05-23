@@ -11,12 +11,15 @@ export type FriendyStrictModeErrorCode =
 
 type EnvLike = Partial<Record<string, string | undefined>>;
 
-const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const FALSE_VALUES = new Set(["0", "false", "off", "no"]);
 
-/** Reads the opt-in strict-mode flag without mutating process state. */
+/** Reads strict mode without mutating process state. Strict is on by default for live routing. */
 export function readFriendyStrictMode(env: EnvLike = process.env): boolean {
   const raw = env.FRIENDY_STRICT_MODE?.trim().toLowerCase();
-  return raw ? TRUE_VALUES.has(raw) : false;
+  if (!raw) {
+    return true;
+  }
+  return !FALSE_VALUES.has(raw);
 }
 
 export class FriendyStrictModeError extends Error {
