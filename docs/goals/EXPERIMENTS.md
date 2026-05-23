@@ -1,3 +1,19 @@
+# Friendy List People Tool
+
+## GREEN
+
+- Date: 2026-05-23
+- Goal source: `docs/superpowers/specs/2026-05-23-friendy-list-people-tool-design.md`.
+- Added a deterministic `list_people` tool and routed `intent: list_people` through it instead of `search_memories`.
+- Live model routing is strict by default after this pass; fallback is not used unless a test/local fixture explicitly disables strict mode with `FRIENDY_STRICT_MODE=0`.
+- Focused checks:
+  - `npm test -- src/relationship/tools.test.ts`
+  - `npm test -- src/relationship/responseComposer.test.ts`
+  - `npm test -- src/relationship/interpretedAgent.test.ts`
+  - `npm test -- src/relationship/strictMode.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/transports/spectrumTransport.test.ts`
+  - `npm test -- src/relationship/evals/agentEvalRunner.test.ts` remains RED only at the aggregate zero-failure assertion because four frozen non-list cases still fail.
+- Eval status after this PR: `npm run eval:agent` reports 37/41 expected, with four non-list regression-freeze cases still RED.
+
 # Friendy Regression Freeze Tests
 
 ## RED

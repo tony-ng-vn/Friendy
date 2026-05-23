@@ -6,6 +6,14 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Friendy List People Tool (2026-05-23)</h2>
+    <ul>
+      <li>Added a dedicated <code>list_people</code> tool for Friendy memory inventory/list requests, separate from <code>search_memories</code>.</li>
+      <li>The tool returns structured people, memory summaries, duplicate groups, pending candidate summaries, filter labels, and unsupported Apple Contacts source metadata.</li>
+      <li>List responses now format structured inventory results and suppress unrelated stale pending-contact reminders.</li>
+      <li>Apple Contacts listing remains unsupported metadata in this PR; no Apple Contacts mutation or read adapter was added.</li>
+      <li>After review, live model routing is strict by default. Missing/failed model interpretation now fails instead of silently falling through to the rule-based interpreter; tests that need deterministic fixtures must opt out with <code>FRIENDY_STRICT_MODE=0</code>.</li>
+    </ul>
     <h2>Friendy Regression Freeze Tests (2026-05-23)</h2>
     <ul>
       <li>Added tests-only eval coverage for five live failure classes: filtered bullet list routing, duplicate audit, conversation repair, fuzzy delete confirmation, and same-name pending contact disambiguation.</li>
@@ -14,7 +22,7 @@
     </ul>
     <h2>Strict Mode and Trace Envelope (2026-05-23)</h2>
     <ul>
-      <li>Added opt-in <code>FRIENDY_STRICT_MODE</code> parsing with a typed <code>FriendyStrictModeError</code>. Supported truthy values are <code>1</code>, <code>true</code>, <code>yes</code>, and <code>on</code>.</li>
+      <li>Added <code>FRIENDY_STRICT_MODE</code> parsing with a typed <code>FriendyStrictModeError</code>. Strict mode is now enabled by default; explicit false-like values such as <code>0</code>, <code>false</code>, <code>off</code>, and <code>no</code> disable it for tests/local fixtures.</li>
       <li>Added a first-class <code>FriendyTrace</code> envelope to interpreted-agent results and persisted interaction JSON. The redacted runtime trace exposes strict mode, route source, fallback usage, policy decision, active ids, and tool calls without raw names, notes, phone numbers, emails, or full contact payloads.</li>
       <li>OpenRouter interpreter results now report <code>routeSource</code>, <code>fallbackUsed</code>, and <code>fallbackReason</code>. Non-strict behavior still falls back when configured; strict mode throws before fallback on missing API key, model failure, or invalid schema.</li>
       <li>Strict mode now throws on fallback usage, unknown model routes, unsupported contact-management routes, missing deterministic tools, and ambiguous executable memory mutations. Non-strict mode keeps user-facing blocker/clarification behavior.</li>
