@@ -19,14 +19,16 @@ describe("router input envelope", () => {
     const { candidate, input } = promptedCandidateHarness();
 
     const envelope = buildRouterInputEnvelope(input);
+    const safeCandidateId = candidate.id.replace(/_contact[\w-]*/gi, "");
 
     expect(envelope.userText).toBe("Yes, I met Testing 3 during Friendy testing.");
     expect(envelope.conversationState.activeWorkflow).toEqual({
       kind: "pending_contact_confirmation",
-      frameId: `frame_pending_contact_${candidate.id}`,
-      candidateId: candidate.id,
+      frameId: `frame_pending_contact_${safeCandidateId}`,
+      candidateId: safeCandidateId,
       displayName: "Testing 3",
-      lastFriendyPrompt: "I noticed you added Testing 3. Where did you meet them?"
+      lastFriendyPrompt: "I noticed you added Testing 3. Where did you meet them?",
+      promptedAt: "2026-05-20T11:59:00.000Z"
     });
     expect(envelope.conversationState.recentAgentMessages).toEqual([]);
     expect(envelope.conversationState.recentEntityRefs).toEqual([]);
@@ -34,9 +36,11 @@ describe("router input envelope", () => {
     expect(envelope.conversationState.lastToolErrors).toEqual([]);
     expect(envelope.domainStateSummary.pendingCandidates).toEqual([
       {
-        candidateId: candidate.id,
+        candidateId: safeCandidateId,
         displayName: "Testing 3",
-        status: "prompted"
+        status: "prompted",
+        isActive: true,
+        lastFriendyPrompt: "I noticed you added Testing 3. Where did you meet them?"
       }
     ]);
     expect(envelope.availableTools).toEqual(availableTools);
@@ -68,6 +72,8 @@ describe("router input envelope", () => {
     expect(envelope.conversationState.lastListResultIds).toEqual([]);
     expect(envelope.conversationState.lastToolErrors).toEqual([]);
     expect(envelope.domainStateSummary.pendingCandidates).toEqual([]);
+    expect(envelope.domainStateSummary.knownPeopleNamed).toEqual([]);
+    expect(envelope.domainStateSummary.possibleDuplicates).toEqual([]);
     expect(envelope.availableTools).toEqual(availableTools);
     expect(envelope.availableRouteCapabilities).toEqual(availableRouteCapabilities);
   });
@@ -92,19 +98,20 @@ describe("router input envelope", () => {
     const envelope = buildRouterInputEnvelope(
       routerBuilderInput("Anyone in my contacts related to Testing 3?", conversationState, repo.listMemories(fixtureUser.id))
     );
+    const safeCandidateId = candidate.id.replace(/_contact[\w-]*/gi, "");
 
     expect(envelope.domainStateSummary.knownPeopleNamed).toEqual([
       {
         queryName: "Testing 3",
         memoryIds: ["memory_testing_3"],
-        candidateIds: [candidate.id]
+        candidateIds: [safeCandidateId]
       }
     ]);
     expect(envelope.domainStateSummary.possibleDuplicates).toEqual([
       {
         displayName: "Testing 3",
         memoryIds: ["memory_testing_3"],
-        candidateIds: [candidate.id],
+        candidateIds: [safeCandidateId],
         reason: "same_display_name"
       }
     ]);
