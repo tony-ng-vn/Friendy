@@ -247,6 +247,8 @@ function expectNoInternalLanguage(reply: string) {
   expect(reply).not.toContain("duplicate_");
   expect(reply).not.toContain("candidate_");
   expect(reply).not.toContain("same_display_name");
+  expect(reply).not.toContain("similar_display_name");
+  expect(reply).not.toContain("same_contact_method");
   expect(reply).not.toContain("pending_matches_saved");
   expect(reply).not.toContain("prompted");
 }
