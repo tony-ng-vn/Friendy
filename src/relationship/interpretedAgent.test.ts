@@ -401,6 +401,16 @@ describe("interpreted relationship agent", () => {
       ]
     });
     const tools = createRelationshipTools(repo);
+    const pendingCandidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101033"],
+      emails: []
+    });
+    repo.markCandidatePrompted(pendingCandidate.id, "interaction_prompt_testing_3", {
+      spaceId: "imessage_space_testing_3",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
     const agent = createInterpretedRelationshipAgent({
       repo,
       tools,
@@ -437,6 +447,7 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("I still need context");
+    expect(result.outbound.text).not.toContain("Testing 3");
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {

@@ -1442,7 +1442,7 @@ function listPeople(
     source: "friendy_memory",
     limit: interpretation.search?.topK ?? 20,
     dedupeByPerson: true,
-    includePending: true,
+    includePending: false,
     filter: {
       rawText: message.text,
       exactTerms: interpretation.search?.exactTerms ?? [],
