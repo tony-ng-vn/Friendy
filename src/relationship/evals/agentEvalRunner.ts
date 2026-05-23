@@ -244,6 +244,7 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("duplicate-pending-filtered-list-regression", "interpreted", [
     "filtered bullet list uses list_people route",
     "filtered bullet list does not use search fallback",
+    "filtered bullet list returns matching saved people",
     "filtered bullet list respects bullet formatting",
     "filtered bullet list suppresses stale pending reminder",
     "filtered bullet list excludes unrelated people"
@@ -494,7 +495,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[10],
     async run({ interpreter, now }) {
-      const runtime = createSpectrumFriendyRuntime({ interpreter, now });
+      const runtime = createSpectrumFriendyRuntime({ interpreter, now, env: { FRIENDY_STRICT_MODE: "0" } });
       await runtime.handleInboundText({
         text: "I met Amaya at Photon Residency II, recruiting agents founder",
         spaceId: "space_eval_first_inbound",
@@ -1174,6 +1175,11 @@ const executableEvalCases: ExecutableEvalCase[] = [
           "filtered bullet list does not use search fallback",
           "intent",
           !toolCallsInclude(result.toolCalls, "search_memories")
+        ),
+        assertion(
+          "filtered bullet list returns matching saved people",
+          "searchRecall",
+          includesAll(result.outbound.text, ["Testing 12", "Testing 1", "Testing 3"])
         ),
         assertion("filtered bullet list respects bullet formatting", "searchRecall", hasBulletFormatting(result.outbound.text)),
         assertion(

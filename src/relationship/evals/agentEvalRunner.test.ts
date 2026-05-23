@@ -97,6 +97,7 @@ describe("relationship agent eval runner", () => {
     ).toEqual([
       "filtered bullet list uses list_people route",
       "filtered bullet list does not use search fallback",
+      "filtered bullet list returns matching saved people",
       "filtered bullet list respects bullet formatting",
       "filtered bullet list suppresses stale pending reminder",
       "filtered bullet list excludes unrelated people"
