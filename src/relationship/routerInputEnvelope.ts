@@ -81,7 +81,7 @@ export function buildRouterInputEnvelope(_input: {
       activeWorkflow: buildActiveWorkflow(_input.conversationState),
       recentAgentMessages: buildRecentAgentMessages(_input.recentAgentMessages),
       recentEntityRefs: buildRecentEntityRefs(_input.recentEntityRefs),
-      lastListResultIds: boundedTextArray(_input.lastListResultIds, MAX_LAST_LIST_RESULT_IDS),
+      lastListResultIds: boundedIdArray(_input.lastListResultIds, MAX_LAST_LIST_RESULT_IDS),
       lastToolErrors: buildLastToolErrors(_input.lastToolErrors)
     },
     domainStateSummary: {
@@ -279,6 +279,14 @@ function normalizeForMatch(value: string): string {
 
 function boundedTextArray(values: string[] | undefined, limit: number): string[] {
   return (values ?? []).slice(0, limit).map((value) => normalizeAndTruncate(value));
+}
+
+function boundedIdArray(values: string[] | undefined, limit: number): string[] {
+  return [...new Set(values ?? [])].slice(0, limit).map((value) => truncateId(value.trim()));
+}
+
+function truncateId(value: string): string {
+  return value.length <= MAX_TEXT_LENGTH ? value : value.slice(0, MAX_TEXT_LENGTH).trim();
 }
 
 function buildRecentAgentMessages(

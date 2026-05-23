@@ -174,6 +174,7 @@ describe("router input envelope", () => {
           displayName: "Testing 3"
         }
       ],
+      lastListResultIds: ["memory_0123456789abcdef0123456789abcdef", "contact_testing_3"],
       lastToolErrors: [
         {
           tool: "confirm_candidate",
@@ -200,6 +201,10 @@ describe("router input envelope", () => {
         id: candidate.id,
         displayName: "Testing 3"
       }
+    ]);
+    expect(envelope.conversationState.lastListResultIds).toEqual([
+      "memory_0123456789abcdef0123456789abcdef",
+      "contact_testing_3"
     ]);
     expect(envelope.conversationState.lastToolErrors).toEqual([
       {
