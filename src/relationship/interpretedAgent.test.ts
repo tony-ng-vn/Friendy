@@ -628,6 +628,24 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("treats second-person contact inventory questions as list-all recall", async () => {
+    const { agent } = createTestAgentWithMemories([
+      memoryFixture("Testing 2", "Met during testing friendy"),
+      memoryFixture("Sarah Fan", "community lead at Photon Residency II")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Do you know anyone in my contact?"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("Testing 2");
+    expect(result.outbound.text).toContain("Sarah Fan");
+    expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      intent: "search_memory",
+      search: { mode: "list_people" }
+    });
+  });
+
   it("confirms a pending contact from free-text context before calling the interpreter", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

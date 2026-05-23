@@ -150,10 +150,15 @@ describe("relationship tools", () => {
       memory("Maya", "Photon Residency", "building recruiting agents")
     ]);
 
-    const results = tools.search_memories(fixtureUser.id, "Just give me all the people in my contact so far");
+    for (const query of [
+      "Just give me all the people in my contact so far",
+      "Do you know anyone in my contact?"
+    ]) {
+      const results = tools.search_memories(fixtureUser.id, query);
 
-    expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 2", "Maya"]);
-    expect(results.every((result) => result.reason.includes("list-all"))).toBe(true);
+      expect(results.map((result) => result.memory.displayName)).toEqual(["Testing 2", "Maya"]);
+      expect(results.every((result) => result.reason.includes("list-all"))).toBe(true);
+    }
   });
 
   it("uses generated retrieval documents for accepted memory fields outside the old field scorer", () => {

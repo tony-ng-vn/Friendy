@@ -35,7 +35,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest pushed commit** | `1f2bdb1` — `fix:add state-aware relationship routing` |
+| **Latest fix** | `fix:route contact inventory questions` — included in the current `main` push |
 | **Active goal** | `docs/goals/state-aware-relationship-agent-routing-goal.md` — **complete** |
 | **Branch** | `main` (pushed) |
 
@@ -53,6 +53,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
   - generic recoverable fallback copy was removed from the scope boundary.
 - Full verification passed on 2026-05-23: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
 - Goal implementation commit was pushed to `main` as `1f2bdb1`.
+- Follow-up fix: `Do you know anyone in my contact?` is covered as list-all recall and should call `search_memories` instead of the out-of-scope blocker.
 
 ### Verified live flow (2026-05-22)
 

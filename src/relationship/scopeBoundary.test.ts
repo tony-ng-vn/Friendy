@@ -107,6 +107,7 @@ describe("relationship agent scope boundary", () => {
       "Just give me all the people in my contact so far",
       "What person do I know so far?",
       "What are the people I have in my contact so far?",
+      "Do you know anyone in my contact?",
       "List all my contacts so far",
       "Show me everyone I know"
     ]) {

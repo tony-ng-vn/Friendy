@@ -21,7 +21,9 @@ export function isListPeopleRecall(text: string): boolean {
     /\b(all|every|everyone|everybody)\b.*\b(people|persons?|contacts?|network)\b.*\b(i|my|me|mine|know|met|saved|have|remember|so far)\b/,
     /\bwhat\b.*\b(people|persons?|contacts?)\b.*\b(do\s+i\s+|i\s+)?(know|have|met|saved|remember)\b/,
     /\bwho\b.*\b(do\s+i\s+|i\s+)(know|have|met|saved|remember)\b/,
-    /\b(people|contacts?)\b.*\b(i\s+)?(know|have|met|saved|remember)\b.*\bso far\b/
+    /\b(people|contacts?)\b.*\b(i\s+)?(know|have|met|saved|remember)\b.*\bso far\b/,
+    /\bdo\s+you\s+know\b.*\b(anyone|anybody|someone|somebody|people|persons?|contacts?)\b.*\b(my|mine|contacts?|network)\b/,
+    /\bdo\s+you\s+know\b.*\bmy\b.*\b(people|persons?|contacts?|network)\b/
   ].some((pattern) => pattern.test(normalized));
 }
 

@@ -185,20 +185,22 @@ describe("openrouter message interpreter", () => {
   it("routes list-all contact recall wording to search in fallback mode", async () => {
     const interpreter = createRuleBasedInterpreter();
 
-    const result = await interpreter.interpret({
-      ...inbound,
-      text: "Just give me all the people in my contact so far"
-    });
+    for (const text of ["Just give me all the people in my contact so far", "Do you know anyone in my contact?"]) {
+      const result = await interpreter.interpret({
+        ...inbound,
+        text
+      });
 
-    expect(result.interpretation).toMatchObject({
-      intent: "search_memory",
-      domain: "relationship_memory",
-      search: {
-        mode: "list_people",
-        semanticQuery: "Just give me all the people in my contact so far"
-      }
-    });
-    expect(result.interpretation.search?.exactTerms).toEqual([]);
+      expect(result.interpretation).toMatchObject({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        search: {
+          mode: "list_people",
+          semanticQuery: text
+        }
+      });
+      expect(result.interpretation.search?.exactTerms).toEqual([]);
+    }
   });
 
   it("reads OpenRouter config with a stable free default model", () => {
