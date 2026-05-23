@@ -86,7 +86,7 @@ export function buildRouterInputEnvelope(_input: {
     },
     domainStateSummary: {
       pendingCandidates: buildPendingCandidateSummary(_input.conversationState),
-      ...buildKnownPeopleSummary(_input.message.text, _input.memories, _input.conversationState.pendingContactQueue)
+      ...buildKnownPeopleSummary(_input.message.text, _input.conversationState, _input.memories)
     },
     availableTools: sortTools(_input.availableTools),
     availableRouteCapabilities: sortRouteCapabilities(_input.availableRouteCapabilities)
@@ -172,10 +172,14 @@ function buildPendingCandidateSummary(
 
 function buildKnownPeopleSummary(
   userText: string,
-  memories: RelationshipMemory[],
-  pendingCandidates: ConversationState["pendingContactQueue"]
+  conversationState: ConversationState,
+  memories: RelationshipMemory[]
 ): Pick<RouterInputEnvelope["domainStateSummary"], "knownPeopleNamed" | "possibleDuplicates"> {
-  const mentionedText = normalizeForMatch(userText);
+  const matchNames = new Set<string>([normalizeForMatch(userText)]);
+  const activeFrameName = conversationState.activeFrame?.displayName;
+  if (activeFrameName) {
+    matchNames.add(normalizeForMatch(activeFrameName));
+  }
   const grouped = new Map<
     string,
     {
@@ -189,12 +193,12 @@ function buildKnownPeopleSummary(
     addNameRecord(grouped, memory.displayName, "memoryIds", memory.id);
   }
 
-  for (const candidate of pendingCandidates) {
+  for (const candidate of conversationState.pendingContactQueue) {
     addNameRecord(grouped, candidate.displayName, "candidateIds", candidate.candidateId);
   }
 
   const mentioned = [...grouped.entries()]
-    .filter(([normalizedName]) => containsMentionedName(mentionedText, normalizedName))
+    .filter(([normalizedName]) => isMatchedName(matchNames, normalizedName))
     .sort(([leftName], [rightName]) => leftName.localeCompare(rightName));
 
   const knownPeopleNamed = mentioned.map(([, record]) => ({
@@ -239,8 +243,14 @@ function addNameRecord(
   });
 }
 
-function containsMentionedName(mentionedText: string, normalizedName: string): boolean {
-  return ` ${mentionedText} `.includes(` ${normalizedName} `);
+function isMatchedName(matchNames: Set<string>, normalizedName: string): boolean {
+  for (const matchName of matchNames) {
+    if (matchName === normalizedName || ` ${matchName} `.includes(` ${normalizedName} `)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function normalizeAndTruncate(value: string, maxLength = MAX_TEXT_LENGTH): string {

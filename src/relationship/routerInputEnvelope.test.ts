@@ -115,6 +115,44 @@ describe("router input envelope", () => {
     ]);
   });
 
+  it("summarizes active workflow duplicate even when latest text omits the name", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [memory("Testing 3", "I met Testing 3 during testing Friendy")]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate(testing3Candidate());
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_testing_3", {
+      spaceId,
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const conversationState = buildConversationState({
+      userId: fixtureUser.id,
+      spaceId,
+      pendingCandidates: repo.listPendingCandidates(fixtureUser.id)
+    });
+
+    const envelope = buildRouterInputEnvelope(
+      routerBuilderInput("why are you still asking?", conversationState, repo.listMemories(fixtureUser.id))
+    );
+
+    expect(envelope.domainStateSummary.knownPeopleNamed).toEqual([
+      {
+        queryName: "Testing 3",
+        memoryIds: ["memory_testing_3"],
+        candidateIds: [candidate.id]
+      }
+    ]);
+    expect(envelope.domainStateSummary.possibleDuplicates).toEqual([
+      {
+        displayName: "Testing 3",
+        memoryIds: ["memory_testing_3"],
+        candidateIds: [candidate.id],
+        reason: "same_display_name"
+      }
+    ]);
+  });
+
   it("preserves structured recent context ids while bounding and redacting text payloads", () => {
     const { candidate, conversationState } = promptedCandidateHarness();
     const longText = `${"met ".repeat(80)}+15550101003 testing3@example.com contact_testing_3 ${"a".repeat(64)}`;
