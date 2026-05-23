@@ -446,8 +446,7 @@ describe("interpreted relationship agent", () => {
     });
     expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
-    expect(result.outbound.text).not.toContain("I still need context");
-    expect(result.outbound.text).not.toContain("Testing 3");
+    expect(result.outbound.text).not.toContain("I still need context for Testing 3");
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
