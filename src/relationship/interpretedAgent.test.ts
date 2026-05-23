@@ -382,6 +382,63 @@ describe("interpreted relationship agent", () => {
     });
   });
 
+  it("routes list_people to the list_people tool instead of search_memories", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memoryFixture("Testing 12", "Met them during testing Friendy"),
+          id: "memory_testing_12",
+          eventTitle: "testing Friendy",
+          tags: ["testing", "friendy"]
+        },
+        {
+          ...memoryFixture("Sarah Fan", "community lead at Photon Residency II"),
+          id: "memory_sarah",
+          eventTitle: "Photon Residency II",
+          tags: ["photon", "residency"]
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "list_people",
+        domain: "relationship_memory",
+        conversationRelation: "starts_new_relationship_task",
+        confidence: 0.92,
+        query: "testing friendy",
+        search: {
+          mode: "list_people",
+          semanticQuery: "people I met testing Friendy",
+          exactTerms: ["testing", "friendy"],
+          filters: { tags: ["testing", "friendy"] },
+          topK: 20
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List me in bullet of all people I met testing friendy"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace).toMatchObject({
+      route: {
+        intent: "list_people",
+        searchMode: "list_people",
+        exactTerms: ["testing", "friendy"]
+      },
+      policyDecision: "allow",
+      toolCalls: ["list_people"]
+    });
+    expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
+    expect(result.outbound.text).not.toContain("I still need context");
+  });
+
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -1302,15 +1359,21 @@ function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretatio
 }
 
 function fullInterpretation(overrides: Partial<{
-  intent: "capture_memory" | "search_memory" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
+  intent: "capture_memory" | "search_memory" | "list_people" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
   confidence: number;
   domain: "relationship_memory" | "contact_management";
+  conversationRelation: "starts_new_relationship_task" | "continues_previous_search" | "answers_open_workflow" | "asks_about_open_workflow";
   target: { displayName?: string };
   query: string;
   search: {
     mode: "lookup_person" | "list_people" | "list_related_people" | "event_recall" | "semantic_recall";
     semanticQuery: string;
     exactTerms: string[];
+    filters?: {
+      eventName?: string;
+      topic?: string;
+      tags?: string[];
+    };
     topK?: number;
   };
   needsClarification: boolean;
