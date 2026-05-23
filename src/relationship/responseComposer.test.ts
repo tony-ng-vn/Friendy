@@ -159,6 +159,34 @@ describe("relationship response composer", () => {
     expect(reply).toBe("I can list people from Friendy memory right now. Apple Contacts listing is not connected yet.");
   });
 
+  it("keeps pending candidates visible when Apple Contacts listing is unsupported", () => {
+    const reply = composeListPeopleReply({
+      result: listPeopleResult({
+        unsupportedSources: ["apple_contacts"],
+        pendingCandidates: [
+          {
+            candidateId: "candidate_testing_3",
+            displayName: "Testing 3",
+            status: "prompted"
+          }
+        ]
+      })
+    });
+
+    expect(reply).toBe(
+      [
+        "I don't have any saved people in Friendy memory yet.",
+        "",
+        "I also see pending contacts not saved as memories yet:",
+        "",
+        "- Testing 3",
+        "",
+        "Apple Contacts listing is not connected yet, so this is from Friendy memory only."
+      ].join("\n")
+    );
+    expectNoInternalLanguage(reply);
+  });
+
   it("formats the foreground runtime startup message without technical language", () => {
     expect(composeRuntimeStartupReply()).toContain("Reply start");
     expect(composeRuntimeStartupReply()).not.toMatch(/sqlite|sensor|runtime/i);
@@ -214,9 +242,11 @@ function expectNoInternalLanguage(reply: string) {
   expect(reply).not.toContain("Your saved note");
   expect(reply).not.toContain("manual contact");
   expect(reply).not.toContain("score");
+  expect(reply.toLowerCase()).not.toContain("score");
   expect(reply).not.toContain("memory_");
   expect(reply).not.toContain("duplicate_");
   expect(reply).not.toContain("candidate_");
   expect(reply).not.toContain("same_display_name");
   expect(reply).not.toContain("pending_matches_saved");
+  expect(reply).not.toContain("prompted");
 }

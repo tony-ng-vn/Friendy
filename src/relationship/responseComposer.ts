@@ -100,7 +100,11 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
 
 /** Formats structured people inventory results without using search diagnostics. */
 export function composeListPeopleReply({ result, preferBullets = false }: ListPeopleReplyInput): string {
-  if (result.unsupportedSources?.includes("apple_contacts") && result.people.length === 0) {
+  const hasAppleContactsUnsupported = result.unsupportedSources?.includes("apple_contacts") ?? false;
+  const hasNoStructuredResults =
+    result.people.length === 0 && result.pendingCandidates.length === 0 && result.duplicateGroups.length === 0;
+
+  if (hasAppleContactsUnsupported && hasNoStructuredResults) {
     return "I can list people from Friendy memory right now. Apple Contacts listing is not connected yet.";
   }
 
@@ -125,12 +129,12 @@ export function composeListPeopleReply({ result, preferBullets = false }: ListPe
     sections.push("", "I also see possible duplicates:", "", ...duplicateLines);
   }
 
-  const pendingLines = result.pendingCandidates.map((candidate) => formatPendingCandidate(candidate, preferBullets));
+  const pendingLines = result.pendingCandidates.map((candidate) => formatPendingCandidate(candidate));
   if (pendingLines.length > 0) {
     sections.push("", "I also see pending contacts not saved as memories yet:", "", ...pendingLines);
   }
 
-  if (result.unsupportedSources?.includes("apple_contacts")) {
+  if (hasAppleContactsUnsupported) {
     sections.push("", "Apple Contacts listing is not connected yet, so this is from Friendy memory only.");
   }
 
@@ -154,9 +158,8 @@ function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]
   return `${prefix}${group.displayNames.join(" / ")} may be the same person`;
 }
 
-function formatPendingCandidate(candidate: ListPeopleResult["pendingCandidates"][number], preferBullets: boolean): string {
-  const prefix = preferBullets ? "- " : "";
-  return `${prefix}${candidate.displayName}`;
+function formatPendingCandidate(candidate: ListPeopleResult["pendingCandidates"][number]): string {
+  return `- ${candidate.displayName}`;
 }
 
 /** Formats a no-match reply that asks for one more useful clue. */
