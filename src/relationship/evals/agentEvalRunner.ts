@@ -207,9 +207,9 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "broad related-contact recall does not redirect"
   ]),
   evalCase("list-all-contact-recall", "interpreted", [
-    "list-all contact recall calls search",
+    "list-all contact recall calls list_people",
     "list-all contact recall returns saved people",
-    "list-all contact recall reminds about pending contact",
+    "list-all contact recall includes pending contact",
     "list-all contact recall leaves pending candidate pending",
     "list-all contact recall does not create unnamed memory"
   ]),
@@ -909,7 +909,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Anyone in my contacts related to friendy?"));
 
       return [
@@ -945,16 +945,18 @@ const executableEvalCases: ExecutableEvalCase[] = [
         phoneNumbers: ["+15550101033"],
         emails: []
       });
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Just give me all the people in my contact so far"));
 
       return [
-        assertion("list-all contact recall calls search", "intent", result.toolCalls.includes("search_memories")),
+        assertion("list-all contact recall calls list_people", "intent", toolCallsInclude(result.toolCalls, "list_people")),
         assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
         assertion(
-          "list-all contact recall reminds about pending contact",
+          "list-all contact recall includes pending contact",
           "clarification",
-          result.outbound.text.includes("I still need context for Unnamed Contact")
+          result.outbound.text.includes("I also see pending contacts not saved as memories yet:") &&
+            result.outbound.text.includes("Unnamed Contact") &&
+            !includesStalePendingReminder(result.outbound.text, "Unnamed Contact")
         ),
         assertion(
           "list-all contact recall leaves pending candidate pending",
@@ -988,7 +990,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Who did I save while debugging the Mac contact watcher?"));
 
       return [
@@ -1012,7 +1014,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         spaceId: "imessage_space_sarah",
         promptedAt: "2026-05-20T11:59:00.000Z"
       });
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage({
         ...interpretedInbound("She is a community lead at Photon Residency II"),
         spaceId: "imessage_space_sarah"
@@ -1050,7 +1052,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Who did I met at the Photon Residency?"));
 
       return [
@@ -1073,7 +1075,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
     async run({ interpreter, now }) {
       const repo = createRelationshipRepository({ users: [fixtureUser] });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(
         interpretedInbound("Ok can u add Sarah Chen as the member of Photon Residency II too for me please?")
       );
@@ -1502,7 +1504,7 @@ async function maybeRunModelBackedEvals(
 function createInterpretedHarness({ interpreter, now }: Required<Pick<RunOptions, "interpreter" | "now">>) {
   const repo = createRelationshipRepository();
   const tools = createRelationshipTools(repo);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
 
   return { agent, repo, tools };
 }
@@ -1537,7 +1539,7 @@ function createTestingFriendyRegressionHarness({
     spaceId: "imessage_testing_regression",
     promptedAt: "2026-05-20T11:59:00.000Z"
   });
-  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
 
   return { agent, repo, tools, pendingTesting3 };
 }
