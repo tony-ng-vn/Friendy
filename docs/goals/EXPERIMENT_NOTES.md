@@ -1,6 +1,20 @@
+# Friendy List People Tool Notes
+
+- 2026-05-23: `list_people` is Friendy-memory-first. `apple_contacts` and `both` mark Apple Contacts listing unsupported in this PR.
+- 2026-05-23: List requests no longer call `search_memories` when the structured route is `intent: list_people`; this preserves the boundary between inventory/listing and clue-based recall.
+- 2026-05-23: Duplicate grouping is conservative and non-destructive.
+- 2026-05-23: Production routing should not rely on the rule-based fallback. Strict mode is now default-on, so missing API keys, invalid schema, model failures, and fallback use fail loudly unless a test/local fixture explicitly sets `FRIENDY_STRICT_MODE=0`.
+- 2026-05-23: No new regex/keyword fallback was added for list routing. Deterministic tests use explicit structured routes where needed; general human-language understanding belongs in the structured model router.
+
+# Friendy Regression Freeze Tests Notes
+
+- 2026-05-23: This task is tests-only. The new eval cases are intentionally RED because they freeze live failures before behavior changes.
+- 2026-05-23: Do not make production changes in the regression-freeze task. The next implementation goal should make the RED cases pass.
+- 2026-05-23: Current RED summary is 36/41 eval cases passing. Failures are the five new regression-freeze cases only.
+
 # Strict Mode and Trace Envelope Notes
 
-- 2026-05-23: Strict mode is intentionally opt-in. Non-strict local/runtime flows still tolerate model fallback, but every turn now records whether fallback was used.
+- 2026-05-23: Strict mode started as opt-in, then was changed to default-on after live routing review. Non-strict local/runtime flows must now opt out explicitly with `FRIENDY_STRICT_MODE=0`; every turn still records whether fallback was used.
 - 2026-05-23: The trace envelope is sanitized before runtime logging. It may include ids and route shape, but not raw notes, message text, phone numbers, emails, or full contact payloads.
 - 2026-05-23: The OpenRouter interpreter owns model/schema/fallback boundary errors. The interpreted agent owns strict rejection of fallback interpreters, unsupported routes, missing tools, and deterministic ambiguity after route resolution.
 - 2026-05-23: Unsupported Apple Contacts create/edit/delete remains a blocker, not an implementation. Friendy can save/update/delete Friendy memory, but Apple Contacts mutation is still outside this goal.

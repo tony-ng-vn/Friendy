@@ -207,9 +207,9 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "broad related-contact recall does not redirect"
   ]),
   evalCase("list-all-contact-recall", "interpreted", [
-    "list-all contact recall calls search",
+    "list-all contact recall calls list_people",
     "list-all contact recall returns saved people",
-    "list-all contact recall reminds about pending contact",
+    "list-all contact recall includes pending contact",
     "list-all contact recall leaves pending candidate pending",
     "list-all contact recall does not create unnamed memory"
   ]),
@@ -240,6 +240,35 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("strict-mode-fallback-rejection", "interpreted", [
     "strict mode rejects fallback interpreter",
     "strict mode fallback rejection does not mutate memory"
+  ]),
+  evalCase("duplicate-pending-filtered-list-regression", "interpreted", [
+    "filtered bullet list uses list_people route",
+    "filtered bullet list does not use search fallback",
+    "filtered bullet list returns matching saved people",
+    "filtered bullet list respects bullet formatting",
+    "filtered bullet list suppresses stale pending reminder",
+    "filtered bullet list excludes unrelated people"
+  ]),
+  evalCase("duplicate-audit-in-scope-regression", "interpreted", [
+    "duplicate audit routes in scope",
+    "duplicate audit expects duplicate tool",
+    "duplicate audit avoids generic fallback"
+  ]),
+  evalCase("conversation-repair-pending-vs-saved-regression", "interpreted", [
+    "conversation repair routes in scope",
+    "conversation repair explains pending versus saved ambiguity",
+    "conversation repair does not mutate memory"
+  ]),
+  evalCase("fuzzy-delete-memory-confirmation-regression", "interpreted", [
+    "fuzzy delete routes to delete memory request",
+    "fuzzy delete maps Unamed to Unnamed Contact",
+    "fuzzy delete asks confirmation before delete",
+    "fuzzy delete suppresses stale pending reminder"
+  ]),
+  evalCase("same-name-pending-contact-disambiguation-regression", "interpreted", [
+    "same-name pending context respects active candidate",
+    "same-name pending context asks same or different",
+    "same-name pending context does not confirm before identity is resolved"
   ])
 ];
 
@@ -466,7 +495,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[10],
     async run({ interpreter, now }) {
-      const runtime = createSpectrumFriendyRuntime({ interpreter, now });
+      const runtime = createSpectrumFriendyRuntime({ interpreter, now, env: { FRIENDY_STRICT_MODE: "0" } });
       await runtime.handleInboundText({
         text: "I met Amaya at Photon Residency II, recruiting agents founder",
         spaceId: "space_eval_first_inbound",
@@ -880,7 +909,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Anyone in my contacts related to friendy?"));
 
       return [
@@ -916,16 +945,18 @@ const executableEvalCases: ExecutableEvalCase[] = [
         phoneNumbers: ["+15550101033"],
         emails: []
       });
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Just give me all the people in my contact so far"));
 
       return [
-        assertion("list-all contact recall calls search", "intent", result.toolCalls.includes("search_memories")),
+        assertion("list-all contact recall calls list_people", "intent", toolCallsInclude(result.toolCalls, "list_people")),
         assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
         assertion(
-          "list-all contact recall reminds about pending contact",
+          "list-all contact recall includes pending contact",
           "clarification",
-          result.outbound.text.includes("I still need context for Unnamed Contact")
+          result.outbound.text.includes("I also see pending contacts not saved as memories yet:") &&
+            result.outbound.text.includes("Unnamed Contact") &&
+            !includesStalePendingReminder(result.outbound.text, "Unnamed Contact")
         ),
         assertion(
           "list-all contact recall leaves pending candidate pending",
@@ -959,7 +990,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Who did I save while debugging the Mac contact watcher?"));
 
       return [
@@ -983,7 +1014,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         spaceId: "imessage_space_sarah",
         promptedAt: "2026-05-20T11:59:00.000Z"
       });
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage({
         ...interpretedInbound("She is a community lead at Photon Residency II"),
         spaceId: "imessage_space_sarah"
@@ -1021,7 +1052,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         ]
       });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("Who did I met at the Photon Residency?"));
 
       return [
@@ -1044,7 +1075,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
     async run({ interpreter, now }) {
       const repo = createRelationshipRepository({ users: [fixtureUser] });
       const tools = createRelationshipTools(repo);
-      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+      const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(
         interpretedInbound("Ok can u add Sarah Chen as the member of Photon Residency II too for me please?")
       );
@@ -1119,6 +1150,170 @@ const executableEvalCases: ExecutableEvalCase[] = [
           "strict mode fallback rejection does not mutate memory",
           "unsafeMutation",
           repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[36],
+    async run({ interpreter, now }) {
+      const { agent } = createTestingFriendyRegressionHarness({
+        interpreter: createListPeopleRegressionInterpreter(interpreter),
+        now,
+        includeUnrelatedSarah: true
+      });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("List me in bullet of all people I met testing friendy"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "filtered bullet list uses list_people route",
+          "intent",
+          result.trace.route?.intent === "list_people" && toolCallsInclude(result.toolCalls, "list_people")
+        ),
+        assertion(
+          "filtered bullet list does not use search fallback",
+          "intent",
+          !toolCallsInclude(result.toolCalls, "search_memories")
+        ),
+        assertion(
+          "filtered bullet list returns matching saved people",
+          "searchRecall",
+          includesAll(result.outbound.text, ["Testing 12", "Testing 1", "Testing 3"])
+        ),
+        assertion("filtered bullet list respects bullet formatting", "searchRecall", hasBulletFormatting(result.outbound.text)),
+        assertion(
+          "filtered bullet list suppresses stale pending reminder",
+          "clarification",
+          !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        ),
+        assertion(
+          "filtered bullet list excludes unrelated people",
+          "searchRecall",
+          !result.outbound.text.includes("Sarah Fan")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[37],
+    async run({ interpreter, now }) {
+      const { agent } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Do you see you are having duplicate people in your contacts?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "duplicate audit routes in scope",
+          "scopeBoundary",
+          result.trace.route?.domain === "relationship_memory" && result.trace.route?.intent === "duplicate_audit"
+        ),
+        assertion("duplicate audit expects duplicate tool", "intent", toolCallsInclude(result.toolCalls, "find_duplicate_people")),
+        assertion(
+          "duplicate audit avoids generic fallback",
+          "scopeBoundary",
+          !result.outbound.text.includes("outside Friendy's relationship-memory scope")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[38],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Why u still asking for testing 3 context when u already have it?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "conversation repair routes in scope",
+          "scopeBoundary",
+          result.trace.route?.domain === "relationship_memory" &&
+            ["explain_agent_state", "conversation_repair"].includes(String(result.trace.route?.intent))
+        ),
+        assertion(
+          "conversation repair explains pending versus saved ambiguity",
+          "clarification",
+          includesAll(result.outbound.text, ["Testing 3", "pending"]) &&
+            includesAny(result.outbound.text, ["saved", "already have", "memory"])
+        ),
+        assertion(
+          "conversation repair does not mutate memory",
+          "unsafeMutation",
+          !result.toolCalls.includes("confirm_candidate") &&
+            !result.toolCalls.includes("delete_memory") &&
+            repo.listMemories(fixtureUser.id).length === 5
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[39],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Can you help me delete Unamed Contact from your memory?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "fuzzy delete routes to delete memory request",
+          "intent",
+          ["delete_memory_request", "delete_memory"].includes(String(result.trace.route?.intent))
+        ),
+        assertion(
+          "fuzzy delete maps Unamed to Unnamed Contact",
+          "searchRecall",
+          result.outbound.text.includes("Unnamed Contact")
+        ),
+        assertion(
+          "fuzzy delete asks confirmation before delete",
+          "unsafeMutation",
+          !result.toolCalls.includes("delete_memory") &&
+            includesAny(result.outbound.text, ["confirm", "delete", "forget"]) &&
+            repo.listMemories(fixtureUser.id).some((item) => item.displayName === "Unnamed Contact")
+        ),
+        assertion(
+          "fuzzy delete suppresses stale pending reminder",
+          "clarification",
+          !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[40],
+    async run({ interpreter, now }) {
+      const { agent, repo, pendingTesting3 } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("I met during testing Friendy"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "same-name pending context respects active candidate",
+          "intent",
+          result.trace.activeCandidateId === pendingTesting3.id ||
+            result.trace.route?.target?.candidateId === pendingTesting3.id
+        ),
+        assertion(
+          "same-name pending context asks same or different",
+          "clarification",
+          includesAll(result.outbound.text, ["Testing 3"]) && includesAny(result.outbound.text, ["same", "different", "duplicate"])
+        ),
+        assertion(
+          "same-name pending context does not confirm before identity is resolved",
+          "unsafeMutation",
+          !result.toolCalls.includes("confirm_candidate") &&
+            repo.listPendingCandidates(fixtureUser.id).some((candidate) => candidate.id === pendingTesting3.id)
         )
       ];
     }
@@ -1235,6 +1430,37 @@ function trackInterpreterFallbackUsage(
   };
 }
 
+function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter): MessageInterpreter {
+  return {
+    async interpret(message) {
+      const result = await interpreter.interpret(message);
+      if (message.text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
+        return result;
+      }
+
+      return {
+        ...result,
+        interpretation: {
+          ...result.interpretation,
+          intent: "list_people",
+          domain: "relationship_memory",
+          query: message.text,
+          search: {
+            mode: "list_people",
+            semanticQuery: message.text,
+            exactTerms: ["testing", "friendy"],
+            filters: { tags: ["testing", "friendy"] },
+            topK: 20
+          },
+          tags: ["testing", "friendy"],
+          needsClarification: false,
+          clarificationQuestion: ""
+        }
+      };
+    }
+  };
+}
+
 async function maybeRunModelBackedEvals(
   options: RunOptions,
   now: () => string
@@ -1278,9 +1504,44 @@ async function maybeRunModelBackedEvals(
 function createInterpretedHarness({ interpreter, now }: Required<Pick<RunOptions, "interpreter" | "now">>) {
   const repo = createRelationshipRepository();
   const tools = createRelationshipTools(repo);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
 
   return { agent, repo, tools };
+}
+
+function createTestingFriendyRegressionHarness({
+  interpreter,
+  now,
+  includeUnrelatedSarah = false
+}: Required<Pick<RunOptions, "interpreter" | "now">> & { includeUnrelatedSarah?: boolean }) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    memories: [
+      memory("memory_testing_1_a", "Testing 1", "Testing Friendy", "testing Friendy"),
+      memory("memory_testing_1_b", "Testing 1", "im just testing for friendy at the moment", ""),
+      memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy"),
+      memory("memory_testing_3", "Testing 3", "I met testing 3 during testing Friendy", "testing Friendy"),
+      memory("memory_unnamed_contact", "Unnamed Contact", "Just give me all the people in my contact so far", ""),
+      ...(includeUnrelatedSarah
+        ? [memory("memory_sarah_fan", "Sarah Fan", "community lead at Photon Residency II", "Photon Residency II")]
+        : [])
+    ]
+  });
+  const tools = createRelationshipTools(repo);
+  const pendingTesting3 = tools.create_contact_candidate({
+    ...fixtureDetectedContact,
+    displayName: "Testing 3",
+    contactIdentifier: "contact_testing_3_pending",
+    phoneNumbers: ["+15550101903"],
+    emails: []
+  });
+  repo.markCandidatePrompted(pendingTesting3.id, "interaction_prompt_testing_3_regression", {
+    spaceId: "imessage_testing_regression",
+    promptedAt: "2026-05-20T11:59:00.000Z"
+  });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
+
+  return { agent, repo, tools, pendingTesting3 };
 }
 
 function evalCase(
@@ -1373,6 +1634,18 @@ function includesAll(value: string, expectedParts: string[]): boolean {
 function includesAny(value: string, expectedParts: string[]): boolean {
   const normalized = value.toLowerCase();
   return expectedParts.some((part) => normalized.includes(part.toLowerCase()));
+}
+
+function toolCallsInclude(toolCalls: readonly string[], expectedToolCall: string): boolean {
+  return toolCalls.includes(expectedToolCall);
+}
+
+function hasBulletFormatting(value: string): boolean {
+  return value.split(/\r?\n/).some((line) => /^\s*(?:[-*]|\d+\.)\s+\S/.test(line));
+}
+
+function includesStalePendingReminder(value: string, displayName: string): boolean {
+  return includesAll(value, ["still need context", displayName]);
 }
 
 function formatPercent(value: number): string {

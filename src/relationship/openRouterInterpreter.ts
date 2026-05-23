@@ -1,10 +1,10 @@
 /**
- * OpenRouter structured-output interpreter with deterministic fallback.
+ * OpenRouter structured-output interpreter with strict failure by default.
  *
  * Callers: interpretedAgent.ts and tests that stub the HTTP client.
  *
- * Fallback chain: no API key uses rule-based immediately; otherwise two model attempts then
- * rule-based with the last error kept for interaction logs. Temperature 0 keeps JSON stable.
+ * Fallback is available only when strict mode is explicitly disabled for tests or local fixtures.
+ * Live Friendy should fail loudly when structured model routing is unavailable.
  */
 import {
   messageInterpretationJsonSchema,
@@ -21,7 +21,7 @@ import type { InboundAgentMessage } from "./types";
 export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
-/** Retry budget before falling back to the rule-based interpreter. */
+/** Retry budget before surfacing model failure. */
 const MAX_MODEL_ATTEMPTS = 2;
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -53,15 +53,14 @@ type OpenRouterInterpreterOptions = {
   strictMode?: boolean;
   /** Injectable HTTP client for tests; defaults to global fetch. */
   fetchImpl?: FetchLike;
-  /** Rule-based interpreter used when the API key is missing or model calls fail. */
+  /** Rule-based interpreter used only when strictMode is explicitly disabled. */
   fallback?: MessageInterpreter;
 };
 
 /**
  * Reads OpenRouter config with a stable free default model.
  *
- * The API key is optional because local fixtures should still run through the
- * deterministic fallback when a developer has not configured OpenRouter yet.
+ * The API key may be empty in config, but strict live routing will throw before fallback.
  */
 export function readOpenRouterConfig(
   env: Partial<Pick<NodeJS.ProcessEnv, "OPENROUTER_API_KEY" | "OPENROUTER_MODEL">> = process.env
@@ -72,11 +71,11 @@ export function readOpenRouterConfig(
   };
 }
 
-/** Creates a structured-output OpenRouter interpreter with deterministic fallback behavior. */
+/** Creates a structured-output OpenRouter interpreter. Strict mode is on by default. */
 export function createOpenRouterInterpreter({
   apiKey,
   model,
-  strictMode = false,
+  strictMode = true,
   fetchImpl = fetch,
   fallback = createRuleBasedInterpreter()
 }: OpenRouterInterpreterOptions): MessageInterpreter {

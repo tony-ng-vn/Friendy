@@ -74,7 +74,7 @@ describe("openrouter message interpreter", () => {
     expect(body.messages[0].content).toContain("Return JSON that matches the provided schema");
   });
 
-  it("retries invalid model output once before returning the valid interpretation", async () => {
+  it("retries invalid model output when strict mode is explicitly disabled", async () => {
     let calls = 0;
     const fetchImpl = async () => {
       calls += 1;
@@ -105,7 +105,7 @@ describe("openrouter message interpreter", () => {
       });
     };
 
-    const interpreter = createOpenRouterInterpreter({ apiKey: "test-key", model: "model", fetchImpl });
+    const interpreter = createOpenRouterInterpreter({ apiKey: "test-key", model: "model", strictMode: false, fetchImpl });
     const result = await interpreter.interpret(inbound);
 
     expect(calls).toBe(2);
@@ -113,10 +113,11 @@ describe("openrouter message interpreter", () => {
     expect(result.error).toBe("");
   });
 
-  it("falls back when OpenRouter keeps returning invalid output", async () => {
+  it("falls back when strict mode is explicitly disabled and OpenRouter keeps returning invalid output", async () => {
     const interpreter = createOpenRouterInterpreter({
       apiKey: "test-key",
       model: "model",
+      strictMode: false,
       fetchImpl: async () =>
         jsonResponse({
           choices: [{ message: { content: JSON.stringify({ intent: "capture_memory", confidence: 2 }) } }]
@@ -138,10 +139,11 @@ describe("openrouter message interpreter", () => {
     expect(result.fallbackReason).toBe("invalid_model_output");
   });
 
-  it("uses deterministic fallback when no OpenRouter API key exists", async () => {
+  it("uses deterministic fallback only when strict mode is explicitly disabled and no OpenRouter API key exists", async () => {
     const interpreter = createOpenRouterInterpreter({
       apiKey: "",
       model: DEFAULT_OPENROUTER_MODEL,
+      strictMode: false,
       fallback: createRuleBasedInterpreter()
     });
 
@@ -162,11 +164,10 @@ describe("openrouter message interpreter", () => {
     expect(result.fallbackReason).toBe("missing_openrouter_api_key");
   });
 
-  it("throws instead of using fallback when strict mode has no OpenRouter API key", async () => {
+  it("throws instead of using fallback by default when no OpenRouter API key exists", async () => {
     const interpreter = createOpenRouterInterpreter({
       apiKey: "",
       model: DEFAULT_OPENROUTER_MODEL,
-      strictMode: true,
       fallback: createRuleBasedInterpreter()
     });
 

@@ -82,7 +82,7 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id).map((interaction) => interaction.toolCalls)).toEqual([[], [], []]);
     expect(started.trace).toMatchObject({
-      strictMode: false,
+      strictMode: true,
       routeSource: "deterministic",
       fallbackUsed: false,
       policyDecision: "allow",
@@ -90,7 +90,7 @@ describe("interpreted relationship agent", () => {
     });
     expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
       trace: {
-        strictMode: false,
+        strictMode: true,
         routeSource: "deterministic",
         fallbackUsed: false,
         policyDecision: "allow",
@@ -254,6 +254,7 @@ describe("interpreted relationship agent", () => {
         confidence: 0.82,
         target: { displayName: "Maya" }
       }),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -325,6 +326,7 @@ describe("interpreted relationship agent", () => {
           topK: 10
         }
       }),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -380,6 +382,123 @@ describe("interpreted relationship agent", () => {
         toolCalls: []
       }
     });
+  });
+
+  it("routes list_people to the list_people tool instead of search_memories", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memoryFixture("Testing 12", "Met them during testing Friendy"),
+          id: "memory_testing_12",
+          eventTitle: "testing Friendy",
+          tags: ["testing", "friendy"]
+        },
+        {
+          ...memoryFixture("Sarah Fan", "community lead at Photon Residency II"),
+          id: "memory_sarah",
+          eventTitle: "Photon Residency II",
+          tags: ["photon", "residency"]
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const pendingCandidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101033"],
+      emails: []
+    });
+    repo.markCandidatePrompted(pendingCandidate.id, "interaction_prompt_testing_3", {
+      spaceId: "imessage_space_testing_3",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "list_people",
+        domain: "relationship_memory",
+        conversationRelation: "starts_new_relationship_task",
+        confidence: 0.92,
+        query: "testing friendy",
+        search: {
+          mode: "list_people",
+          semanticQuery: "people I met testing Friendy",
+          exactTerms: ["testing", "friendy"],
+          filters: { tags: ["testing", "friendy"] },
+          topK: 20
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List me in bullet of all people I met testing friendy"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace).toMatchObject({
+      route: {
+        intent: "list_people",
+        searchMode: "list_people",
+        exactTerms: ["testing", "friendy"]
+      },
+      policyDecision: "allow",
+      toolCalls: ["list_people"]
+    });
+    expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
+    expect(result.outbound.text).not.toContain("I still need context for Testing 3");
+  });
+
+  it("normalizes search_memory list_people mode to the list_people tool", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memoryFixture("Testing 12", "Met them during testing Friendy"),
+          id: "memory_testing_12",
+          eventTitle: "testing Friendy",
+          tags: ["testing", "friendy"]
+        },
+        {
+          ...memoryFixture("Sarah Fan", "community lead at Photon Residency II"),
+          id: "memory_sarah",
+          eventTitle: "Photon Residency II",
+          tags: ["photon", "residency"]
+        }
+      ]
+    });
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories(): never {
+        throw new Error("search_memories should not run for list_people mode");
+      }
+    };
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.92,
+        query: "testing friendy",
+        search: {
+          mode: "list_people",
+          semanticQuery: "people I met testing Friendy",
+          exactTerms: ["testing", "friendy"],
+          topK: 20
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List people I met testing friendy"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.outbound.text).toContain("Testing 12");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
@@ -617,6 +736,7 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -741,6 +861,7 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -869,15 +990,18 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
 
     const result = await agent.handleMessage(inbound("Just give me all the people in my contact so far"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
-    expect(result.outbound.text).toContain("I still need context for Unnamed Contact");
+    expect(result.outbound.text).toContain("I also see pending contacts not saved as memories yet:");
+    expect(result.outbound.text).toContain("Unnamed Contact");
+    expect(result.outbound.text).not.toContain("I still need context for Unnamed Contact");
     expect(result.outbound.text).not.toContain("saved Unnamed Contact");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 2"]);
     expect(repo.listPendingCandidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
@@ -890,8 +1014,8 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("What person do I know so far?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
-    expect(result.outbound.text).toContain("don't have any saved people");
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.outbound.text).toContain("don't have any");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
@@ -903,7 +1027,7 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("Do you know anyone in my contact?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
     expect(result.outbound.text).toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
@@ -1279,7 +1403,7 @@ function createTestAgent(options: { strictMode?: boolean } = {}) {
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    strictMode: options.strictMode,
+    strictMode: options.strictMode ?? false,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });
@@ -1302,15 +1426,21 @@ function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretatio
 }
 
 function fullInterpretation(overrides: Partial<{
-  intent: "capture_memory" | "search_memory" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
+  intent: "capture_memory" | "search_memory" | "list_people" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
   confidence: number;
   domain: "relationship_memory" | "contact_management";
+  conversationRelation: "starts_new_relationship_task" | "continues_previous_search" | "answers_open_workflow" | "asks_about_open_workflow";
   target: { displayName?: string };
   query: string;
   search: {
     mode: "lookup_person" | "list_people" | "list_related_people" | "event_recall" | "semantic_recall";
     semanticQuery: string;
     exactTerms: string[];
+    filters?: {
+      eventName?: string;
+      topic?: string;
+      tags?: string[];
+    };
     topK?: number;
   };
   needsClarification: boolean;
@@ -1341,7 +1471,7 @@ function createTestAgentWithMemories(memories: RelationshipMemory[], options: { 
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    strictMode: options.strictMode,
+    strictMode: options.strictMode ?? false,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

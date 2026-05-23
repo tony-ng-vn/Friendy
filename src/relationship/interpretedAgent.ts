@@ -135,7 +135,7 @@ export function createInterpretedRelationshipAgent({
   tools,
   interpreter,
   onboarding,
-  strictMode = false,
+  strictMode = true,
   now = () => new Date().toISOString(),
   timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
@@ -562,7 +562,7 @@ export function createInterpretedRelationshipAgent({
       const searchRequestForTrace =
         interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
       let outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls, pendingState);
-      if (pendingState.activeFrame && interpretation.intent === "search_memory") {
+      if (shouldRemindPendingContact(pendingState, interpretation)) {
         outboundText = `${outboundText} ${composePendingContactReminder(pendingState.activeFrame.displayName)}`;
       }
       conversationContexts.set(
@@ -662,8 +662,16 @@ function validateRequiredToolAvailability(
 }
 
 function requiredToolForInterpretation(interpretation: MessageInterpretation): AgentToolCall | undefined {
-  if (interpretation.intent === "search_memory" || interpretation.intent === "list_people") {
+  if (interpretation.intent === "list_people") {
+    return "list_people";
+  }
+
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode !== "list_people") {
     return "search_memories";
+  }
+
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode === "list_people") {
+    return "list_people";
   }
 
   if (interpretation.intent === "capture_memory") {
@@ -1213,6 +1221,10 @@ function updateSearchContext(
   }
 
   const searchRequest = buildMemorySearchRequest(message, interpretation);
+  if (searchRequest.mode === "list_people") {
+    return { ...clearSearchContext(context), activeMemoryId: undefined };
+  }
+
   const query = effectiveMemorySearchQuery(searchRequest);
   const matches = tools.search_memories(message.userId, query);
   if (matches.length === 0) {
@@ -1220,15 +1232,7 @@ function updateSearchContext(
   }
 
   if (matches.length === 1) {
-    if (searchRequest.mode === "list_people") {
-      return { ...clearSearchContext(context), activeMemoryId: undefined };
-    }
-
     return { ...clearSearchContext(context), activeMemoryId: matches[0].memory.id };
-  }
-
-  if (searchRequest.mode === "list_people") {
-    return { ...clearSearchContext(context), activeMemoryId: undefined };
   }
 
   if (!isEventWideRecallQuery(message.text) && isAmbiguous(matches)) {
@@ -1349,27 +1353,16 @@ function executeInterpretation(
     return captureMemories(message, interpretation, tools, toolCalls);
   }
 
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode === "list_people") {
+    return listPeople(message, interpretation, tools, toolCalls);
+  }
+
   if (interpretation.intent === "search_memory") {
     return searchMemories(message, interpretation, tools, toolCalls);
   }
 
   if (interpretation.intent === "list_people") {
-    return searchMemories(
-      message,
-      {
-        ...interpretation,
-        intent: "search_memory",
-        query: interpretation.query || message.text,
-        search: interpretation.search ?? {
-          mode: "list_people",
-          semanticQuery: message.text,
-          exactTerms: [],
-          topK: 10
-        }
-      },
-      tools,
-      toolCalls
-    );
+    return listPeople(message, interpretation, tools, toolCalls);
   }
 
   if (interpretation.intent === "ignore_candidate") {
@@ -1428,7 +1421,11 @@ function searchMemories(
   const matches = tools.search_memories(message.userId, query);
 
   if (request.mode === "list_people") {
-    return composeListPeopleReply({ matches });
+    if (matches.length === 0) {
+      return "I don't have any saved people in Friendy memory yet.";
+    }
+
+    return composeSearchReply({ matches });
   }
 
   if (matches.length === 0) {
@@ -1436,6 +1433,43 @@ function searchMemories(
   }
 
   return composeSearchReply({ matches, ambiguous: !isEventWideRecallQuery(message.text) && isAmbiguous(matches) });
+}
+
+function listPeople(
+  message: InboundAgentMessage,
+  interpretation: MessageInterpretation,
+  tools: RelationshipTools,
+  toolCalls: AgentToolCall[]
+): string {
+  toolCalls.push("list_people");
+  const result = tools.list_people(message.userId, {
+    source: "friendy_memory",
+    limit: interpretation.search?.topK ?? 20,
+    dedupeByPerson: true,
+    includePending: true,
+    filter: {
+      rawText: message.text,
+      exactTerms: interpretation.search?.exactTerms ?? [],
+      eventName: interpretation.search?.filters?.eventName,
+      topic: interpretation.search?.filters?.topic,
+      tags: interpretation.search?.filters?.tags ?? interpretation.tags
+    }
+  });
+  return composeListPeopleReply({
+    result,
+    preferBullets: /\b(?:bullet|bullets|list)\b/i.test(message.text)
+  });
+}
+
+function shouldRemindPendingContact(
+  pendingState: ConversationState,
+  interpretation: MessageInterpretation
+): pendingState is ConversationState & { activeFrame: PendingContactContextFrame } {
+  if (interpretation.intent === "list_people" || interpretation.search?.mode === "list_people") {
+    return false;
+  }
+
+  return Boolean(pendingState.activeFrame) && interpretation.intent === "search_memory";
 }
 
 function buildMemorySearchRequest(message: InboundAgentMessage, interpretation: MessageInterpretation): MemorySearchRequest {

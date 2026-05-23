@@ -23,6 +23,62 @@ export type MemorySearchResult = {
   reason: string;
 };
 
+export type ListPeopleSource = "friendy_memory" | "apple_contacts" | "both";
+
+export type ListPeopleRequest = {
+  source: ListPeopleSource;
+  limit: number;
+  cursor?: string;
+  dedupeByPerson?: boolean;
+  includePending?: boolean;
+};
+
+export type InternalListPeopleRequest = ListPeopleRequest & {
+  filter?: {
+    rawText?: string;
+    exactTerms?: string[];
+    eventName?: string;
+    topic?: string;
+    tags?: string[];
+  };
+};
+
+export type ListedPersonMemory = {
+  memoryId: string;
+  summary: string;
+};
+
+export type ListedPerson = {
+  personId?: string;
+  displayName: string;
+  memories: ListedPersonMemory[];
+  duplicateGroupId?: string;
+  pendingCandidateIds?: string[];
+};
+
+export type DuplicateGroup = {
+  duplicateGroupId: string;
+  reason: "same_display_name" | "similar_display_name" | "same_contact_method" | "pending_matches_saved";
+  displayNames: string[];
+  memoryIds: string[];
+  pendingCandidateIds: string[];
+};
+
+export type PendingCandidateSummary = {
+  candidateId: string;
+  displayName: string;
+  status: "pending" | "prompted";
+};
+
+export type ListPeopleResult = {
+  people: ListedPerson[];
+  duplicateGroups: DuplicateGroup[];
+  pendingCandidates: PendingCandidateSummary[];
+  appliedFilterLabel?: string;
+  nextCursor?: string;
+  unsupportedSources?: ListPeopleSource[];
+};
+
 type SearchQueryAnalysis = {
   terms: string[];
   isEventWide: boolean;
@@ -69,6 +125,10 @@ export function createRelationshipTools(repo: RelationshipRepository) {
     sync_calendar_events(userId: string, events: CalendarEvent[]) {
       const scopedEvents = events.filter((event) => event.userId === userId);
       return repo.addCalendarEvents(scopedEvents);
+    },
+
+    list_people(userId: string, request: InternalListPeopleRequest): ListPeopleResult {
+      return listPeopleFromRepository(repo, userId, request);
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
@@ -197,6 +257,266 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 function interactionIdFromManualKey(idempotencyKey: string | undefined): string | undefined {
   const prefix = "manual_imessage:";
   return idempotencyKey?.startsWith(prefix) ? idempotencyKey.slice(prefix.length) : undefined;
+}
+
+function listPeopleFromRepository(
+  repo: RelationshipRepository,
+  userId: string,
+  request: InternalListPeopleRequest
+): ListPeopleResult {
+  if (request.source === "apple_contacts") {
+    return {
+      people: [],
+      duplicateGroups: [],
+      pendingCandidates: [],
+      unsupportedSources: ["apple_contacts"]
+    };
+  }
+
+  const memories = repo
+    .listMemories(userId)
+    .filter((memory) => memoryMatchesListFilter(memory, request.filter));
+  const pendingCandidates = request.includePending
+    ? repo
+        .listPendingCandidates(userId)
+        .filter((candidate) => candidate.status === "pending" || candidate.status === "prompted")
+        .map((candidate) => ({
+          candidateId: candidate.id,
+          displayName: candidate.displayName,
+          status: candidate.status as "pending" | "prompted"
+        }))
+    : [];
+
+  const grouped =
+    request.dedupeByPerson === false
+      ? groupMemoriesIndividually(memories)
+      : groupMemoriesByPerson(memories, meaningfulListTerms(request.filter));
+  const limitedGroups = grouped.slice(0, Math.max(0, request.limit));
+  const duplicateGroups = buildDuplicateGroups(limitedGroups, pendingCandidates);
+  const people = limitedGroups.map((group) => {
+    const duplicateGroup = duplicateGroups.find((item) =>
+      item.memoryIds.some((memoryId) => group.memories.some((memory) => memory.id === memoryId))
+    );
+    const pendingCandidateIds = pendingCandidates
+      .filter((candidate) => normalizedPersonName(candidate.displayName, group.contextTerms) === group.key)
+      .map((candidate) => candidate.candidateId);
+
+    return {
+      displayName: group.displayName,
+      memories: group.memories.map((memory) => ({
+        memoryId: memory.id,
+        summary: summarizeListedMemory(memory)
+      })),
+      duplicateGroupId: duplicateGroup?.duplicateGroupId,
+      pendingCandidateIds: pendingCandidateIds.length > 0 ? pendingCandidateIds : undefined
+    };
+  });
+
+  return {
+    people,
+    duplicateGroups,
+    pendingCandidates,
+    appliedFilterLabel: listFilterLabel(request.filter),
+    unsupportedSources: request.source === "both" ? ["apple_contacts"] : undefined
+  };
+}
+
+type MemoryGroup = {
+  key: string;
+  displayName: string;
+  contextTerms: Set<string>;
+  memories: RelationshipMemory[];
+};
+
+function groupMemoriesIndividually(memories: RelationshipMemory[]): MemoryGroup[] {
+  return memories.map((memory) => ({
+    key: memory.id,
+    displayName: memory.displayName,
+    contextTerms: new Set<string>(),
+    memories: [memory]
+  }));
+}
+
+function groupMemoriesByPerson(memories: RelationshipMemory[], filterTerms: string[]): MemoryGroup[] {
+  const groups = new Map<string, MemoryGroup>();
+  const sharedContextTerms = sharedMemoryContextTerms(memories);
+
+  for (const memory of memories) {
+    const contextTerms = memoryGroupingContextTerms(memory, filterTerms, sharedContextTerms);
+    const key = normalizedPersonName(memory.displayName, contextTerms);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.memories.push(memory);
+      contextTerms.forEach((term) => existing.contextTerms.add(term));
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      displayName: baseDisplayName(memory.displayName, contextTerms),
+      contextTerms,
+      memories: [memory]
+    });
+  }
+
+  return [...groups.values()];
+}
+
+function buildDuplicateGroups(groups: MemoryGroup[], pendingCandidates: PendingCandidateSummary[]): DuplicateGroup[] {
+  const duplicateGroups: DuplicateGroup[] = [];
+
+  for (const group of groups) {
+    const matchingPending = pendingCandidates.filter(
+      (candidate) => normalizedPersonName(candidate.displayName, group.contextTerms) === group.key
+    );
+    const displayNames = uniqueStrings([
+      ...group.memories.map((memory) => memory.displayName),
+      ...matchingPending.map((candidate) => candidate.displayName)
+    ]);
+    const hasMemoryDuplicate = group.memories.length > 1;
+    const hasPendingDuplicate = matchingPending.length > 0 && group.memories.length > 0;
+    if (!hasMemoryDuplicate && !hasPendingDuplicate) {
+      continue;
+    }
+
+    duplicateGroups.push({
+      duplicateGroupId: duplicateGroupId(group.key),
+      reason: hasMemoryDuplicate ? (displayNames.length > 1 ? "similar_display_name" : "same_display_name") : "pending_matches_saved",
+      displayNames,
+      memoryIds: group.memories.map((memory) => memory.id),
+      pendingCandidateIds: matchingPending.map((candidate) => candidate.candidateId)
+    });
+  }
+
+  return duplicateGroups;
+}
+
+function memoryMatchesListFilter(memory: RelationshipMemory, filter: InternalListPeopleRequest["filter"]): boolean {
+  const terms = meaningfulListTerms(filter);
+  if (terms.length === 0) {
+    return true;
+  }
+
+  const document = [
+    memory.displayName,
+    memory.eventTitle ?? "",
+    memory.contextNote,
+    ...(memory.tags ?? []),
+    buildMemorySearchDocument(memory).text
+  ]
+    .join(" ");
+  const tokens = normalizedListTokens(document);
+
+  return terms.every((term) => tokens.has(term));
+}
+
+function meaningfulListTerms(filter: InternalListPeopleRequest["filter"]): string[] {
+  const rawTerms = [
+    ...(filter?.exactTerms ?? []),
+    ...(filter?.tags ?? []),
+    filter?.eventName ?? "",
+    filter?.topic ?? ""
+  ];
+  const generic = new Set(["all", "bullet", "contacts", "contact", "list", "met", "people", "person"]);
+  const seen = new Set<string>();
+
+  return rawTerms
+    .flatMap((term) => term.toLowerCase().split(/\s+/))
+    .map((term) => term.replace(/[^a-z0-9-]/g, "").trim())
+    .filter((term) => term.length > 0 && !generic.has(term))
+    .filter((term) => {
+      if (seen.has(term)) {
+        return false;
+      }
+      seen.add(term);
+      return true;
+    });
+}
+
+function listFilterLabel(filter: InternalListPeopleRequest["filter"]): string | undefined {
+  const terms = meaningfulListTerms(filter);
+  return terms.length > 0 ? terms.join(" ") : undefined;
+}
+
+function summarizeListedMemory(memory: RelationshipMemory): string {
+  const event = memory.eventTitle?.trim();
+  const context = memory.contextNote
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .at(-1);
+  return context || event || "saved in Friendy memory";
+}
+
+function normalizedPersonName(displayName: string, contextTerms: Set<string> = new Set()): string {
+  return baseDisplayName(displayName, contextTerms)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function baseDisplayName(displayName: string, contextTerms: Set<string> = new Set()): string {
+  const match = displayName.match(/^(.*?)\s+from\s+(.+)$/i);
+  if (!match) {
+    return displayName.trim();
+  }
+
+  const [, baseName, suffix] = match;
+  const suffixTerms = normalizedListTokens(suffix);
+  const shouldStripContext = [...suffixTerms].some((term) => contextTerms.has(term));
+
+  return shouldStripContext ? baseName.trim() : displayName.trim();
+}
+
+function memoryGroupingContextTerms(
+  memory: RelationshipMemory,
+  filterTerms: string[],
+  sharedContextTerms: Set<string>
+): Set<string> {
+  const terms = new Set(filterTerms);
+  for (const term of memoryContextTokens(memory)) {
+    if (sharedContextTerms.has(term)) {
+      terms.add(term);
+    }
+  }
+  return terms;
+}
+
+function sharedMemoryContextTerms(memories: RelationshipMemory[]): Set<string> {
+  const counts = new Map<string, number>();
+
+  for (const memory of memories) {
+    for (const term of memoryContextTokens(memory)) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return new Set([...counts].filter(([, count]) => count > 1).map(([term]) => term));
+}
+
+function memoryContextTokens(memory: RelationshipMemory): Set<string> {
+  return normalizedListTokens([memory.eventTitle ?? "", memory.contextNote, ...(memory.tags ?? [])].join(" "));
+}
+
+function normalizedListTokens(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/\s+/)
+      .flatMap((term) => term.split(/[^a-z0-9-]+/))
+      .map((term) => term.trim())
+      .filter(Boolean)
+  );
+}
+
+function duplicateGroupId(key: string): string {
+  const slug = key.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return `duplicate_${slug || "person"}`;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 /**

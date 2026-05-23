@@ -6,9 +6,23 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Friendy List People Tool (2026-05-23)</h2>
+    <ul>
+      <li>Added a dedicated <code>list_people</code> tool for Friendy memory inventory/list requests, separate from <code>search_memories</code>.</li>
+      <li>The tool returns structured people, memory summaries, duplicate groups, pending candidate summaries, filter labels, and unsupported Apple Contacts source metadata.</li>
+      <li>List responses now format structured inventory results and suppress unrelated stale pending-contact reminders.</li>
+      <li>Apple Contacts listing remains unsupported metadata in this PR; no Apple Contacts mutation or read adapter was added.</li>
+      <li>After review, live model routing is strict by default. Missing/failed model interpretation now fails instead of silently falling through to the rule-based interpreter; tests that need deterministic fixtures must opt out with <code>FRIENDY_STRICT_MODE=0</code>.</li>
+    </ul>
+    <h2>Friendy Regression Freeze Tests (2026-05-23)</h2>
+    <ul>
+      <li>Added tests-only eval coverage for five live failure classes: filtered bullet list routing, duplicate audit, conversation repair, fuzzy delete confirmation, and same-name pending contact disambiguation.</li>
+      <li>This is intentionally RED coverage. The tests encode expected future behavior and should fail until the follow-up implementation goal adds the required route/tool behavior.</li>
+      <li>No production routing, repository, tool, Apple Contacts, retrieval, or response-composition behavior changed in this task.</li>
+    </ul>
     <h2>Strict Mode and Trace Envelope (2026-05-23)</h2>
     <ul>
-      <li>Added opt-in <code>FRIENDY_STRICT_MODE</code> parsing with a typed <code>FriendyStrictModeError</code>. Supported truthy values are <code>1</code>, <code>true</code>, <code>yes</code>, and <code>on</code>.</li>
+      <li>Added <code>FRIENDY_STRICT_MODE</code> parsing with a typed <code>FriendyStrictModeError</code>. Strict mode is now enabled by default; explicit false-like values such as <code>0</code>, <code>false</code>, <code>off</code>, and <code>no</code> disable it for tests/local fixtures.</li>
       <li>Added a first-class <code>FriendyTrace</code> envelope to interpreted-agent results and persisted interaction JSON. The redacted runtime trace exposes strict mode, route source, fallback usage, policy decision, active ids, and tool calls without raw names, notes, phone numbers, emails, or full contact payloads.</li>
       <li>OpenRouter interpreter results now report <code>routeSource</code>, <code>fallbackUsed</code>, and <code>fallbackReason</code>. Non-strict behavior still falls back when configured; strict mode throws before fallback on missing API key, model failure, or invalid schema.</li>
       <li>Strict mode now throws on fallback usage, unknown model routes, unsupported contact-management routes, missing deterministic tools, and ambiguous executable memory mutations. Non-strict mode keeps user-facing blocker/clarification behavior.</li>
@@ -320,6 +334,8 @@
       <li><strong>List-all contact recall safety fix (2026-05-22).</strong> Live testing showed <code>Just give me all the people in my contact so far</code> being treated as free-text meeting context while an <code>Unnamed Contact</code> prompt was pending, creating a fake saved memory. Added a shared list-people recall detector used by scope routing, fallback interpretation, and <code>search_memories</code>. Broad read-only list requests such as <code>What person do I know so far?</code>, <code>List all my contacts so far</code>, and <code>Show me everyone I know</code> now call <code>search_memories</code>, leave pending candidates pending, return all saved memories, and use a clear empty-list response when nothing is saved.</li>
       <li><strong>Live agent turn logging (2026-05-22).</strong> The Spectrum runtime now emits <code>[friendy:agent_turn]</code> with raw <code>userText</code> and <code>agentReply</code> for local server debugging, followed by the existing redacted <code>[friendy:agent_interaction]</code> compact trace. The compact trace remains redacted so tests still verify private names/context do not leak there.</li>
       <li><strong>Associated/connected contact recall expansion (2026-05-22).</strong> Expanded broad relationship recall beyond the first <code>related/connected</code> hotfix so <code>associated with</code>, singular <code>contact</code> wording, <code>Who do I know connected to Friendy?</code>, <code>Do I know anyone associated with Friendy?</code>, <code>Find contacts related to Friendy</code>, <code>Show people connected to Friendy testing</code>, and <code>Anyone I met while testing Friendy?</code> route to memory search. Search normalization now drops operator/filler words such as <code>associated</code>, <code>that</code>, <code>do</code>, <code>add</code>, and <code>during</code> so the effective clue stays <code>friendy</code> / <code>friendy testing</code>. Also tightened the explicit memory-write detector so question-shaped recall containing <code>I met</code> is not misclassified as a save request.</li>
+      <li><strong>List people side-effect review fix (2026-05-23).</strong> A review found that <code>search_memory</code> routes with <code>search.mode === "list_people"</code> visibly called <code>list_people</code> but still invoked <code>search_memories</code> later while updating search context. Added a regression with a throwing <code>search_memories</code> tool and changed search-context updates to clear context immediately for list-mode routes. This keeps list requests on the dedicated <code>list_people</code> tool path end to end.</li>
+      <li><strong>List people verification (2026-05-23).</strong> Focused checks passed for tools, response composition, interpreted-agent routing, strict-mode/OpenRouter/Spectrum transport, production build, and whitespace. The eval suite remains intentionally red at 37/41 because the duplicate audit, conversation repair, fuzzy delete confirmation, and same-name disambiguation regressions are frozen for later tasks.</li>
     </ul>
   </body>
 </html>

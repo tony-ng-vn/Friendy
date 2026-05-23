@@ -7,7 +7,7 @@
  * outcomes. This module must never choose matches, write memories, or expose raw search scores,
  * `reason` strings, or tool diagnostics — those stay in logs and tests.
  */
-import type { MemorySearchResult } from "./tools";
+import type { ListPeopleResult, MemorySearchResult } from "./tools";
 import type { RelationshipMemory } from "./types";
 
 type SaveConfirmationInput = {
@@ -17,6 +17,11 @@ type SaveConfirmationInput = {
 type SearchReplyInput = {
   matches: MemorySearchResult[];
   ambiguous?: boolean;
+};
+
+type ListPeopleReplyInput = {
+  result: ListPeopleResult;
+  preferBullets?: boolean;
 };
 
 type IgnoreCandidateReplyInput = {
@@ -93,15 +98,68 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
   return prefix;
 }
 
-/** Formats broad list-all people recall without implying the user meant one person. */
-export function composeListPeopleReply({ matches }: Pick<SearchReplyInput, "matches">): string {
-  if (matches.length === 0) {
-    return "I don't have any saved people in Friendy memory yet.";
+/** Formats structured people inventory results without using search diagnostics. */
+export function composeListPeopleReply({ result, preferBullets = false }: ListPeopleReplyInput): string {
+  const hasAppleContactsUnsupported = result.unsupportedSources?.includes("apple_contacts") ?? false;
+  const hasNoStructuredResults =
+    result.people.length === 0 && result.pendingCandidates.length === 0 && result.duplicateGroups.length === 0;
+
+  if (hasAppleContactsUnsupported && hasNoStructuredResults) {
+    return "I can list people from Friendy memory right now. Apple Contacts listing is not connected yet.";
   }
 
-  const summaries = matches.map((match) => summarizeMatch(match.memory)).join("; ");
-  const noun = matches.length === 1 ? "person" : "people";
-  return `I have ${matches.length} saved ${noun}: ${summaries}.`;
+  const sections: string[] = [];
+
+  if (result.people.length === 0) {
+    sections.push(
+      result.appliedFilterLabel
+        ? "I don't have any matching people in Friendy memory yet."
+        : "I don't have any saved people in Friendy memory yet."
+    );
+  } else {
+    const heading = result.appliedFilterLabel
+      ? `I remember these people from ${result.appliedFilterLabel}:`
+      : `I remember ${result.people.length === 1 ? "this person" : "these people"} in Friendy memory:`;
+    const peopleLines = result.people.map((person) => formatListedPerson(person, preferBullets));
+    sections.push(heading, "", ...peopleLines);
+  }
+
+  const duplicateLines = result.duplicateGroups.map((group) => formatDuplicateGroup(group)).filter(Boolean);
+  if (duplicateLines.length > 0) {
+    sections.push("", "I also see possible duplicates:", "", ...duplicateLines);
+  }
+
+  const pendingLines = result.pendingCandidates.map((candidate) => formatPendingCandidate(candidate));
+  if (pendingLines.length > 0) {
+    sections.push("", "I also see pending contacts not saved as memories yet:", "", ...pendingLines);
+  }
+
+  if (hasAppleContactsUnsupported) {
+    sections.push("", "Apple Contacts listing is not connected yet, so this is from Friendy memory only.");
+  }
+
+  return sections.join("\n");
+}
+
+function formatListedPerson(person: ListPeopleResult["people"][number], preferBullets: boolean): string {
+  const summaries = person.memories.map((memory) => memory.summary).filter(Boolean);
+  const summary = summaries.length > 0 ? ` - ${summaries.join("; ")}` : "";
+  const prefix = preferBullets ? "- " : "";
+  return `${prefix}${person.displayName}${summary}`;
+}
+
+function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]): string {
+  const prefix = "- ";
+  if (group.displayNames.length === 1) {
+    const count = group.memoryIds.length + group.pendingCandidateIds.length;
+    return `${prefix}${group.displayNames[0]} appears ${count === 2 ? "twice" : `${count} times`}`;
+  }
+
+  return `${prefix}${group.displayNames.join(" / ")} may be the same person`;
+}
+
+function formatPendingCandidate(candidate: ListPeopleResult["pendingCandidates"][number]): string {
+  return `- ${candidate.displayName}`;
 }
 
 /** Formats a no-match reply that asks for one more useful clue. */
