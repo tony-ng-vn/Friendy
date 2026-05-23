@@ -1310,6 +1310,37 @@ function createInterpretedHarness({ interpreter, now }: Required<Pick<RunOptions
   return { agent, repo, tools };
 }
 
+function createTestingFriendyRegressionHarness({
+  interpreter,
+  now
+}: Required<Pick<RunOptions, "interpreter" | "now">>) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    memories: [
+      memory("memory_testing_1_a", "Testing 1", "Testing Friendy", "testing Friendy"),
+      memory("memory_testing_1_b", "Testing 1", "im just testing for friendy at the moment", ""),
+      memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy"),
+      memory("memory_testing_3", "Testing 3", "I met testing 3 during testing Friendy", "testing Friendy"),
+      memory("memory_unnamed_contact", "Unnamed Contact", "Just give me all the people in my contact so far", "")
+    ]
+  });
+  const tools = createRelationshipTools(repo);
+  const pendingTesting3 = tools.create_contact_candidate({
+    ...fixtureDetectedContact,
+    displayName: "Testing 3",
+    contactIdentifier: "contact_testing_3_pending",
+    phoneNumbers: ["+15550101903"],
+    emails: []
+  });
+  repo.markCandidatePrompted(pendingTesting3.id, "interaction_prompt_testing_3_regression", {
+    spaceId: "imessage_testing_regression",
+    promptedAt: "2026-05-20T11:59:00.000Z"
+  });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, now, timezone });
+
+  return { agent, repo, tools, pendingTesting3 };
+}
+
 function evalCase(
   id: string,
   agentMode: AgentEvalMode,
@@ -1400,6 +1431,14 @@ function includesAll(value: string, expectedParts: string[]): boolean {
 function includesAny(value: string, expectedParts: string[]): boolean {
   const normalized = value.toLowerCase();
   return expectedParts.some((part) => normalized.includes(part.toLowerCase()));
+}
+
+function hasBulletFormatting(value: string): boolean {
+  return value.split(/\r?\n/).some((line) => /^\s*(?:[-*]|\d+\.)\s+\S/.test(line));
+}
+
+function includesStalePendingReminder(value: string, displayName: string): boolean {
+  return includesAll(value, ["still need context", displayName]);
 }
 
 function formatPercent(value: number): string {
