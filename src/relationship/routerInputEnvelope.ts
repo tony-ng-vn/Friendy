@@ -282,7 +282,23 @@ function boundedTextArray(values: string[] | undefined, limit: number): string[]
 }
 
 function boundedIdArray(values: string[] | undefined, limit: number): string[] {
-  return [...new Set(values ?? [])].slice(0, limit).map((value) => truncateId(value.trim()));
+  const boundedIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of values ?? []) {
+    const id = truncateId(value.trim());
+    if (!id || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    boundedIds.push(id);
+    if (boundedIds.length >= limit) {
+      break;
+    }
+  }
+
+  return boundedIds;
 }
 
 function truncateId(value: string): string {
