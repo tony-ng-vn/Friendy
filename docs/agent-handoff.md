@@ -35,9 +35,20 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | `fix:route contact inventory questions` — included in the current `main` push |
-| **Active goal** | `docs/goals/state-aware-relationship-agent-routing-goal.md` — **complete** |
-| **Branch** | `main` (pushed) |
+| **Latest fix** | Strict mode and trace envelope implemented on `feat/strict-mode-trace-envelope`; final verification passed |
+| **Active goal** | `docs/goals/strict-mode-trace-envelope-goal.md` |
+| **Branch** | `feat/strict-mode-trace-envelope` (pushed) |
+
+### Active implementation status (2026-05-23, strict mode)
+
+- Added `FRIENDY_STRICT_MODE` parsing and typed `FriendyStrictModeError`.
+- Added `FriendyTrace` to interpreted-agent results and persisted interaction JSON.
+- Redacted runtime traces now include strict mode, route source, fallback usage, fallback reason, policy decision, active ids, and tool calls without raw private text.
+- OpenRouter interpreter now reports `routeSource`, `fallbackUsed`, and `fallbackReason`.
+- Strict mode throws on missing API key fallback, model execution failure, invalid schema, explicit fallback interpreter use, unknown model route, unsupported contact-management route, missing deterministic tool, and ambiguous executable memory mutation.
+- Spectrum/iMessage runtime reads `FRIENDY_STRICT_MODE`.
+- Evals now include fallback usage count and a strict-mode fallback-rejection case.
+- Full verification passed on 2026-05-23: `npm test` 52 files/340 tests, `npm run build`, `npm run eval:agent` 36/36 with `Fallback usage count: 31`, and `git diff --check`.
 
 ### Active implementation status (2026-05-23)
 

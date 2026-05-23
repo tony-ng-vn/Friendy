@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
 import {
+  formatEvalSummary,
   getEvalExitCode,
   relationshipAgentEvalCases,
   runRelationshipAgentEvals,
@@ -44,10 +45,11 @@ describe("relationship agent eval runner", () => {
       "pending-contact-pronoun-context",
       "event-recall-not-list-all",
       "manual-add-as-memory",
-      "friendy-doctor-setup-failure-copy"
+      "friendy-doctor-setup-failure-copy",
+      "strict-mode-fallback-rejection"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(35);
+    expect(relationshipAgentEvalCases).toHaveLength(36);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -63,8 +65,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(35);
-    expect(summary.requiredTotal).toBe(35);
+    expect(summary.total).toBe(36);
+    expect(summary.requiredTotal).toBe(36);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);
@@ -74,8 +76,13 @@ describe("relationship agent eval runner", () => {
     expect(summary.metrics.hallucinationCount).toBe(0);
     expect(summary.metrics.clarificationCorrectness).toBe(1);
     expect(summary.metrics.scopeBoundaryCorrectness).toBe(1);
+    expect(summary.metrics.fallbackUsageCount).toBeGreaterThan(0);
     expect(summary.optionalModelBacked.enabled).toBe(false);
     expect(summary.results.every((result) => result.assertions.every((assertion) => assertion.passed))).toBe(true);
+    expect(summary.results.find((result) => result.id === "strict-mode-fallback-rejection")).toMatchObject({
+      passed: true
+    });
+    expect(formatEvalSummary(summary)).toContain("Fallback usage count:");
   });
 
   it("returns nonzero exit code when any required eval fails", () => {

@@ -58,6 +58,28 @@ describe("spectrum transport", () => {
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
   });
 
+  it("passes FRIENDY_STRICT_MODE through to the interpreted agent", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: {
+        FRIENDY_STRICT_MODE: "1"
+      }
+    });
+
+    await expect(
+      runtime.handleInboundText({
+        userId: fixtureUser.id,
+        text: "I met Amaya at Photon Residency II",
+        spaceId: "space_strict",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      })
+    ).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "FALLBACK_USED"
+    });
+  });
+
   it("does not duplicate a manual memory when the same inbound message is retried", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),

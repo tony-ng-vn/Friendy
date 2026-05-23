@@ -4,6 +4,7 @@ import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
+import { FriendyStrictModeError } from "./strictMode";
 import { createRelationshipTools } from "./tools";
 import type { InboundAgentMessage, RelationshipMemory } from "./types";
 
@@ -80,6 +81,22 @@ describe("interpreted relationship agent", () => {
     expect(interpreterCalls).toBe(0);
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id).map((interaction) => interaction.toolCalls)).toEqual([[], [], []]);
+    expect(started.trace).toMatchObject({
+      strictMode: false,
+      routeSource: "deterministic",
+      fallbackUsed: false,
+      policyDecision: "allow",
+      toolCalls: []
+    });
+    expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
+      trace: {
+        strictMode: false,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        policyDecision: "allow",
+        toolCalls: []
+      }
+    });
   });
 
   it("captures Amaya from a natural Photon Residency message and logs the turn", async () => {
@@ -108,13 +125,261 @@ describe("interpreted relationship agent", () => {
     });
     expect(logs[0].interpretedIntentJson).toMatchObject({ intent: "capture_memory" });
     expect(logs[0].redactedTraceJson).toMatchObject({
+      strictMode: false,
+      routeSource: "fallback",
+      fallbackUsed: true,
       interpretedIntent: { intent: "capture_memory" },
       toolCalls: [{ name: "create_manual_memory", result: "success" }],
       errors: []
     });
+    expect(result.trace).toMatchObject({
+      strictMode: false,
+      routeSource: "fallback",
+      fallbackUsed: true,
+      fallbackReason: "explicit_fallback",
+      route: { intent: "capture_memory" },
+      policyDecision: "allow",
+      toolCalls: ["create_manual_memory"]
+    });
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Amaya");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Photon Residency II");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("sleep on the same bed");
+  });
+
+  it("throws when strict mode would otherwise use the fallback interpreter", async () => {
+    const { agent, repo } = createTestAgent({ strictMode: true });
+
+    await expect(agent.handleMessage(inbound("I met Amaya at Photon Residency II"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "FALLBACK_USED",
+      trace: {
+        strictMode: true,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        fallbackReason: "explicit_fallback",
+        toolCalls: []
+      }
+    });
+    await expect(agent.handleMessage(inbound("I met Maya at dinner"))).rejects.toBeInstanceOf(FriendyStrictModeError);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("allows expected clarification in strict mode when the route came from the model", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: {
+        async interpret() {
+          return {
+            modelUsed: "test-model",
+            error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
+            interpretation: {
+              intent: "clarify",
+              confidence: 0.7,
+              people: [],
+              event: { name: "", dateText: "", location: "" },
+              dateContext: undefined,
+              contextNote: "",
+              query: "",
+              tags: [],
+              needsClarification: true,
+              clarificationQuestion: "Who should I look for?"
+            }
+          };
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("maybe that person"));
+
+    expect(result.outbound.text).toBe("Who should I look for?");
+    expect(result.trace).toMatchObject({
+      strictMode: true,
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "clarify" },
+      policyDecision: "allow"
+    });
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it("throws unknown model routes in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "unknown",
+        confidence: 0.4,
+        needsClarification: true,
+        clarificationQuestion: "Should I save this as a memory or search for someone?"
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("remember Maya from dinner"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNKNOWN_ROUTE",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "unknown" },
+        policyDecision: "clarify",
+        toolCalls: []
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("returns a specific unsupported blocker for contact-management routes in non-strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "request_contact_edit",
+        domain: "contact_management",
+        confidence: 0.82,
+        target: { displayName: "Maya" }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Help me tell Maya I updated her phone number"));
+
+    expect(result.outbound.text).toContain("can't edit Apple Contacts yet");
+    expect(result.toolCalls).toEqual([]);
+    expect(result.trace).toMatchObject({
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "request_contact_edit", domain: "contact_management" },
+      policyDecision: "unsupported",
+      toolCalls: []
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("throws unsupported contact-management routes in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "request_contact_edit",
+        domain: "contact_management",
+        confidence: 0.82,
+        target: { displayName: "Maya" }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("Help me tell Maya I updated her phone number"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNSUPPORTED_INTENT",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "request_contact_edit", domain: "contact_management" },
+        policyDecision: "unsupported",
+        toolCalls: []
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("returns a specific blocker when an executable route is missing its tool in non-strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories: undefined
+    } as unknown as ReturnType<typeof createRelationshipTools>;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.9,
+        query: "dinner",
+        search: {
+          mode: "event_recall",
+          semanticQuery: "people met at dinner",
+          exactTerms: ["dinner"],
+          topK: 10
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Who did I meet at dinner?"));
+
+    expect(result.outbound.text).toContain("memory search tool is not available");
+    expect(result.toolCalls).toEqual([]);
+    expect(result.trace).toMatchObject({
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "search_memory" },
+      policyDecision: "unsupported",
+      toolCalls: []
+    });
+  });
+
+  it("throws when an executable route is missing its tool in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories: undefined
+    } as unknown as ReturnType<typeof createRelationshipTools>;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.9,
+        query: "dinner",
+        search: {
+          mode: "event_recall",
+          semanticQuery: "people met at dinner",
+          exactTerms: ["dinner"],
+          topK: 10
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("Who did I meet at dinner?"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "TOOL_NOT_AVAILABLE",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "search_memory" },
+        policyDecision: "unsupported",
+        toolCalls: []
+      }
+    });
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
@@ -304,6 +569,8 @@ describe("interpreted relationship agent", () => {
           return {
             modelUsed: "test-interpreter",
             error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
             interpretation: {
               intent: "ignore_candidate",
               confidence: 0.9,
@@ -921,6 +1188,27 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
   });
 
+  it("throws instead of silently clarifying an ambiguous executable delete in strict mode", async () => {
+    const { agent, repo } = createTestAgentWithMemories(
+      [memoryFixture("Maya", "recruiting agents founder"), memoryFixture("Sarah", "hardware founder")],
+      { strictMode: true }
+    );
+
+    await expect(agent.handleMessage(inbound("delete the founder"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNEXPECTED_AMBIGUITY",
+      trace: {
+        strictMode: true,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        route: { intent: "delete_memory" },
+        policyDecision: "clarify",
+        toolCalls: ["search_memories"]
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+  });
+
   it("asks clarification for vague references and does not save a fake memory", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -946,6 +1234,8 @@ describe("interpreted relationship agent", () => {
           return {
             modelUsed: "test-interpreter",
             error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
             interpretation: {
               intent: "capture_memory",
               confidence: 0.1,
@@ -982,13 +1272,14 @@ describe("interpreted relationship agent", () => {
   });
 });
 
-function createTestAgent() {
+function createTestAgent(options: { strictMode?: boolean } = {}) {
   const repo = createRelationshipRepository();
   const tools = createRelationshipTools(repo);
   const agent = createInterpretedRelationshipAgent({
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
+    strictMode: options.strictMode,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });
@@ -996,7 +1287,51 @@ function createTestAgent() {
   return { agent, repo };
 }
 
-function createTestAgentWithMemories(memories: RelationshipMemory[]) {
+function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretation>[0]>) {
+  return {
+    async interpret() {
+      return {
+        modelUsed: "test-model",
+        error: "",
+        routeSource: "llm" as const,
+        fallbackUsed: false,
+        interpretation: fullInterpretation(overrides)
+      };
+    }
+  };
+}
+
+function fullInterpretation(overrides: Partial<{
+  intent: "capture_memory" | "search_memory" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
+  confidence: number;
+  domain: "relationship_memory" | "contact_management";
+  target: { displayName?: string };
+  query: string;
+  search: {
+    mode: "lookup_person" | "list_people" | "list_related_people" | "event_recall" | "semantic_recall";
+    semanticQuery: string;
+    exactTerms: string[];
+    topK?: number;
+  };
+  needsClarification: boolean;
+  clarificationQuestion: string;
+}>) {
+  return {
+    intent: "clarify" as const,
+    confidence: 0.7,
+    people: [],
+    event: { name: "", dateText: "", location: "" },
+    dateContext: undefined,
+    contextNote: "",
+    query: "",
+    tags: [],
+    needsClarification: false,
+    clarificationQuestion: "",
+    ...overrides
+  };
+}
+
+function createTestAgentWithMemories(memories: RelationshipMemory[], options: { strictMode?: boolean } = {}) {
   const repo = createRelationshipRepository({
     users: [fixtureUser],
     memories
@@ -1006,6 +1341,7 @@ function createTestAgentWithMemories(memories: RelationshipMemory[]) {
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
+    strictMode: options.strictMode,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

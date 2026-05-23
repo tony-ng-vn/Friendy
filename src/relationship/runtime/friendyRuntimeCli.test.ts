@@ -61,6 +61,20 @@ describe("Friendy foreground runtime CLI configuration", () => {
     expect(config.sensor.args).toEqual(["src/relationship/runtime/fakeMacosSensor.ts"]);
   });
 
+  it("reads FRIENDY_STRICT_MODE into foreground runtime config", () => {
+    const cwd = tempDir();
+
+    const config = resolveFriendyRuntimeConfig({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_STRICT_MODE: "yes"
+      }
+    });
+
+    expect(config.strictMode).toBe(true);
+  });
+
   it("throws a clear error when the real sensor binary is missing", () => {
     const cwd = tempDir();
 

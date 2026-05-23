@@ -19,6 +19,7 @@ import { resolveConfiguredUserId } from "../identity";
 import type { OnboardingStateController } from "../onboardingState";
 import type { RelationshipRepository } from "../repository";
 import { createRuntimeRelationshipRepository } from "../runtimeRepository";
+import { readFriendyStrictMode } from "../strictMode";
 import { createRelationshipTools } from "../tools";
 import type { AgentInteraction, InboundAgentMessage } from "../types";
 
@@ -119,7 +120,8 @@ export function createSpectrumFriendyRuntime({
     }
   });
   const tools = providedTools ?? createRelationshipTools(repo);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, onboarding, interpreter, now });
+  const strictMode = readFriendyStrictMode(env);
+  const agent = createInterpretedRelationshipAgent({ repo, tools, onboarding, interpreter, strictMode, now });
 
   return {
     repo,
@@ -153,8 +155,9 @@ export async function startSpectrumFriendyAgent({
   loadFriendyEnv();
   const { projectId, projectSecret } = readSpectrumCredentials(env as NodeJS.ProcessEnv);
   const openRouterConfig = readOpenRouterConfig(env);
+  const strictMode = readFriendyStrictMode(env);
   const runtime = createSpectrumFriendyRuntime({
-    interpreter: interpreter ?? createOpenRouterInterpreter(openRouterConfig),
+    interpreter: interpreter ?? createOpenRouterInterpreter({ ...openRouterConfig, strictMode }),
     now,
     repo,
     tools,

@@ -1,3 +1,12 @@
+# Strict Mode and Trace Envelope Notes
+
+- 2026-05-23: Strict mode is intentionally opt-in. Non-strict local/runtime flows still tolerate model fallback, but every turn now records whether fallback was used.
+- 2026-05-23: The trace envelope is sanitized before runtime logging. It may include ids and route shape, but not raw notes, message text, phone numbers, emails, or full contact payloads.
+- 2026-05-23: The OpenRouter interpreter owns model/schema/fallback boundary errors. The interpreted agent owns strict rejection of fallback interpreters, unsupported routes, missing tools, and deterministic ambiguity after route resolution.
+- 2026-05-23: Unsupported Apple Contacts create/edit/delete remains a blocker, not an implementation. Friendy can save/update/delete Friendy memory, but Apple Contacts mutation is still outside this goal.
+- 2026-05-23: The eval catalog now reports `fallbackUsageCount` and includes a required strict-mode fallback rejection case. This makes fallback visible without requiring normal deterministic evals to run model-backed.
+- 2026-05-23: Full verification passed for the strict-mode trace envelope goal: `npm test` 52 files/340 tests, `npm run build`, `npm run eval:agent` 36/36 with `Fallback usage count: 31`, and `git diff --check`.
+
 # State-Aware Relationship Agent Routing Notes
 
 - 2026-05-23: The first implementation slice treats the active pending-contact prompt as reconstructable durable state instead of adding a new table immediately. The source of truth is existing candidate prompt fields persisted by both repositories: `status=prompted`, `promptSpaceId`, `promptedAt`, and `promptInteractionId`.

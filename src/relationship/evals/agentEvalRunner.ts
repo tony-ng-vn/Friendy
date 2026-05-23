@@ -68,6 +68,7 @@ export type RelationshipAgentEvalSummary = {
     hallucinationCount: number;
     clarificationCorrectness: number;
     scopeBoundaryCorrectness: number;
+    fallbackUsageCount: number;
   };
   optionalModelBacked: {
     enabled: boolean;
@@ -235,6 +236,10 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("friendy-doctor-setup-failure-copy", "deterministic", [
     "setup failure copy says what is broken and what to do next",
     "setup failure copy includes mock-mode fallback"
+  ]),
+  evalCase("strict-mode-fallback-rejection", "interpreted", [
+    "strict mode rejects fallback interpreter",
+    "strict mode fallback rejection does not mutate memory"
   ])
 ];
 
@@ -1084,17 +1089,51 @@ const executableEvalCases: ExecutableEvalCase[] = [
         rmSync(cwd, { recursive: true, force: true });
       }
     }
+  },
+  {
+    ...relationshipAgentEvalCases[35],
+    async run({ now }) {
+      const repo = createRelationshipRepository({ users: [fixtureUser] });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter: createRuleBasedInterpreter(),
+        strictMode: true,
+        now,
+        timezone
+      });
+      let strictCode = "";
+      try {
+        await agent.handleMessage(interpretedInbound("I met Amaya at Photon Residency II"));
+      } catch (error) {
+        strictCode =
+          error instanceof Error && "code" in error && typeof (error as { code?: unknown }).code === "string"
+            ? (error as { code: string }).code
+            : "";
+      }
+
+      return [
+        assertion("strict mode rejects fallback interpreter", "scopeBoundary", strictCode === "FALLBACK_USED"),
+        assertion(
+          "strict mode fallback rejection does not mutate memory",
+          "unsafeMutation",
+          repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
   }
 ];
 
 /** Runs all executable eval cases and optional repeated model-backed samples. */
 export async function runRelationshipAgentEvals(options: RunOptions = {}): Promise<RelationshipAgentEvalSummary> {
   const now = options.now ?? (() => "2026-05-20T12:00:00.000Z");
-  const interpreter = options.interpreter ?? createRuleBasedInterpreter();
+  const fallbackUsage = { count: 0 };
+  const interpreter = trackInterpreterFallbackUsage(options.interpreter ?? createRuleBasedInterpreter(), fallbackUsage);
   const results = await Promise.all(executableEvalCases.map((evalCase) => runEvalCase(evalCase, { now, interpreter })));
   const optionalModelBacked = await maybeRunModelBackedEvals(options, now);
 
-  return summarizeResults(results, optionalModelBacked);
+  return summarizeResults(results, optionalModelBacked, fallbackUsage.count);
 }
 
 /** Non-zero when any required eval case failed. */
@@ -1121,6 +1160,7 @@ export function formatEvalSummary(summary: RelationshipAgentEvalSummary): string
     `Hallucination count: ${summary.metrics.hallucinationCount}`,
     `Clarification correctness: ${formatPercent(summary.metrics.clarificationCorrectness)}`,
     `Scope boundary correctness: ${formatPercent(summary.metrics.scopeBoundaryCorrectness)}`,
+    `Fallback usage count: ${summary.metrics.fallbackUsageCount}`,
     `Model-backed evals: ${summary.optionalModelBacked.note}`
   ];
 
@@ -1152,7 +1192,8 @@ async function runEvalCase(
 
 function summarizeResults(
   results: AgentEvalResult[],
-  optionalModelBacked: RelationshipAgentEvalSummary["optionalModelBacked"]
+  optionalModelBacked: RelationshipAgentEvalSummary["optionalModelBacked"],
+  fallbackUsageCount: number
 ): RelationshipAgentEvalSummary {
   const failed = results.filter((result) => !result.passed).length;
   const requiredTotal = results.filter((result) => result.required).length;
@@ -1171,10 +1212,26 @@ function summarizeResults(
       unsafeMutationCount: metricFailureCount(results, "unsafeMutation"),
       hallucinationCount: metricFailureCount(results, "hallucination"),
       clarificationCorrectness: metricRatio(results, "clarification"),
-      scopeBoundaryCorrectness: metricRatio(results, "scopeBoundary")
+      scopeBoundaryCorrectness: metricRatio(results, "scopeBoundary"),
+      fallbackUsageCount
     },
     optionalModelBacked,
     results
+  };
+}
+
+function trackInterpreterFallbackUsage(
+  interpreter: MessageInterpreter,
+  fallbackUsage: { count: number }
+): MessageInterpreter {
+  return {
+    async interpret(message) {
+      const result = await interpreter.interpret(message);
+      if (result.fallbackUsed) {
+        fallbackUsage.count += 1;
+      }
+      return result;
+    }
   };
 }
 
