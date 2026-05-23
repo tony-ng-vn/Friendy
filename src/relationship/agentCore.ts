@@ -15,7 +15,7 @@ import type { MemorySearchResult, createRelationshipTools } from "./tools";
 import { isConfirmationReply } from "./candidateConfirmation";
 import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
 import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
-import { isPendingCandidateInquiry } from "./scopeBoundary";
+import { isAmbiguousDraftRequest, isPendingCandidateInquiry, isPendingPromptContextReply } from "./scopeBoundary";
 import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
@@ -27,7 +27,7 @@ import {
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
-import { decideMessageScope } from "./scopeBoundary";
+import { decideHardSafety } from "./hardSafetyBlock";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type RelationshipAgentOptions = {
@@ -54,20 +54,24 @@ export function createRelationshipAgent(tools: RelationshipTools, { onboarding }
         return reply(message, composeOnboardingControlReply(onboardingControl), toolCalls);
       }
 
-      const scopeDecision = decideMessageScope({
-        text: normalized,
-        hasPendingCandidate: tools.list_pending_candidates(message.userId).length > 0
-      });
-
-      if (scopeDecision.scope === "out_of_scope") {
-        return reply(message, scopeDecision.redirect, toolCalls);
+      const hardSafety = decideHardSafety(normalized);
+      if (hardSafety.decision === "reject") {
+        return reply(message, hardSafety.redirect, toolCalls);
       }
 
-      if (scopeDecision.scope === "needs_clarification") {
-        return reply(message, composeClarificationReply(scopeDecision.question), toolCalls);
+      const hasPendingCandidate = tools.list_pending_candidates(message.userId).length > 0;
+
+      if (lower.startsWith("ignore")) {
+        toolCalls.push("list_pending_candidates");
+        const result = candidateIntake.ignoreCandidate({
+          scope: message,
+          candidateName: normalized.replace(/^ignore\s*/i, "").trim()
+        });
+        recordCandidateIgnoreToolCalls(result, toolCalls);
+        return reply(message, composeCandidateIgnoreReply(result), toolCalls);
       }
 
-      if (scopeDecision.capability === "candidate_confirmation") {
+      if (hasPendingCandidate && isPendingPromptContextReply(lower)) {
         toolCalls.push("list_pending_candidates");
         const pending = tools.list_pending_candidates(message.userId);
         if (isPendingCandidateInquiry(normalized)) {
@@ -100,14 +104,8 @@ export function createRelationshipAgent(tools: RelationshipTools, { onboarding }
         return reply(message, composeCandidateReply(result), toolCalls);
       }
 
-      if (lower.startsWith("ignore")) {
-        toolCalls.push("list_pending_candidates");
-        const result = candidateIntake.ignoreCandidate({
-          scope: message,
-          candidateName: normalized.replace(/^ignore\s*/i, "").trim()
-        });
-        recordCandidateIgnoreToolCalls(result, toolCalls);
-        return reply(message, composeCandidateIgnoreReply(result), toolCalls);
+      if (isAmbiguousDraftRequest(lower)) {
+        return reply(message, composeClarificationReply("Who is it for?"), toolCalls);
       }
 
       if (looksLikeManualMemory(lower)) {

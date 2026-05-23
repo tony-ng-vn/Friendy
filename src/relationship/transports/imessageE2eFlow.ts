@@ -47,7 +47,8 @@ export async function runImessageContactConfirmationFlow(): Promise<ImessageCont
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    now: () => "2026-05-20T12:00:00.000Z"
+    now: () => "2026-05-20T12:00:00.000Z",
+    env: { FRIENDY_STRICT_MODE: "0" }
   });
 
   await runtime.handleInboundText({

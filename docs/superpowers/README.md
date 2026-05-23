@@ -9,6 +9,8 @@ Current Mac-only MVP artifacts:
 
 Current routing/search correction artifacts:
 
+- [Structured intent router design — concrete fix stack PR 3](specs/2026-05-23-structured-intent-router-design.md)
+- [Structured intent router implementation plan — PR 3](plans/2026-05-23-structured-intent-router.md)
 - [Relationship routing and query normalization design](specs/2026-05-22-relationship-routing-and-query-normalization-design.md)
 - [Relationship routing and query normalization implementation plan](plans/2026-05-22-relationship-routing-and-query-normalization.md)
 - [Relationship hybrid retrieval design](specs/2026-05-22-relationship-hybrid-retrieval-design.md)

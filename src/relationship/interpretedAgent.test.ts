@@ -33,7 +33,7 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("ignore or override");
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
-      scopeDecision: { scope: "out_of_scope" }
+      hardSafetyDecision: { decision: "reject" }
     });
   });
 
@@ -449,6 +449,52 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("I still need context for Testing 3");
+  });
+
+  it("routes duplicate audit through interpreter without stale pending reminder", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    tools.create_manual_memory(fixtureUser.id, "Testing 1", "testing Friendy", "manual contact");
+    tools.create_manual_memory(fixtureUser.id, "Testing 2", "testing Friendy", "manual contact");
+    const pendingCandidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101099"]
+    });
+    repo.markCandidatePrompted(pendingCandidate.id, "interaction_prompt_testing_3", {
+      spaceId: "imessage_space_testing_3",
+      promptedAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          return {
+            modelUsed: "test-model",
+            error: "",
+            routeSource: "llm" as const,
+            fallbackUsed: false,
+            interpretation: fullInterpretation({ intent: "duplicate_audit", confidence: 0.95 })
+          };
+        }
+      },
+      now: () => "2026-05-23T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(
+      inbound("Do you see you are having duplicate people in your contacts?")
+    );
+
+    expect(interpreterCalls).toBe(1);
+    expect(result.toolCalls).toEqual(["find_duplicate_people"]);
+    expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
+    expect(result.outbound.text).not.toContain("I still need context for Testing 3");
+    expect(result.trace.suppressedPendingReminder).toBe(true);
   });
 
   it("normalizes search_memory list_people mode to the list_people tool", async () => {
@@ -1426,7 +1472,15 @@ function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretatio
 }
 
 function fullInterpretation(overrides: Partial<{
-  intent: "capture_memory" | "search_memory" | "list_people" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
+  intent:
+    | "capture_memory"
+    | "search_memory"
+    | "list_people"
+    | "duplicate_audit"
+    | "ignore_candidate"
+    | "clarify"
+    | "unknown"
+    | "request_contact_edit";
   confidence: number;
   domain: "relationship_memory" | "contact_management";
   conversationRelation: "starts_new_relationship_task" | "continues_previous_search" | "answers_open_workflow" | "asks_about_open_workflow";

@@ -98,7 +98,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
       );
     }
 
-    return outOfScope("outside_relationship_memory_domain", OUTSIDE_RELATIONSHIP_REDIRECT);
+    return inScope("relationship_recall", "Defer pending-prompt messages to structured router.");
   }
 
   if (isIgnoreCandidate(lower)) {
@@ -188,6 +188,21 @@ export function isPendingCandidateInquiry(text: string): boolean {
   );
 }
 
+/** True when the user is asking a read-only meta route that should reach the structured interpreter. */
+export function isRelationshipMetaRouteMessage(text: string): boolean {
+  const lower = text.trim().toLowerCase();
+
+  return (
+    isListPeopleRecall(text) ||
+    /\b(duplicate|duplicates)\b/.test(lower) ||
+    /\b(delete|remove|forget)\b.*\b(contact|person|people|memory|memories)\b/.test(lower) ||
+    /\bwhy\b.*\b(ask|asking|still)\b/.test(lower) ||
+    /\b(you already know|already have it)\b/.test(lower) ||
+    /\bwhy (?:are you|u still)\b/.test(lower) ||
+    /\b(do you see|can you see)\b.*\b(duplicate|duplicates)\b/.test(lower)
+  );
+}
+
 function isClearlyOffTopicWhilePending(text: string): boolean {
   return (
     isAdversarialGeneralAssistantRequest(text) ||
@@ -227,6 +242,8 @@ function isAmbiguousDraftRequest(text: string): boolean {
   return /\b(help|draft|write|compose)\b.*\b(text|message|reply|dm)\b/.test(text) && !/\b(to|tell)\s+\w+/.test(text);
 }
 
+export { isAmbiguousDraftRequest };
+
 function isAdversarialGeneralAssistantRequest(text: string): boolean {
   return /\b(ignore|forget|disregard)\b.*\b(instruction|previous|system|rules?)\b/.test(text);
 }
@@ -256,7 +273,13 @@ function isGenericAdviceTask(text: string): boolean {
   return /\b(how do i|how can i|tips for)\b.*\b(charismatic|make friends|be popular|people like me)\b/.test(text);
 }
 
-function isPendingPromptContextReply(text: string): boolean {
+/** True when inbound text is likely answering an open pending-contact prompt with context. */
+export function isPendingPromptContextReply(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized.startsWith("ignore")) {
+    return false;
+  }
+
   if (text.includes("?") || text.length > 180) {
     return false;
   }

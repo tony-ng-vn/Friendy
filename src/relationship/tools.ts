@@ -56,6 +56,10 @@ export type ListedPerson = {
   pendingCandidateIds?: string[];
 };
 
+export type FindDuplicatePeopleResult = {
+  duplicateGroups: DuplicateGroup[];
+};
+
 export type DuplicateGroup = {
   duplicateGroupId: string;
   reason: "same_display_name" | "similar_display_name" | "same_contact_method" | "pending_matches_saved";
@@ -129,6 +133,16 @@ export function createRelationshipTools(repo: RelationshipRepository) {
 
     list_people(userId: string, request: InternalListPeopleRequest): ListPeopleResult {
       return listPeopleFromRepository(repo, userId, request);
+    },
+
+    find_duplicate_people(userId: string, options: { includePending?: boolean } = {}): FindDuplicatePeopleResult {
+      const result = listPeopleFromRepository(repo, userId, {
+        source: "friendy_memory",
+        limit: 1000,
+        dedupeByPerson: true,
+        includePending: options.includePending ?? true
+      });
+      return { duplicateGroups: result.duplicateGroups };
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {

@@ -241,6 +241,107 @@ export function composeMemoryDeleteReply({ memory }: MemoryMutationReplyInput): 
   return `Deleted ${memory.displayName} from Friendy memory.`;
 }
 
+type ExplainAgentStateReplyInput = {
+  displayName?: string;
+  savedMemories: Array<{ displayName: string; contextNote: string }>;
+  pendingFrame?: { displayName: string; lastFriendyPrompt: string };
+};
+
+/** Explains why Friendy may still prompt when saved memory already exists. */
+export function composeExplainAgentStateReply({
+  displayName,
+  savedMemories,
+  pendingFrame
+}: ExplainAgentStateReplyInput): string {
+  const name = displayName ?? pendingFrame?.displayName ?? "that contact";
+  const saved = savedMemories.filter((memory) => memory.displayName.toLowerCase() === name.toLowerCase());
+  const parts: string[] = [];
+
+  if (saved.length > 0) {
+    parts.push(`I already have ${name} saved in Friendy memory.`);
+  }
+
+  if (pendingFrame) {
+    parts.push(`I also still have a pending contact for ${pendingFrame.displayName} waiting for relationship context.`);
+  }
+
+  if (parts.length === 0) {
+    return composeClarificationReply(`What should I clarify about ${name}?`);
+  }
+
+  parts.push("Those can both be true: saved memory and a separate pending contact prompt.");
+  return parts.join(" ");
+}
+
+type ConversationRepairReplyInput = {
+  displayName?: string;
+  savedMemories: Array<{ displayName: string; contextNote: string }>;
+  pendingFrame?: { displayName: string };
+};
+
+/** Grounds repair replies in pending versus saved state instead of generic apologies. */
+export function composeConversationRepairReply({
+  displayName,
+  savedMemories,
+  pendingFrame
+}: ConversationRepairReplyInput): string {
+  return composeExplainAgentStateReply({
+    displayName,
+    savedMemories,
+    pendingFrame: pendingFrame
+      ? {
+          displayName: pendingFrame.displayName,
+          lastFriendyPrompt: `I noticed you added ${pendingFrame.displayName}. Where did you meet them?`
+        }
+      : undefined
+  });
+}
+
+type DuplicateAuditReplyInput = {
+  duplicateGroups: Array<{
+    displayNames: string[];
+    memoryIds: string[];
+    pendingCandidateIds?: string[];
+  }>;
+};
+
+/** Formats duplicate audit results from deterministic grouping. */
+export function composeDuplicateAuditReply({ duplicateGroups }: DuplicateAuditReplyInput): string {
+  if (duplicateGroups.length === 0) {
+    return "I don't see duplicate people in Friendy memory right now.";
+  }
+
+  const lines = duplicateGroups.map((group) => {
+    const name = group.displayNames[0] ?? "Someone";
+    const count = group.memoryIds.length + (group.pendingCandidateIds?.length ?? 0);
+    return `- ${name} appears ${count === 2 ? "twice" : `${count} times`}`;
+  });
+
+  return ["I see possible duplicates:", "", ...lines].join("\n");
+}
+
+type DeleteMemoryConfirmReplyInput = {
+  matches: Array<{ displayName: string }>;
+};
+
+/** Asks for explicit confirmation before deleting a resolved memory target. */
+export function composeDeleteMemoryConfirmReply({ matches }: DeleteMemoryConfirmReplyInput): string {
+  if (matches.length === 1) {
+    return `Do you want me to delete ${matches[0].displayName} from Friendy memory? Reply yes to confirm.`;
+  }
+
+  return `Which one should I delete - ${matches.map((match) => match.displayName).join(" or ")}?`;
+}
+
+type SameOrDifferentPendingReplyInput = {
+  displayName: string;
+};
+
+/** Asks whether pending contact context refers to an already saved person. */
+export function composeSameOrDifferentPendingReply({ displayName }: SameOrDifferentPendingReplyInput): string {
+  return `I already have ${displayName} saved in Friendy memory, and I'm also waiting on context for a new ${displayName} contact. Is this the same person or a different one?`;
+}
+
 /** Sent when `agent:friendy` comes online so the owner knows the Mac runtime is listening. */
 export function composeRuntimeStartupReply(): string {
   return "Friendy is running on your Mac. Reply start when you want me to watch for new contacts and ask before saving anything.";

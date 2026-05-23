@@ -248,6 +248,42 @@ function ruleBasedInterpret(text: string): MessageInterpretation {
     return baseInterpretation({ intent: "ignore_candidate", confidence: 0.9 });
   }
 
+  if (looksLikeDuplicateAudit(text)) {
+    return baseInterpretation({
+      intent: "duplicate_audit",
+      confidence: 0.92,
+      domain: "relationship_memory"
+    });
+  }
+
+  if (looksLikeConversationRepair(text)) {
+    return baseInterpretation({
+      intent: "conversation_repair",
+      confidence: 0.9,
+      domain: "relationship_memory"
+    });
+  }
+
+  if (looksLikeAgentStateQuestion(text)) {
+    return baseInterpretation({
+      intent: "explain_agent_state",
+      confidence: 0.9,
+      domain: "relationship_memory",
+      conversationRelation: "asks_about_open_workflow"
+    });
+  }
+
+  if (looksLikeDeleteMemoryRequest(text)) {
+    const query = extractDeleteQuery(text);
+    return baseInterpretation({
+      intent: "delete_memory_request",
+      confidence: 0.9,
+      domain: "relationship_memory",
+      query,
+      target: query ? { displayName: query } : undefined
+    });
+  }
+
   if (isVagueReference(normalized)) {
     return baseInterpretation({
       intent: "clarify",
@@ -536,6 +572,30 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "is",
   "the"
 ]);
+
+function looksLikeDuplicateAudit(text: string): boolean {
+  return /\bduplicate\b.*\b(people|person|persons?|contact|contacts)\b/i.test(text);
+}
+
+function looksLikeConversationRepair(text: string): boolean {
+  return /\b(you already know|already have it|that was wrong|why did you say)\b/i.test(text);
+}
+
+function looksLikeAgentStateQuestion(text: string): boolean {
+  return (
+    /\bwhy\b.*\b(ask|asking|still)\b/i.test(text) ||
+    /\bwho\b.*\b(you|friendy|u)\b.*\b(ask|asking|mean)\b/i.test(text)
+  );
+}
+
+function looksLikeDeleteMemoryRequest(text: string): boolean {
+  return /\b(delete|remove|forget)\b/i.test(text) && /\b(memory|memories|contact|person)\b/i.test(text);
+}
+
+function extractDeleteQuery(text: string): string {
+  const helpDeleteMatch = text.match(/\bdelete\s+(.+?)(?:\s+from(?:\s+your)?\s+memory)?[?.!]*$/i);
+  return helpDeleteMatch?.[1]?.trim() ?? "";
+}
 
 function capitalize(value: string): string {
   return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);

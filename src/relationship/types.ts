@@ -213,6 +213,7 @@ export type OutboundAgentMessage = {
  */
 export type AgentToolCall =
   | "list_people"
+  | "find_duplicate_people"
   | "search_memories"
   | "list_pending_candidates"
   | "list_candidate_event_matches"

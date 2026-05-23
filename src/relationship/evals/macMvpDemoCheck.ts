@@ -25,6 +25,7 @@ export async function runMacMvpDemoCheck(): Promise<MacMvpDemoCheckReport> {
     tools,
     onboarding,
     interpreter: createRuleBasedInterpreter(),
+    strictMode: false,
     now: () => "2026-05-22T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

@@ -26,6 +26,7 @@ export type FriendyTrace = {
   fallbackReason?: string;
   route?: FriendyRouteTrace;
   policyDecision?: FriendyPolicyDecision;
+  suppressedPendingReminder?: boolean;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -39,6 +40,7 @@ export function createFriendyTrace(input: {
   fallbackReason?: string;
   route?: unknown;
   policyDecision?: FriendyPolicyDecision;
+  suppressedPendingReminder?: boolean;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -51,6 +53,7 @@ export function createFriendyTrace(input: {
     fallbackReason: input.fallbackReason,
     route: routeTraceFromUnknown(input.route),
     policyDecision: input.policyDecision,
+    suppressedPendingReminder: input.suppressedPendingReminder,
     activeFrameId: input.activeFrameId,
     activeCandidateId: input.activeCandidateId,
     activeMemoryId: input.activeMemoryId,

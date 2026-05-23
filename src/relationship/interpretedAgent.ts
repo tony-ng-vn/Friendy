@@ -22,6 +22,10 @@ import type { RelationshipRepository } from "./repository";
 import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
+  composeConversationRepairReply,
+  composeDeleteMemoryConfirmReply,
+  composeDuplicateAuditReply,
+  composeExplainAgentStateReply,
   composeIgnoreCandidateReply,
   composeMemoryDeleteReply,
   composeMemoryUpdateReply,
@@ -31,10 +35,18 @@ import {
   composePendingCandidateInquiryReply,
   composePendingContactReminder,
   composeOnboardingControlReply,
+  composeSameOrDifferentPendingReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
-import { decideMessageScope, isPendingCandidateInquiry, type ScopeDecision } from "./scopeBoundary";
+import { decideHardSafety } from "./hardSafetyBlock";
+import {
+  isPendingCandidateInquiry,
+  isPendingPromptContextReply,
+  isRelationshipMetaRouteMessage
+} from "./scopeBoundary";
+import { rankDisplayNameMatches } from "./personNameMatch";
+import { validateRequiredToolAvailability, validateRoutePolicy, type ValidatedRoutePolicy } from "./routePolicyValidator";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
@@ -57,12 +69,6 @@ type ManualMemoryCreateRequest = {
   displayName: string;
   contextNote: string;
   eventTitle?: string;
-};
-type RoutePolicyBlock = {
-  policyDecision: "clarify" | "unsupported";
-  errorCode: "UNKNOWN_ROUTE" | "UNSUPPORTED_INTENT" | "TOOL_NOT_AVAILABLE";
-  reason: string;
-  outboundText: string;
 };
 type SearchContext = {
   searchContextId: string;
@@ -111,6 +117,10 @@ type ConversationContext = {
   activeDateContext?: TemporalContext;
   lastSearch?: SearchContext;
   activeMemoryId?: string;
+  pendingDelete?: {
+    memoryId: string;
+    displayName: string;
+  };
   recentPeople: string[];
 };
 
@@ -189,6 +199,55 @@ export function createInterpretedRelationshipAgent({
         pendingCandidates: repo.listPendingCandidates(message.userId)
       });
 
+      if (turnContext.pendingDelete && isConfirmationReply(message.text)) {
+        const toolCalls: AgentToolCall[] = [];
+        const pendingDelete = turnContext.pendingDelete;
+        const memory = repo.listMemories(message.userId).find((item) => item.id === pendingDelete.memoryId);
+        let outboundText = composeNoMatchReply();
+
+        if (memory) {
+          toolCalls.push("delete_memory");
+          tools.delete_memory(message.userId, memory.id, {});
+          outboundText = composeMemoryDeleteReply({ memory });
+        }
+
+        conversationContexts.set(message.userId, { ...turnContext, pendingDelete: undefined });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "delete_memory",
+            domain: "relationship_memory",
+            conversationRelation: "answers_open_workflow",
+            target: { memoryId: pendingDelete.memoryId },
+            confidence: 1,
+            traceReason: "User confirmed a pending delete-memory request.",
+            policyDecision: { decision: "allow", suppressPendingReminder: true }
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
       if (memoryMutationRequest) {
         const toolCalls: AgentToolCall[] = [];
@@ -236,7 +295,7 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      if (pendingState.activeFrame && isPendingCandidateInquiry(message.text)) {
+      if (pendingState.pendingContactQueue.length > 0 && isPendingCandidateInquiry(message.text)) {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -245,14 +304,23 @@ export function createInterpretedRelationshipAgent({
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-          interpretedIntentJson: routeLog({
-            intent: "explain_pending_workflow",
-            conversationRelation: "asks_about_open_workflow",
-            frame: pendingState.activeFrame,
-            confidence: 1,
-            traceReason: "User asked which pending contact Friendy is asking about.",
-            policyDecision: { decision: "allow" }
-          }),
+          interpretedIntentJson: pendingState.activeFrame
+            ? routeLog({
+                intent: "explain_pending_workflow",
+                conversationRelation: "asks_about_open_workflow",
+                frame: pendingState.activeFrame,
+                confidence: 1,
+                traceReason: "User asked which pending contact Friendy is asking about.",
+                policyDecision: { decision: "allow" }
+              })
+            : {
+                domain: "relationship_memory",
+                intent: "explain_pending_workflow",
+                conversationRelation: "asks_about_open_workflow",
+                confidence: 1,
+                traceReason: "User asked which pending contact Friendy is asking about.",
+                policyDecision: { decision: "allow" }
+              },
           outboundText,
           toolCalls,
           modelUsed: "deterministic-scope",
@@ -275,6 +343,50 @@ export function createInterpretedRelationshipAgent({
       }
 
       if (pendingState.activeFrame && looksLikeDirectPendingContactContext(message.text, pendingState.activeFrame)) {
+        const savedMatches = listSavedMemoriesForDisplayName(
+          repo,
+          message.userId,
+          pendingState.activeFrame.displayName
+        );
+        if (savedMatches.length > 0) {
+          const outboundText = composeSameOrDifferentPendingReply({
+            displayName: pendingState.activeFrame.displayName
+          });
+          const interaction = addInteractionWithTrace(repo, strictMode, {
+            id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            inboundText: message.text,
+            interpretedIntentJson: routeLog({
+              intent: "answer_pending_contact_prompt",
+              conversationRelation: "answers_open_workflow",
+              frame: pendingState.activeFrame,
+              confidence: 1,
+              traceReason: "Saved memory exists for the same display name; ask same-or-different before confirming.",
+              policyDecision: { decision: "clarify" }
+            }),
+            outboundText,
+            toolCalls: [],
+            modelUsed: "deterministic-scope",
+            confidence: 1,
+            latencyMs: Date.now() - startedAt,
+            createdAt: now()
+          });
+
+          return {
+            outbound: {
+              userId: message.userId,
+              platform: message.platform,
+              spaceId: message.spaceId,
+              text: outboundText
+            },
+            toolCalls: [],
+            interaction,
+            trace: traceFromInteraction(interaction)
+          };
+        }
+
         const toolCalls: AgentToolCall[] = [];
         const candidate = tools.get_candidate(message.userId, pendingState.activeFrame.candidateId);
         const extractedContext = candidate
@@ -412,26 +524,22 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      const scopeDecision = decideMessageScope({
-        text: message.text,
-        hasPendingCandidate: pendingState.pendingContactQueue.length > 0
-      });
-
-      if (scopeDecision.scope === "out_of_scope" || scopeDecision.scope === "needs_clarification") {
-        const outboundText =
-          scopeDecision.scope === "out_of_scope"
-            ? scopeDecision.redirect
-            : composeClarificationReply(scopeDecision.question);
+      const hardSafety = decideHardSafety(message.text);
+      if (hardSafety.decision === "reject") {
+        const outboundText = hardSafety.redirect;
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-          interpretedIntentJson: scopeOnlyLog(scopeDecision),
+          interpretedIntentJson: {
+            hardSafetyDecision: hardSafety,
+            policyDecision: { decision: "reject", reason: hardSafety.reason }
+          },
           outboundText,
           toolCalls: [],
-          confidence: scopeDecision.scope === "out_of_scope" ? 1 : 0.7,
+          confidence: 1,
           latencyMs: Date.now() - startedAt,
           createdAt: now()
         });
@@ -449,7 +557,11 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      if (scopeDecision.capability === "candidate_confirmation") {
+      if (
+        pendingState.activeFrame &&
+        isPendingPromptContextReply(message.text) &&
+        !isRelationshipMetaRouteMessage(message.text)
+      ) {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -459,9 +571,9 @@ export function createInterpretedRelationshipAgent({
           spaceId: message.spaceId,
           inboundText: message.text,
           interpretedIntentJson: {
-            scopeDecision,
             intent: "candidate_confirmation",
-            confidence: 1
+            confidence: 1,
+            policyDecision: { decision: "allow" }
           },
           outboundText,
           toolCalls,
@@ -506,20 +618,36 @@ export function createInterpretedRelationshipAgent({
         parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
         message.text
       );
-      const routePolicyBlock =
-        validateInterpretedRoutePolicy(interpretation) ?? validateRequiredToolAvailability(interpretation, tools);
-      if (routePolicyBlock) {
+      const basePolicy = validateRoutePolicy(interpretation, pendingState);
+      const routePolicy =
+        basePolicy.decision !== "allow"
+          ? basePolicy
+          : validateRequiredToolAvailability(interpretation, tools as Record<AgentToolCall, unknown>) ?? basePolicy;
+      if (routePolicy && routePolicy.decision !== "allow") {
+        const blockedPolicy = routePolicy as Exclude<ValidatedRoutePolicy, { decision: "allow" }>;
+        const outboundText = policyBlockOutboundText(blockedPolicy);
         const trace = createFriendyTrace({
           strictMode,
           routeSource: interpreted.routeSource,
           fallbackUsed: interpreted.fallbackUsed,
           fallbackReason: interpreted.fallbackReason,
           route: interpretation,
-          policyDecision: routePolicyBlock.policyDecision,
+          policyDecision: routePolicy.decision,
+          suppressedPendingReminder: routePolicy.suppressPendingReminder,
           toolCalls: []
         });
         if (strictMode) {
-          throw new FriendyStrictModeError(routePolicyBlock.errorCode, routePolicyBlock.reason, trace);
+          if (routePolicy.decision === "unsupported") {
+            throw new FriendyStrictModeError(
+              routePolicy.reason.includes("Required tool") ? "TOOL_NOT_AVAILABLE" : "UNSUPPORTED_INTENT",
+              routePolicy.reason,
+              trace
+            );
+          }
+
+          if (routePolicy.decision === "clarify" && interpretation.intent === "unknown") {
+            throw new FriendyStrictModeError("UNKNOWN_ROUTE", routePolicy.reason, trace);
+          }
         }
 
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -530,14 +658,17 @@ export function createInterpretedRelationshipAgent({
           inboundText: message.text,
           interpretedIntentJson: {
             ...interpretation,
-            scopeDecision,
             interpretation,
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
-            policyDecision: { decision: routePolicyBlock.policyDecision, reason: routePolicyBlock.reason }
+            policyDecision: {
+              decision: routePolicy.decision,
+              reason: routePolicy.reason,
+              suppressPendingReminder: routePolicy.suppressPendingReminder
+            }
           },
-          outboundText: routePolicyBlock.outboundText,
+          outboundText,
           toolCalls: [],
           modelUsed: interpreted.modelUsed,
           confidence: interpretation.confidence,
@@ -551,24 +682,47 @@ export function createInterpretedRelationshipAgent({
             userId: message.userId,
             platform: message.platform,
             spaceId: message.spaceId,
-            text: routePolicyBlock.outboundText
+            text: outboundText
           },
           toolCalls: [],
           interaction,
           trace: traceFromInteraction(interaction)
         };
       }
+      const allowedPolicy = routePolicy ?? {
+        decision: "allow" as const,
+        reason: `Allowed route ${interpretation.intent}.`,
+        suppressPendingReminder: false
+      };
       const toolCalls: AgentToolCall[] = [];
       const searchRequestForTrace =
         interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
-      let outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls, pendingState);
-      if (shouldRemindPendingContact(pendingState, interpretation)) {
+      let outboundText = executeInterpretation(
+        message,
+        interpretation,
+        repo,
+        tools,
+        candidateIntake,
+        toolCalls,
+        pendingState
+      );
+      if (
+        pendingState.activeFrame &&
+        interpretation.intent === "search_memory" &&
+        !allowedPolicy.suppressPendingReminder
+      ) {
         outboundText = `${outboundText} ${composePendingContactReminder(pendingState.activeFrame.displayName)}`;
       }
-      conversationContexts.set(
-        message.userId,
-        updateSearchContext(message, tools, updateConversationContext(turnContext, interpretation), interpretation)
+      let nextContext = updateSearchContext(
+        message,
+        tools,
+        updateConversationContext(turnContext, interpretation),
+        interpretation
       );
+      if (interpretation.intent === "delete_memory_request") {
+        nextContext = attachPendingDeleteContext(message, interpretation, repo, nextContext);
+      }
+      conversationContexts.set(message.userId, nextContext);
 
       const interaction = addInteractionWithTrace(repo, strictMode, {
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -578,12 +732,15 @@ export function createInterpretedRelationshipAgent({
           inboundText: message.text,
           interpretedIntentJson: {
             ...interpretation,
-            scopeDecision,
             interpretation,
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
-            policyDecision: { decision: "allow" },
+            policyDecision: {
+              decision: "allow",
+              reason: allowedPolicy.reason,
+              suppressPendingReminder: allowedPolicy.suppressPendingReminder
+            },
             normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined
           },
           outboundText,
@@ -610,95 +767,48 @@ export function createInterpretedRelationshipAgent({
   };
 }
 
-function validateInterpretedRoutePolicy(interpretation: MessageInterpretation): RoutePolicyBlock | undefined {
-  if (interpretation.intent === "unknown") {
-    return {
-      policyDecision: "clarify",
-      errorCode: "UNKNOWN_ROUTE",
-      reason: "Interpreter returned unknown instead of an executable Friendy route.",
-      outboundText: composeClarificationReply(
-        interpretation.clarificationQuestion || "Should I save this as a memory or search for someone?"
-      )
-    };
+function policyBlockOutboundText(
+  policy: Exclude<ValidatedRoutePolicy, { decision: "allow" }>
+): string {
+  switch (policy.decision) {
+    case "clarify":
+      return composeClarificationReply(policy.question);
+    case "reject":
+      return policy.redirect;
+    case "unsupported":
+      return policy.outboundText;
   }
-
-  if (isUnsupportedIntent(interpretation.intent)) {
-    return {
-      policyDecision: "unsupported",
-      errorCode: "UNSUPPORTED_INTENT",
-      reason: `Intent ${interpretation.intent} is not implemented by deterministic Friendy tools.`,
-      outboundText:
-        "I can't edit Apple Contacts yet. I can save or update Friendy relationship memory, but I will not change Apple Contacts silently."
-    };
-  }
-
-  return undefined;
 }
 
-function isUnsupportedIntent(intent: MessageInterpretation["intent"]): boolean {
-  return (
-    intent === "request_contact_create" ||
-    intent === "request_contact_edit" ||
-    intent === "request_contact_delete" ||
-    intent === "draft_message"
-  );
-}
-
-function validateRequiredToolAvailability(
+function attachPendingDeleteContext(
+  message: InboundAgentMessage,
   interpretation: MessageInterpretation,
-  tools: RelationshipTools
-): RoutePolicyBlock | undefined {
-  const requiredTool = requiredToolForInterpretation(interpretation);
-  if (!requiredTool || typeof (tools as Partial<Record<AgentToolCall, unknown>>)[requiredTool] === "function") {
-    return undefined;
+  repo: RelationshipRepository,
+  context: ConversationContext
+): ConversationContext {
+  const query = extractDeleteTargetQuery(message.text, interpretation);
+  const matches = rankDisplayNameMatches(
+    query,
+    repo.listMemories(message.userId).map((memory) => memory.displayName)
+  );
+  if (matches.length !== 1) {
+    return context;
+  }
+
+  const memory = repo
+    .listMemories(message.userId)
+    .find((item) => item.displayName === matches[0]?.displayName);
+  if (!memory) {
+    return context;
   }
 
   return {
-    policyDecision: "unsupported",
-    errorCode: "TOOL_NOT_AVAILABLE",
-    reason: `Required tool ${requiredTool} is not available for intent ${interpretation.intent}.`,
-    outboundText: `I can't complete that because the ${toolLabel(requiredTool)} is not available right now.`
+    ...context,
+    pendingDelete: {
+      memoryId: memory.id,
+      displayName: memory.displayName
+    }
   };
-}
-
-function requiredToolForInterpretation(interpretation: MessageInterpretation): AgentToolCall | undefined {
-  if (interpretation.intent === "list_people") {
-    return "list_people";
-  }
-
-  if (interpretation.intent === "search_memory" && interpretation.search?.mode !== "list_people") {
-    return "search_memories";
-  }
-
-  if (interpretation.intent === "search_memory" && interpretation.search?.mode === "list_people") {
-    return "list_people";
-  }
-
-  if (interpretation.intent === "capture_memory") {
-    return "create_manual_memory";
-  }
-
-  if (interpretation.intent === "ignore_candidate") {
-    return "list_pending_candidates";
-  }
-
-  if (interpretation.intent === "update_memory") {
-    return "update_memory";
-  }
-
-  if (interpretation.intent === "delete_memory") {
-    return "delete_memory";
-  }
-
-  return undefined;
-}
-
-function toolLabel(tool: AgentToolCall): string {
-  if (tool === "search_memories") {
-    return "memory search tool";
-  }
-
-  return `${tool} tool`;
 }
 
 function addInteractionWithTrace(
@@ -751,6 +861,7 @@ function traceFromInteractionFields(interaction: AgentInteraction, strictMode: b
     fallbackReason: routeSource === "fallback" ? fallbackReasonFromInteraction(interaction) : undefined,
     route,
     policyDecision: policyDecisionFromInteraction(interaction),
+    suppressedPendingReminder: suppressedPendingReminderFromInteraction(interaction),
     activeFrameId: target.frameId,
     activeCandidateId: target.candidateId,
     activeMemoryId: target.memoryId,
@@ -816,6 +927,11 @@ function policyDecisionFromInteraction(interaction: AgentInteraction): FriendyPo
     return explicit;
   }
 
+  const hardSafetyDecision = hardSafetyDecisionFromRoute(interaction.interpretedIntentJson);
+  if (hardSafetyDecision === "reject") {
+    return "reject";
+  }
+
   const scopeDecision = scopeDecisionFromRoute(interaction.interpretedIntentJson);
   if (scopeDecision === "out_of_scope") {
     return "reject";
@@ -844,6 +960,33 @@ function policyDecisionFromRoute(value: unknown): FriendyPolicyDecision | undefi
   }
 
   return undefined;
+}
+
+function suppressedPendingReminderFromInteraction(interaction: AgentInteraction): boolean | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const policyDecision = (interaction.interpretedIntentJson as { policyDecision?: unknown }).policyDecision;
+  if (typeof policyDecision !== "object" || policyDecision === null || !("suppressPendingReminder" in policyDecision)) {
+    return undefined;
+  }
+
+  const suppressed = (policyDecision as { suppressPendingReminder?: unknown }).suppressPendingReminder;
+  return typeof suppressed === "boolean" ? suppressed : undefined;
+}
+
+function hardSafetyDecisionFromRoute(value: unknown): "reject" | undefined {
+  if (typeof value !== "object" || value === null || !("hardSafetyDecision" in value)) {
+    return undefined;
+  }
+
+  const hardSafetyDecision = (value as { hardSafetyDecision?: unknown }).hardSafetyDecision;
+  if (typeof hardSafetyDecision !== "object" || hardSafetyDecision === null || !("decision" in hardSafetyDecision)) {
+    return undefined;
+  }
+
+  return (hardSafetyDecision as { decision: unknown }).decision === "reject" ? "reject" : undefined;
 }
 
 function scopeDecisionFromRoute(value: unknown): string | undefined {
@@ -946,6 +1089,10 @@ function looksLikeDirectPendingContactContext(text: string, frame: PendingContac
     return false;
   }
 
+  if (/^(?:this|that)\s+is\b/i.test(trimmed)) {
+    return true;
+  }
+
   if (/^(she|he|they|them|her|him)\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had)\b/i.test(trimmed)) {
     return true;
   }
@@ -962,8 +1109,11 @@ function looksLikeDirectPendingContactContext(text: string, frame: PendingContac
     }
   }
 
-  return /^(met|need to follow up|follow up|talked|we talked|works?|knows?|community lead|member|founder|designer|from|at|through)\b/.test(
-    lower
+  return (
+    /^(?:i\s+)?met\b/i.test(trimmed) ||
+    /^(met|need to follow up|follow up|talked|we talked|works?|knows?|community lead|member|founder|designer|from|at|through)\b/.test(
+      lower
+    )
   );
 }
 
@@ -1316,23 +1466,10 @@ function looksLikeFollowUpSearchClue(text: string): boolean {
   );
 }
 
-function scopeOnlyLog(scopeDecision: ScopeDecision): unknown {
-  if (scopeDecision.scope === "needs_clarification") {
-    return {
-      scopeDecision,
-      intent: "clarify",
-      confidence: 0.7,
-      needsClarification: true,
-      clarificationQuestion: scopeDecision.question
-    };
-  }
-
-  return { scopeDecision };
-}
-
 function executeInterpretation(
   message: InboundAgentMessage,
   interpretation: MessageInterpretation,
+  repo: RelationshipRepository,
   tools: RelationshipTools,
   candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[],
@@ -1363,6 +1500,51 @@ function executeInterpretation(
 
   if (interpretation.intent === "list_people") {
     return listPeople(message, interpretation, tools, toolCalls);
+  }
+
+  if (interpretation.intent === "duplicate_audit") {
+    toolCalls.push("find_duplicate_people");
+    const result = tools.find_duplicate_people(message.userId, { includePending: true });
+    return composeDuplicateAuditReply({ duplicateGroups: result.duplicateGroups });
+  }
+
+  if (interpretation.intent === "explain_agent_state" || interpretation.intent === "explain_pending_workflow") {
+    const displayName = pendingState?.activeFrame?.displayName ?? interpretation.target?.displayName;
+    const savedMemories = displayName
+      ? listSavedMemoriesForDisplayName(repo, message.userId, displayName)
+      : repo.listMemories(message.userId);
+    return composeExplainAgentStateReply({
+      displayName,
+      savedMemories,
+      pendingFrame: pendingState?.activeFrame
+    });
+  }
+
+  if (interpretation.intent === "conversation_repair") {
+    const displayName = pendingState?.activeFrame?.displayName ?? interpretation.target?.displayName;
+    const savedMemories = displayName
+      ? listSavedMemoriesForDisplayName(repo, message.userId, displayName)
+      : repo.listMemories(message.userId);
+    return composeConversationRepairReply({
+      displayName,
+      savedMemories,
+      pendingFrame: pendingState?.activeFrame
+    });
+  }
+
+  if (interpretation.intent === "delete_memory_request") {
+    const query = extractDeleteTargetQuery(message.text, interpretation);
+    const matches = rankDisplayNameMatches(
+      query,
+      repo.listMemories(message.userId).map((memory) => memory.displayName)
+    );
+    if (matches.length === 0) {
+      return composeNoMatchReply();
+    }
+
+    return composeDeleteMemoryConfirmReply({
+      matches: matches.slice(0, 3).map((match) => ({ displayName: match.displayName }))
+    });
   }
 
   if (interpretation.intent === "ignore_candidate") {
@@ -1461,15 +1643,22 @@ function listPeople(
   });
 }
 
-function shouldRemindPendingContact(
-  pendingState: ConversationState,
-  interpretation: MessageInterpretation
-): pendingState is ConversationState & { activeFrame: PendingContactContextFrame } {
-  if (interpretation.intent === "list_people" || interpretation.search?.mode === "list_people") {
-    return false;
+function listSavedMemoriesForDisplayName(
+  repo: RelationshipRepository,
+  userId: string,
+  displayName: string
+): RelationshipMemory[] {
+  const normalized = displayName.trim().toLowerCase();
+  return repo.listMemories(userId).filter((memory) => memory.displayName.trim().toLowerCase() === normalized);
+}
+
+function extractDeleteTargetQuery(text: string, interpretation: MessageInterpretation): string {
+  const helpDeleteMatch = text.match(/\bdelete\s+(.+?)(?:\s+from(?:\s+your)?\s+memory)?[?.!]*$/i);
+  if (helpDeleteMatch?.[1]) {
+    return helpDeleteMatch[1].trim();
   }
 
-  return Boolean(pendingState.activeFrame) && interpretation.intent === "search_memory";
+  return interpretation.target?.displayName?.trim() || interpretation.query?.trim() || "";
 }
 
 function buildMemorySearchRequest(message: InboundAgentMessage, interpretation: MessageInterpretation): MemorySearchRequest {
