@@ -569,6 +569,8 @@ describe("interpreted relationship agent", () => {
           return {
             modelUsed: "test-interpreter",
             error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
             interpretation: {
               intent: "ignore_candidate",
               confidence: 0.9,
@@ -1232,6 +1234,8 @@ describe("interpreted relationship agent", () => {
           return {
             modelUsed: "test-interpreter",
             error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
             interpretation: {
               intent: "capture_memory",
               confidence: 0.1,

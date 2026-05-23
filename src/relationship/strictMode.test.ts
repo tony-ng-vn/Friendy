@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FriendyStrictModeError, readFriendyStrictMode } from "./strictMode";
+import type { FriendyTrace } from "./trace";
 
 describe("readFriendyStrictMode", () => {
   it("treats missing, empty, and false-like values as disabled", () => {
@@ -21,7 +22,7 @@ describe("readFriendyStrictMode", () => {
 
 describe("FriendyStrictModeError", () => {
   it("exposes a stable strict-mode code and trace envelope", () => {
-    const trace = {
+    const trace: FriendyTrace = {
       strictMode: true,
       routeSource: "fallback",
       fallbackUsed: true,

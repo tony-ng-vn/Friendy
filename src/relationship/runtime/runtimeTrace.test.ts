@@ -101,9 +101,8 @@ describe("redacted runtime trace", () => {
           target: {
             frameId: "frame_1",
             candidateId: "candidate_sarah",
-            displayName: "Sarah Fan"
-          },
-          extractedContext: "community lead at Photon Residency II"
+            hasDisplayName: true
+          }
         },
         policyDecision: "allow",
         activeFrameId: "frame_1",
