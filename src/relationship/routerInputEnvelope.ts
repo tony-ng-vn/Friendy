@@ -1,21 +1,31 @@
-import type { ConversationState } from "./conversationState";
 import type { MessageInterpretation } from "./interpretation";
-import type { createRelationshipTools } from "./tools";
-import type { InboundAgentMessage } from "./types";
+import type { AgentToolCall, ContactCandidate, InboundAgentMessage, RelationshipMemory } from "./types";
 
 export type RouterRouteCapability = MessageInterpretation["intent"];
 
+export type RouterActiveWorkflow = {
+  kind: "pending_contact_confirmation";
+  frameId: string;
+  candidateId: string;
+  displayName: string;
+  lastFriendyPrompt: string;
+};
+
 export type RouterInputEnvelope = {
   userText: string;
-  conversationState: ConversationState;
+  conversationState: {
+    activeWorkflow?: RouterActiveWorkflow;
+    recentAgentMessages: string[];
+    recentEntityRefs: string[];
+    lastListResultIds: string[];
+    lastToolErrors: string[];
+  };
   domainStateSummary: {
-    activeWorkflow?: {
-      kind: "pending_contact_confirmation";
-      frameId: string;
+    pendingCandidates: Array<{
       candidateId: string;
       displayName: string;
-      lastFriendyPrompt: string;
-    };
+      status: ContactCandidate["status"];
+    }>;
     knownPeopleNamed: Array<{
       queryName: string;
       memoryIds: string[];
@@ -28,20 +38,33 @@ export type RouterInputEnvelope = {
       reason: "same_display_name";
     }>;
   };
-  availableTools: string[];
+  availableTools: AgentToolCall[];
   availableRouteCapabilities: RouterRouteCapability[];
 };
 
 export type MessageInterpreterInput = {
   message: InboundAgentMessage;
-  routerContext?: {
-    conversationState?: ConversationState;
-    tools?: ReturnType<typeof createRelationshipTools>;
-    userId?: string;
-    spaceId?: string;
-  };
+  routerContext?: RouterInputEnvelope;
 };
 
-export function buildRouterInputEnvelope(_input: MessageInterpreterInput): RouterInputEnvelope {
+export function buildRouterInputEnvelope(_input: {
+  message: InboundAgentMessage;
+  conversationState: {
+    activeFrame?: {
+      frameId: string;
+      candidateId: string;
+      displayName: string;
+      lastFriendyPrompt: string;
+    };
+    pendingContactQueue: Array<{
+      candidateId: string;
+      displayName: string;
+      status: ContactCandidate["status"];
+    }>;
+  };
+  memories: RelationshipMemory[];
+  availableTools: AgentToolCall[];
+  availableRouteCapabilities: RouterRouteCapability[];
+}): RouterInputEnvelope {
   throw new Error("buildRouterInputEnvelope not implemented");
 }

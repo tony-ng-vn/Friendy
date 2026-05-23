@@ -2,27 +2,45 @@ import { describe, expect, it } from "vitest";
 import { buildConversationState, type ConversationState } from "./conversationState";
 import { fixtureDetectedContact, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
-import { buildRouterInputEnvelope, type MessageInterpreterInput } from "./routerInputEnvelope";
+import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerInputEnvelope";
 import { createRelationshipTools } from "./tools";
-import type { ContactCandidateDetected, InboundAgentMessage, RelationshipMemory } from "./types";
+import type { AgentToolCall, ContactCandidateDetected, InboundAgentMessage, RelationshipMemory } from "./types";
 
 const spaceId = "imessage_space_testing";
+const availableTools: AgentToolCall[] = ["confirm_candidate", "ignore_candidate", "list_pending_candidates"];
+const availableRouteCapabilities: RouterRouteCapability[] = [
+  "answer_pending_contact_prompt",
+  "duplicate_audit",
+  "delete_memory_request"
+];
 
 describe("router input envelope", () => {
   it("projects the active pending workflow with prompt text and frame id", () => {
-    const { candidate, conversationState, input } = promptedCandidateHarness();
+    const { candidate, input } = promptedCandidateHarness();
 
     const envelope = buildRouterInputEnvelope(input);
 
     expect(envelope.userText).toBe("Yes, I met Testing 3 during Friendy testing.");
-    expect(envelope.conversationState).toEqual(conversationState);
-    expect(envelope.domainStateSummary.activeWorkflow).toEqual({
+    expect(envelope.conversationState.activeWorkflow).toEqual({
       kind: "pending_contact_confirmation",
       frameId: `frame_pending_contact_${candidate.id}`,
       candidateId: candidate.id,
       displayName: "Testing 3",
       lastFriendyPrompt: "I noticed you added Testing 3. Where did you meet them?"
     });
+    expect(envelope.conversationState.recentAgentMessages).toEqual([]);
+    expect(envelope.conversationState.recentEntityRefs).toEqual([]);
+    expect(envelope.conversationState.lastListResultIds).toEqual([]);
+    expect(envelope.conversationState.lastToolErrors).toEqual([]);
+    expect(envelope.domainStateSummary.pendingCandidates).toEqual([
+      {
+        candidateId: candidate.id,
+        displayName: "Testing 3",
+        status: "prompted"
+      }
+    ]);
+    expect(envelope.availableTools).toEqual(availableTools);
+    expect(envelope.availableRouteCapabilities).toEqual(availableRouteCapabilities);
   });
 
   it("redacts raw contact methods and contact identifiers from the JSON envelope", () => {
@@ -33,6 +51,25 @@ describe("router input envelope", () => {
     expect(envelopeJson).not.toContain("+15550101003");
     expect(envelopeJson).not.toContain("testing3@example.com");
     expect(envelopeJson).not.toContain("contact_testing_3");
+  });
+
+  it("defaults compact conversation and pending summaries to empty arrays", () => {
+    const conversationState = buildConversationState({
+      userId: fixtureUser.id,
+      spaceId,
+      pendingCandidates: []
+    });
+
+    const envelope = buildRouterInputEnvelope(routerBuilderInput("What can you do?", conversationState, []));
+
+    expect(envelope.conversationState.activeWorkflow).toBeUndefined();
+    expect(envelope.conversationState.recentAgentMessages).toEqual([]);
+    expect(envelope.conversationState.recentEntityRefs).toEqual([]);
+    expect(envelope.conversationState.lastListResultIds).toEqual([]);
+    expect(envelope.conversationState.lastToolErrors).toEqual([]);
+    expect(envelope.domainStateSummary.pendingCandidates).toEqual([]);
+    expect(envelope.availableTools).toEqual(availableTools);
+    expect(envelope.availableRouteCapabilities).toEqual(availableRouteCapabilities);
   });
 
   it("summarizes same-name saved people and possible duplicates", () => {
@@ -53,7 +90,7 @@ describe("router input envelope", () => {
     });
 
     const envelope = buildRouterInputEnvelope(
-      interpreterInput("Anyone in my contacts related to Testing 3?", conversationState, tools)
+      routerBuilderInput("Anyone in my contacts related to Testing 3?", conversationState, repo.listMemories(fixtureUser.id))
     );
 
     expect(envelope.domainStateSummary.knownPeopleNamed).toEqual([
@@ -91,23 +128,25 @@ function promptedCandidateHarness() {
   return {
     candidate,
     conversationState,
-    input: interpreterInput("Yes, I met Testing 3 during Friendy testing.", conversationState, tools)
+    input: routerBuilderInput(
+      "Yes, I met Testing 3 during Friendy testing.",
+      conversationState,
+      repo.listMemories(fixtureUser.id)
+    )
   };
 }
 
-function interpreterInput(
+function routerBuilderInput(
   text: string,
   conversationState: ConversationState,
-  tools: ReturnType<typeof createRelationshipTools>
-): MessageInterpreterInput {
+  memories: RelationshipMemory[]
+): Parameters<typeof buildRouterInputEnvelope>[0] {
   return {
     message: inboundMessage(text),
-    routerContext: {
-      userId: fixtureUser.id,
-      spaceId,
-      conversationState,
-      tools
-    }
+    conversationState,
+    memories,
+    availableTools,
+    availableRouteCapabilities
   };
 }
 
