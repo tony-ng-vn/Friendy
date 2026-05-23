@@ -245,7 +245,8 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "filtered bullet list uses list_people route",
     "filtered bullet list does not use search fallback",
     "filtered bullet list respects bullet formatting",
-    "filtered bullet list suppresses stale pending reminder"
+    "filtered bullet list suppresses stale pending reminder",
+    "filtered bullet list excludes unrelated people"
   ]),
   evalCase("duplicate-audit-in-scope-regression", "interpreted", [
     "duplicate audit routes in scope",
@@ -1153,20 +1154,37 @@ const executableEvalCases: ExecutableEvalCase[] = [
   {
     ...relationshipAgentEvalCases[36],
     async run({ interpreter, now }) {
-      const { agent } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const { agent } = createTestingFriendyRegressionHarness({
+        interpreter: createListPeopleRegressionInterpreter(interpreter),
+        now,
+        includeUnrelatedSarah: true
+      });
       const result = await agent.handleMessage({
         ...interpretedInbound("List me in bullet of all people I met testing friendy"),
         spaceId: "imessage_testing_regression"
       });
 
       return [
-        assertion("filtered bullet list uses list_people route", "intent", result.trace.route?.intent === "list_people"),
-        assertion("filtered bullet list does not use search fallback", "intent", !result.toolCalls.includes("search_memories")),
+        assertion(
+          "filtered bullet list uses list_people route",
+          "intent",
+          result.trace.route?.intent === "list_people" && toolCallsInclude(result.toolCalls, "list_people")
+        ),
+        assertion(
+          "filtered bullet list does not use search fallback",
+          "intent",
+          !toolCallsInclude(result.toolCalls, "search_memories")
+        ),
         assertion("filtered bullet list respects bullet formatting", "searchRecall", hasBulletFormatting(result.outbound.text)),
         assertion(
           "filtered bullet list suppresses stale pending reminder",
           "clarification",
           !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        ),
+        assertion(
+          "filtered bullet list excludes unrelated people",
+          "searchRecall",
+          !result.outbound.text.includes("Sarah Fan")
         )
       ];
     }
@@ -1186,7 +1204,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
           "scopeBoundary",
           result.trace.route?.domain === "relationship_memory" && result.trace.route?.intent === "duplicate_audit"
         ),
-        assertion("duplicate audit expects duplicate tool", "intent", result.toolCalls.includes("find_duplicate_people")),
+        assertion("duplicate audit expects duplicate tool", "intent", toolCallsInclude(result.toolCalls, "find_duplicate_people")),
         assertion(
           "duplicate audit avoids generic fallback",
           "scopeBoundary",
@@ -1404,6 +1422,37 @@ function trackInterpreterFallbackUsage(
   };
 }
 
+function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter): MessageInterpreter {
+  return {
+    async interpret(message) {
+      const result = await interpreter.interpret(message);
+      if (message.text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
+        return result;
+      }
+
+      return {
+        ...result,
+        interpretation: {
+          ...result.interpretation,
+          intent: "list_people",
+          domain: "relationship_memory",
+          query: message.text,
+          search: {
+            mode: "list_people",
+            semanticQuery: message.text,
+            exactTerms: ["testing", "friendy"],
+            filters: { tags: ["testing", "friendy"] },
+            topK: 20
+          },
+          tags: ["testing", "friendy"],
+          needsClarification: false,
+          clarificationQuestion: ""
+        }
+      };
+    }
+  };
+}
+
 async function maybeRunModelBackedEvals(
   options: RunOptions,
   now: () => string
@@ -1454,8 +1503,9 @@ function createInterpretedHarness({ interpreter, now }: Required<Pick<RunOptions
 
 function createTestingFriendyRegressionHarness({
   interpreter,
-  now
-}: Required<Pick<RunOptions, "interpreter" | "now">>) {
+  now,
+  includeUnrelatedSarah = false
+}: Required<Pick<RunOptions, "interpreter" | "now">> & { includeUnrelatedSarah?: boolean }) {
   const repo = createRelationshipRepository({
     users: [fixtureUser],
     memories: [
@@ -1463,7 +1513,10 @@ function createTestingFriendyRegressionHarness({
       memory("memory_testing_1_b", "Testing 1", "im just testing for friendy at the moment", ""),
       memory("memory_testing_12", "Testing 12", "Met them during testing Friendy", "testing Friendy"),
       memory("memory_testing_3", "Testing 3", "I met testing 3 during testing Friendy", "testing Friendy"),
-      memory("memory_unnamed_contact", "Unnamed Contact", "Just give me all the people in my contact so far", "")
+      memory("memory_unnamed_contact", "Unnamed Contact", "Just give me all the people in my contact so far", ""),
+      ...(includeUnrelatedSarah
+        ? [memory("memory_sarah_fan", "Sarah Fan", "community lead at Photon Residency II", "Photon Residency II")]
+        : [])
     ]
   });
   const tools = createRelationshipTools(repo);
@@ -1573,6 +1626,10 @@ function includesAll(value: string, expectedParts: string[]): boolean {
 function includesAny(value: string, expectedParts: string[]): boolean {
   const normalized = value.toLowerCase();
   return expectedParts.some((part) => normalized.includes(part.toLowerCase()));
+}
+
+function toolCallsInclude(toolCalls: readonly string[], expectedToolCall: string): boolean {
+  return toolCalls.includes(expectedToolCall);
 }
 
 function hasBulletFormatting(value: string): boolean {

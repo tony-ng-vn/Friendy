@@ -90,6 +90,19 @@ describe("relationship agent eval runner", () => {
     expect(formatEvalSummary(summary)).toContain("Fallback usage count:");
   });
 
+  it("tracks the dedicated list_people regression assertions", () => {
+    expect(
+      relationshipAgentEvalCases.find((evalCase) => evalCase.id === "duplicate-pending-filtered-list-regression")
+        ?.assertionNames
+    ).toEqual([
+      "filtered bullet list uses list_people route",
+      "filtered bullet list does not use search fallback",
+      "filtered bullet list respects bullet formatting",
+      "filtered bullet list suppresses stale pending reminder",
+      "filtered bullet list excludes unrelated people"
+    ]);
+  });
+
   it("returns nonzero exit code when any required eval fails", () => {
     expect(
       getEvalExitCode({
