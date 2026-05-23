@@ -6,6 +6,13 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Friendy List People Tool (2026-05-23)</h2>
+    <ul>
+      <li>Implemented <code>tools.list_people</code> directly on the relationship repository rather than delegating through memory search, preserving the deterministic list contract and avoiding repository search document retrieval.</li>
+      <li>Apple Contacts remains an unsupported source for this task. Requests for <code>apple_contacts</code> return an empty supported result with <code>unsupportedSources</code>, while <code>both</code> lists Friendy memory and flags Apple Contacts as unsupported.</li>
+      <li>List filtering uses meaningful exact terms and tags only, drops generic list/contact words, and may use the pure generated memory search document text for accepted memory fields.</li>
+      <li>Duplicate reporting is non-destructive: same normalized saved names and same-name pending candidates are surfaced as duplicate groups without merging or mutating repository state.</li>
+    </ul>
     <h2>Friendy Regression Freeze Tests (2026-05-23)</h2>
     <ul>
       <li>Added tests-only eval coverage for five live failure classes: filtered bullet list routing, duplicate audit, conversation repair, fuzzy delete confirmation, and same-name pending contact disambiguation.</li>
