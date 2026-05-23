@@ -210,6 +210,178 @@ describe("interpreted relationship agent", () => {
     expect(result.toolCalls).toEqual([]);
   });
 
+  it("throws unknown model routes in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "unknown",
+        confidence: 0.4,
+        needsClarification: true,
+        clarificationQuestion: "Should I save this as a memory or search for someone?"
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("remember Maya from dinner"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNKNOWN_ROUTE",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "unknown" },
+        policyDecision: "clarify",
+        toolCalls: []
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("returns a specific unsupported blocker for contact-management routes in non-strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "request_contact_edit",
+        domain: "contact_management",
+        confidence: 0.82,
+        target: { displayName: "Maya" }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Help me tell Maya I updated her phone number"));
+
+    expect(result.outbound.text).toContain("can't edit Apple Contacts yet");
+    expect(result.toolCalls).toEqual([]);
+    expect(result.trace).toMatchObject({
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "request_contact_edit", domain: "contact_management" },
+      policyDecision: "unsupported",
+      toolCalls: []
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("throws unsupported contact-management routes in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "request_contact_edit",
+        domain: "contact_management",
+        confidence: 0.82,
+        target: { displayName: "Maya" }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("Help me tell Maya I updated her phone number"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNSUPPORTED_INTENT",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "request_contact_edit", domain: "contact_management" },
+        policyDecision: "unsupported",
+        toolCalls: []
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("returns a specific blocker when an executable route is missing its tool in non-strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories: undefined
+    } as unknown as ReturnType<typeof createRelationshipTools>;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.9,
+        query: "dinner",
+        search: {
+          mode: "event_recall",
+          semanticQuery: "people met at dinner",
+          exactTerms: ["dinner"],
+          topK: 10
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Who did I meet at dinner?"));
+
+    expect(result.outbound.text).toContain("memory search tool is not available");
+    expect(result.toolCalls).toEqual([]);
+    expect(result.trace).toMatchObject({
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "search_memory" },
+      policyDecision: "unsupported",
+      toolCalls: []
+    });
+  });
+
+  it("throws when an executable route is missing its tool in strict mode", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories: undefined
+    } as unknown as ReturnType<typeof createRelationshipTools>;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.9,
+        query: "dinner",
+        search: {
+          mode: "event_recall",
+          semanticQuery: "people met at dinner",
+          exactTerms: ["dinner"],
+          topK: 10
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await expect(agent.handleMessage(inbound("Who did I meet at dinner?"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "TOOL_NOT_AVAILABLE",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        route: { intent: "search_memory" },
+        policyDecision: "unsupported",
+        toolCalls: []
+      }
+    });
+  });
+
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -1014,6 +1186,27 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
   });
 
+  it("throws instead of silently clarifying an ambiguous executable delete in strict mode", async () => {
+    const { agent, repo } = createTestAgentWithMemories(
+      [memoryFixture("Maya", "recruiting agents founder"), memoryFixture("Sarah", "hardware founder")],
+      { strictMode: true }
+    );
+
+    await expect(agent.handleMessage(inbound("delete the founder"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "UNEXPECTED_AMBIGUITY",
+      trace: {
+        strictMode: true,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        route: { intent: "delete_memory" },
+        policyDecision: "clarify",
+        toolCalls: ["search_memories"]
+      }
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+  });
+
   it("asks clarification for vague references and does not save a fake memory", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -1090,7 +1283,51 @@ function createTestAgent(options: { strictMode?: boolean } = {}) {
   return { agent, repo };
 }
 
-function createTestAgentWithMemories(memories: RelationshipMemory[]) {
+function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretation>[0]>) {
+  return {
+    async interpret() {
+      return {
+        modelUsed: "test-model",
+        error: "",
+        routeSource: "llm" as const,
+        fallbackUsed: false,
+        interpretation: fullInterpretation(overrides)
+      };
+    }
+  };
+}
+
+function fullInterpretation(overrides: Partial<{
+  intent: "capture_memory" | "search_memory" | "ignore_candidate" | "clarify" | "unknown" | "request_contact_edit";
+  confidence: number;
+  domain: "relationship_memory" | "contact_management";
+  target: { displayName?: string };
+  query: string;
+  search: {
+    mode: "lookup_person" | "list_people" | "list_related_people" | "event_recall" | "semantic_recall";
+    semanticQuery: string;
+    exactTerms: string[];
+    topK?: number;
+  };
+  needsClarification: boolean;
+  clarificationQuestion: string;
+}>) {
+  return {
+    intent: "clarify" as const,
+    confidence: 0.7,
+    people: [],
+    event: { name: "", dateText: "", location: "" },
+    dateContext: undefined,
+    contextNote: "",
+    query: "",
+    tags: [],
+    needsClarification: false,
+    clarificationQuestion: "",
+    ...overrides
+  };
+}
+
+function createTestAgentWithMemories(memories: RelationshipMemory[], options: { strictMode?: boolean } = {}) {
   const repo = createRelationshipRepository({
     users: [fixtureUser],
     memories
@@ -1100,6 +1337,7 @@ function createTestAgentWithMemories(memories: RelationshipMemory[]) {
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
+    strictMode: options.strictMode,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

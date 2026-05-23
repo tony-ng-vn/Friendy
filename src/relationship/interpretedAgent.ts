@@ -58,6 +58,12 @@ type ManualMemoryCreateRequest = {
   contextNote: string;
   eventTitle?: string;
 };
+type RoutePolicyBlock = {
+  policyDecision: "clarify" | "unsupported";
+  errorCode: "UNKNOWN_ROUTE" | "UNSUPPORTED_INTENT" | "TOOL_NOT_AVAILABLE";
+  reason: string;
+  outboundText: string;
+};
 type SearchContext = {
   searchContextId: string;
   createdAt: string;
@@ -186,7 +192,16 @@ export function createInterpretedRelationshipAgent({
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
       if (memoryMutationRequest) {
         const toolCalls: AgentToolCall[] = [];
-        const mutation = executeMemoryMutationRequest(message, memoryMutationRequest, repo, tools, turnContext, toolCalls, now());
+        const mutation = executeMemoryMutationRequest(
+          message,
+          memoryMutationRequest,
+          repo,
+          tools,
+          turnContext,
+          toolCalls,
+          now(),
+          strictMode
+        );
         const outboundText = mutation.outboundText;
         conversationContexts.set(message.userId, mutation.nextContext);
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -491,6 +506,58 @@ export function createInterpretedRelationshipAgent({
         parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
         message.text
       );
+      const routePolicyBlock =
+        validateInterpretedRoutePolicy(interpretation) ?? validateRequiredToolAvailability(interpretation, tools);
+      if (routePolicyBlock) {
+        const trace = createFriendyTrace({
+          strictMode,
+          routeSource: interpreted.routeSource,
+          fallbackUsed: interpreted.fallbackUsed,
+          fallbackReason: interpreted.fallbackReason,
+          route: interpretation,
+          policyDecision: routePolicyBlock.policyDecision,
+          toolCalls: []
+        });
+        if (strictMode) {
+          throw new FriendyStrictModeError(routePolicyBlock.errorCode, routePolicyBlock.reason, trace);
+        }
+
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...interpretation,
+            scopeDecision,
+            interpretation,
+            routeSource: interpreted.routeSource,
+            fallbackUsed: interpreted.fallbackUsed,
+            fallbackReason: interpreted.fallbackReason,
+            policyDecision: { decision: routePolicyBlock.policyDecision, reason: routePolicyBlock.reason }
+          },
+          outboundText: routePolicyBlock.outboundText,
+          toolCalls: [],
+          modelUsed: interpreted.modelUsed,
+          confidence: interpretation.confidence,
+          latencyMs: Date.now() - startedAt,
+          error: interpreted.error,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: routePolicyBlock.outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
       const toolCalls: AgentToolCall[] = [];
       const searchRequestForTrace =
         interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
@@ -541,6 +608,89 @@ export function createInterpretedRelationshipAgent({
       };
     }
   };
+}
+
+function validateInterpretedRoutePolicy(interpretation: MessageInterpretation): RoutePolicyBlock | undefined {
+  if (interpretation.intent === "unknown") {
+    return {
+      policyDecision: "clarify",
+      errorCode: "UNKNOWN_ROUTE",
+      reason: "Interpreter returned unknown instead of an executable Friendy route.",
+      outboundText: composeClarificationReply(
+        interpretation.clarificationQuestion || "Should I save this as a memory or search for someone?"
+      )
+    };
+  }
+
+  if (isUnsupportedIntent(interpretation.intent)) {
+    return {
+      policyDecision: "unsupported",
+      errorCode: "UNSUPPORTED_INTENT",
+      reason: `Intent ${interpretation.intent} is not implemented by deterministic Friendy tools.`,
+      outboundText:
+        "I can't edit Apple Contacts yet. I can save or update Friendy relationship memory, but I will not change Apple Contacts silently."
+    };
+  }
+
+  return undefined;
+}
+
+function isUnsupportedIntent(intent: MessageInterpretation["intent"]): boolean {
+  return (
+    intent === "request_contact_create" ||
+    intent === "request_contact_edit" ||
+    intent === "request_contact_delete" ||
+    intent === "draft_message"
+  );
+}
+
+function validateRequiredToolAvailability(
+  interpretation: MessageInterpretation,
+  tools: RelationshipTools
+): RoutePolicyBlock | undefined {
+  const requiredTool = requiredToolForInterpretation(interpretation);
+  if (!requiredTool || typeof (tools as Partial<Record<AgentToolCall, unknown>>)[requiredTool] === "function") {
+    return undefined;
+  }
+
+  return {
+    policyDecision: "unsupported",
+    errorCode: "TOOL_NOT_AVAILABLE",
+    reason: `Required tool ${requiredTool} is not available for intent ${interpretation.intent}.`,
+    outboundText: `I can't complete that because the ${toolLabel(requiredTool)} is not available right now.`
+  };
+}
+
+function requiredToolForInterpretation(interpretation: MessageInterpretation): AgentToolCall | undefined {
+  if (interpretation.intent === "search_memory" || interpretation.intent === "list_people") {
+    return "search_memories";
+  }
+
+  if (interpretation.intent === "capture_memory") {
+    return "create_manual_memory";
+  }
+
+  if (interpretation.intent === "ignore_candidate") {
+    return "list_pending_candidates";
+  }
+
+  if (interpretation.intent === "update_memory") {
+    return "update_memory";
+  }
+
+  if (interpretation.intent === "delete_memory") {
+    return "delete_memory";
+  }
+
+  return undefined;
+}
+
+function toolLabel(tool: AgentToolCall): string {
+  if (tool === "search_memories") {
+    return "memory search tool";
+  }
+
+  return `${tool} tool`;
 }
 
 function addInteractionWithTrace(
@@ -856,7 +1006,8 @@ function executeMemoryMutationRequest(
   tools: RelationshipTools,
   context: ConversationContext,
   toolCalls: AgentToolCall[],
-  now: string
+  now: string,
+  strictMode: boolean
 ): { outboundText: string; nextContext: ConversationContext } {
   const target = resolveMemoryMutationTarget(message, request, repo, tools, context, toolCalls, message.receivedAt);
   if (target.kind === "none") {
@@ -864,6 +1015,23 @@ function executeMemoryMutationRequest(
   }
 
   if (target.kind === "ambiguous") {
+    if (strictMode) {
+      throw new FriendyStrictModeError(
+        "UNEXPECTED_AMBIGUITY",
+        "Executable memory mutation route has an ambiguous target.",
+        createFriendyTrace({
+          strictMode: true,
+          routeSource: "deterministic",
+          fallbackUsed: false,
+          route: {
+            intent: request.kind === "delete" ? "delete_memory" : "update_memory",
+            confidence: 1
+          },
+          policyDecision: "clarify",
+          toolCalls
+        })
+      );
+    }
     return { outboundText: target.message, nextContext: context };
   }
 
