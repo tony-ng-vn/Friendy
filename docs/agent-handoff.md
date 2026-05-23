@@ -5,9 +5,10 @@ Use this file when starting a **new agent session** or handing work to another e
 ## Read Order (new agent)
 
 1. **`REFERENCE.md`** — repo map, commands, key modules.
-2. **`docs/agent-handoff.md`** (this file) — current status, active goal, blockers, last verified E2E.
-3. **Active goal** (if any) — e.g. `docs/goals/mac-mvp-e2e-contact-detection-goal.md` or the next task in `docs/goals/mac-mvp-final-goal-runbook.md`.
-4. **`implementation-notes.html`** — decisions, tradeoffs, edge cases, verification history (read the **Known MVP Edge Cases** and latest **Implementation Decisions** sections; do not load the whole file unless debugging history).
+2. **`.understand-anything/knowledge-graph.json`** — optional searchable graph index for architecture orientation, dependency routing, and targeted file discovery. Inspect `project`, `layers`, and `tour` first; source and docs remain authoritative.
+3. **`docs/agent-handoff.md`** (this file) — current status, active goal, blockers, last verified E2E.
+4. **Active goal** (if any) — e.g. `docs/goals/mac-mvp-e2e-contact-detection-goal.md` or the next task in `docs/goals/mac-mvp-final-goal-runbook.md`.
+5. **`implementation-notes.html`** — decisions, tradeoffs, edge cases, verification history (read the **Known MVP Edge Cases** and latest **Implementation Decisions** sections; do not load the whole file unless debugging history).
 
 Do **not** point a new agent at `implementation-notes.html` alone. It is long and chronological. Use this handoff file first, then drill into implementation notes for specifics.
 
@@ -36,6 +37,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
 | **Latest fix** | Strict mode and trace envelope implemented on `feat/strict-mode-trace-envelope`; final verification passed |
+| **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
 | **Active goal** | `docs/goals/strict-mode-trace-envelope-goal.md` |
 | **Branch** | `feat/strict-mode-trace-envelope` (pushed) |
 

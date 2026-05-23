@@ -4,6 +4,8 @@
 
 Start by reading `REFERENCE.md` when you need repo context. It is the navigation map for product docs, implementation plans, source modules, commands, and current development focus.
 
+When you need architecture orientation, dependency routing, or a targeted answer about where behavior lives, use `.understand-anything/knowledge-graph.json` as a searchable repo index after `REFERENCE.md`. Prefer targeted searches over loading the whole graph: inspect `project`, `layers`, and `tour` first, then search relevant node names, summaries, and connected edges. The graph is an aid for navigation and context retrieval; source files and current docs remain authoritative.
+
 Prefer adding or updating scoped `AGENTS.md` files when a subdirectory needs durable local context. Keep those files short, specific, and navigational; do not duplicate full specs or long implementation plans inside them.
 
 When changing agent-navigation structure, follow `docs/agent-navigation.md`. The default pattern is one repo map plus small scoped rules, not a large always-loaded instruction file.
