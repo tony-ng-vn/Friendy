@@ -240,6 +240,33 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("strict-mode-fallback-rejection", "interpreted", [
     "strict mode rejects fallback interpreter",
     "strict mode fallback rejection does not mutate memory"
+  ]),
+  evalCase("duplicate-pending-filtered-list-regression", "interpreted", [
+    "filtered bullet list uses list_people route",
+    "filtered bullet list does not use search fallback",
+    "filtered bullet list respects bullet formatting",
+    "filtered bullet list suppresses stale pending reminder"
+  ]),
+  evalCase("duplicate-audit-in-scope-regression", "interpreted", [
+    "duplicate audit routes in scope",
+    "duplicate audit expects duplicate tool",
+    "duplicate audit avoids generic fallback"
+  ]),
+  evalCase("conversation-repair-pending-vs-saved-regression", "interpreted", [
+    "conversation repair routes in scope",
+    "conversation repair explains pending versus saved ambiguity",
+    "conversation repair does not mutate memory"
+  ]),
+  evalCase("fuzzy-delete-memory-confirmation-regression", "interpreted", [
+    "fuzzy delete routes to delete memory request",
+    "fuzzy delete maps Unamed to Unnamed Contact",
+    "fuzzy delete asks confirmation before delete",
+    "fuzzy delete suppresses stale pending reminder"
+  ]),
+  evalCase("same-name-pending-contact-disambiguation-regression", "interpreted", [
+    "same-name pending context respects active candidate",
+    "same-name pending context asks same or different",
+    "same-name pending context does not confirm before identity is resolved"
   ])
 ];
 
