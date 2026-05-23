@@ -19,13 +19,12 @@ describe("router input envelope", () => {
     const { candidate, input } = promptedCandidateHarness();
 
     const envelope = buildRouterInputEnvelope(input);
-    const safeCandidateId = candidate.id.replace(/_contact[\w-]*/gi, "");
 
     expect(envelope.userText).toBe("Yes, I met Testing 3 during Friendy testing.");
     expect(envelope.conversationState.activeWorkflow).toEqual({
       kind: "pending_contact_confirmation",
-      frameId: `frame_pending_contact_${safeCandidateId}`,
-      candidateId: safeCandidateId,
+      frameId: `frame_pending_contact_${candidate.id}`,
+      candidateId: candidate.id,
       displayName: "Testing 3",
       lastFriendyPrompt: "I noticed you added Testing 3. Where did you meet them?",
       promptedAt: "2026-05-20T11:59:00.000Z"
@@ -36,7 +35,7 @@ describe("router input envelope", () => {
     expect(envelope.conversationState.lastToolErrors).toEqual([]);
     expect(envelope.domainStateSummary.pendingCandidates).toEqual([
       {
-        candidateId: safeCandidateId,
+        candidateId: candidate.id,
         displayName: "Testing 3",
         status: "prompted",
         isActive: true,
@@ -98,23 +97,82 @@ describe("router input envelope", () => {
     const envelope = buildRouterInputEnvelope(
       routerBuilderInput("Anyone in my contacts related to Testing 3?", conversationState, repo.listMemories(fixtureUser.id))
     );
-    const safeCandidateId = candidate.id.replace(/_contact[\w-]*/gi, "");
 
     expect(envelope.domainStateSummary.knownPeopleNamed).toEqual([
       {
         queryName: "Testing 3",
         memoryIds: ["memory_testing_3"],
-        candidateIds: [safeCandidateId]
+        candidateIds: [candidate.id]
       }
     ]);
     expect(envelope.domainStateSummary.possibleDuplicates).toEqual([
       {
         displayName: "Testing 3",
         memoryIds: ["memory_testing_3"],
-        candidateIds: [safeCandidateId],
+        candidateIds: [candidate.id],
         reason: "same_display_name"
       }
     ]);
+  });
+
+  it("preserves structured recent context ids while bounding and redacting text payloads", () => {
+    const { candidate, conversationState } = promptedCandidateHarness();
+    const longText = `${"met ".repeat(80)}+15550101003 testing3@example.com contact_testing_3 ${"a".repeat(64)}`;
+
+    const envelope = buildRouterInputEnvelope({
+      ...routerBuilderInput(longText, conversationState, []),
+      recentAgentMessages: [
+        {
+          text: longText,
+          createdAt: "2026-05-20T12:01:00.000Z",
+          relatedCandidateId: candidate.id,
+          relatedMemoryIds: ["memory_testing_3"]
+        }
+      ],
+      recentEntityRefs: [
+        {
+          kind: "candidate",
+          id: candidate.id,
+          displayName: "Testing 3"
+        }
+      ],
+      lastToolErrors: [
+        {
+          tool: "confirm_candidate",
+          code: "contact_method_rejected",
+          shortMessage: `Could not confirm +15550101003 testing3@example.com contact_testing_3 ${"b".repeat(300)}`
+        }
+      ]
+    });
+
+    expect(envelope.conversationState.recentAgentMessages).toEqual([
+      {
+        text: expect.not.stringContaining("+15550101003"),
+        createdAt: "2026-05-20T12:01:00.000Z",
+        relatedCandidateId: candidate.id,
+        relatedMemoryIds: ["memory_testing_3"]
+      }
+    ]);
+    expect(envelope.conversationState.recentAgentMessages[0].text).not.toContain("testing3@example.com");
+    expect(envelope.conversationState.recentAgentMessages[0].text).not.toContain("contact_testing_3");
+    expect(envelope.conversationState.recentAgentMessages[0].text.length).toBeLessThanOrEqual(240);
+    expect(envelope.conversationState.recentEntityRefs).toEqual([
+      {
+        kind: "candidate",
+        id: candidate.id,
+        displayName: "Testing 3"
+      }
+    ]);
+    expect(envelope.conversationState.lastToolErrors).toEqual([
+      {
+        tool: "confirm_candidate",
+        code: "contact_method_rejected",
+        shortMessage: expect.not.stringContaining("+15550101003")
+      }
+    ]);
+    expect(envelope.conversationState.lastToolErrors[0].shortMessage).not.toContain("testing3@example.com");
+    expect(envelope.conversationState.lastToolErrors[0].shortMessage).not.toContain("contact_testing_3");
+    expect(envelope.conversationState.lastToolErrors[0].shortMessage.length).toBeLessThanOrEqual(240);
   });
 });
 
@@ -174,7 +232,7 @@ function testing3Candidate(): ContactCandidateDetected {
     displayName: "Testing 3",
     phoneNumbers: ["+15550101003"],
     emails: ["testing3@example.com"],
-    contactIdentifier: "contact_testing_3"
+    contactIdentifier: "safe_testing_3_identifier"
   };
 }
 

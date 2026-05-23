@@ -17,17 +17,30 @@ export type RouterInputEnvelope = {
   userText: string;
   conversationState: {
     activeWorkflow?: RouterActiveWorkflow;
-    recentAgentMessages: string[];
-    recentEntityRefs: string[];
+    recentAgentMessages: Array<{
+      text: string;
+      createdAt?: string;
+      relatedCandidateId?: string;
+      relatedMemoryIds?: string[];
+    }>;
+    recentEntityRefs: Array<{
+      kind: "candidate" | "memory" | "person" | "event";
+      id?: string;
+      displayName: string;
+    }>;
     lastListResultIds: string[];
-    lastToolErrors: string[];
+    lastToolErrors: Array<{
+      tool: string;
+      code: string;
+      shortMessage: string;
+    }>;
   };
   domainStateSummary: {
     pendingCandidates: Array<{
       candidateId: string;
       displayName: string;
-      status: ContactCandidate["status"];
-      isActive?: boolean;
+      status: "pending" | "prompted";
+      isActive: boolean;
       lastFriendyPrompt?: string;
     }>;
     knownPeopleNamed: Array<{
@@ -66,10 +79,10 @@ export function buildRouterInputEnvelope(_input: {
     userText: normalizeAndTruncate(_input.message.text),
     conversationState: {
       activeWorkflow: buildActiveWorkflow(_input.conversationState),
-      recentAgentMessages: boundedTextArray(_input.recentAgentMessages, MAX_RECENT_AGENT_MESSAGES),
-      recentEntityRefs: boundedTextArray(_input.recentEntityRefs, MAX_RECENT_ENTITY_REFS),
+      recentAgentMessages: buildRecentAgentMessages(_input.recentAgentMessages),
+      recentEntityRefs: buildRecentEntityRefs(_input.recentEntityRefs),
       lastListResultIds: boundedTextArray(_input.lastListResultIds, MAX_LAST_LIST_RESULT_IDS),
-      lastToolErrors: boundedTextArray(_input.lastToolErrors, MAX_LAST_TOOL_ERRORS)
+      lastToolErrors: buildLastToolErrors(_input.lastToolErrors)
     },
     domainStateSummary: {
       pendingCandidates: buildPendingCandidateSummary(_input.conversationState),
@@ -128,8 +141,8 @@ function buildActiveWorkflow(conversationState: ConversationState): RouterActive
 
   return {
     kind: "pending_contact_confirmation",
-    frameId: `frame_pending_contact_${sanitizeEnvelopeId(activeFrame.candidateId)}`,
-    candidateId: sanitizeEnvelopeId(activeFrame.candidateId),
+    frameId: activeFrame.frameId,
+    candidateId: activeFrame.candidateId,
     displayName: normalizeAndTruncate(activeFrame.displayName),
     lastFriendyPrompt: normalizeAndTruncate(activeFrame.lastFriendyPrompt),
     promptedAt: activeFrame.openedAt
@@ -143,13 +156,13 @@ function buildPendingCandidateSummary(
 
   return conversationState.pendingContactQueue.slice(0, MAX_PENDING_CANDIDATES).map((candidate) => {
     const summary: RouterInputEnvelope["domainStateSummary"]["pendingCandidates"][number] = {
-      candidateId: sanitizeEnvelopeId(candidate.candidateId),
+      candidateId: candidate.candidateId,
       displayName: normalizeAndTruncate(candidate.displayName),
-      status: candidate.status
+      status: candidate.status === "prompted" ? "prompted" : "pending",
+      isActive: candidate.candidateId === activeFrame?.candidateId
     };
 
-    if (candidate.candidateId === activeFrame?.candidateId) {
-      summary.isActive = true;
+    if (summary.isActive && activeFrame) {
       summary.lastFriendyPrompt = normalizeAndTruncate(activeFrame.lastFriendyPrompt);
     }
 
@@ -177,7 +190,7 @@ function buildKnownPeopleSummary(
   }
 
   for (const candidate of pendingCandidates) {
-    addNameRecord(grouped, candidate.displayName, "candidateIds", sanitizeEnvelopeId(candidate.candidateId));
+    addNameRecord(grouped, candidate.displayName, "candidateIds", candidate.candidateId);
   }
 
   const mentioned = [...grouped.entries()]
@@ -239,16 +252,11 @@ function normalizeAndTruncate(value: string, maxLength = MAX_TEXT_LENGTH): strin
   return normalized.slice(0, maxLength).trim();
 }
 
-function sanitizeEnvelopeId(value: string): string {
-  const normalized = value.trim().replace(/\s+/g, " ").replace(/_contact_[\w-]*$/gi, "");
-  return normalized.length <= MAX_TEXT_LENGTH ? normalized : normalized.slice(0, MAX_TEXT_LENGTH).trim();
-}
-
 function redactSensitiveText(value: string): string {
   return value
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted_email]")
     .replace(/\+?\d[\d\s().-]{7,}\d/g, "[redacted_phone]")
-    .replace(/\bcontact[_-][\w-]+\b/gi, "[redacted_contact_identifier]")
+    .replace(/\bcontact[_-][\w-]*\d[\w-]*\b/gi, "[redacted_contact_identifier]")
     .replace(/\b[a-f0-9]{32,}\b/gi, "[redacted_hash]");
 }
 
@@ -261,6 +269,37 @@ function normalizeForMatch(value: string): string {
 
 function boundedTextArray(values: string[] | undefined, limit: number): string[] {
   return (values ?? []).slice(0, limit).map((value) => normalizeAndTruncate(value));
+}
+
+function buildRecentAgentMessages(
+  messages: RouterInputEnvelope["conversationState"]["recentAgentMessages"] | undefined
+): RouterInputEnvelope["conversationState"]["recentAgentMessages"] {
+  return (messages ?? []).slice(0, MAX_RECENT_AGENT_MESSAGES).map((message) => ({
+    text: normalizeAndTruncate(message.text),
+    ...(message.createdAt ? { createdAt: message.createdAt } : {}),
+    ...(message.relatedCandidateId ? { relatedCandidateId: message.relatedCandidateId } : {}),
+    ...(message.relatedMemoryIds ? { relatedMemoryIds: sortedBoundedIds(message.relatedMemoryIds) } : {})
+  }));
+}
+
+function buildRecentEntityRefs(
+  refs: RouterInputEnvelope["conversationState"]["recentEntityRefs"] | undefined
+): RouterInputEnvelope["conversationState"]["recentEntityRefs"] {
+  return (refs ?? []).slice(0, MAX_RECENT_ENTITY_REFS).map((ref) => ({
+    kind: ref.kind,
+    ...(ref.id ? { id: ref.id } : {}),
+    displayName: normalizeAndTruncate(ref.displayName)
+  }));
+}
+
+function buildLastToolErrors(
+  errors: RouterInputEnvelope["conversationState"]["lastToolErrors"] | undefined
+): RouterInputEnvelope["conversationState"]["lastToolErrors"] {
+  return (errors ?? []).slice(0, MAX_LAST_TOOL_ERRORS).map((error) => ({
+    tool: normalizeAndTruncate(error.tool),
+    code: normalizeAndTruncate(error.code),
+    shortMessage: normalizeAndTruncate(error.shortMessage)
+  }));
 }
 
 function sortedBoundedIds(ids: string[]): string[] {
