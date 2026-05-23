@@ -1221,6 +1221,10 @@ function updateSearchContext(
   }
 
   const searchRequest = buildMemorySearchRequest(message, interpretation);
+  if (searchRequest.mode === "list_people") {
+    return { ...clearSearchContext(context), activeMemoryId: undefined };
+  }
+
   const query = effectiveMemorySearchQuery(searchRequest);
   const matches = tools.search_memories(message.userId, query);
   if (matches.length === 0) {
@@ -1228,15 +1232,7 @@ function updateSearchContext(
   }
 
   if (matches.length === 1) {
-    if (searchRequest.mode === "list_people") {
-      return { ...clearSearchContext(context), activeMemoryId: undefined };
-    }
-
     return { ...clearSearchContext(context), activeMemoryId: matches[0].memory.id };
-  }
-
-  if (searchRequest.mode === "list_people") {
-    return { ...clearSearchContext(context), activeMemoryId: undefined };
   }
 
   if (!isEventWideRecallQuery(message.text) && isAmbiguous(matches)) {

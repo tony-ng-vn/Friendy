@@ -469,7 +469,12 @@ describe("interpreted relationship agent", () => {
         }
       ]
     });
-    const tools = createRelationshipTools(repo);
+    const tools = {
+      ...createRelationshipTools(repo),
+      search_memories(): never {
+        throw new Error("search_memories should not run for list_people mode");
+      }
+    };
     const agent = createInterpretedRelationshipAgent({
       repo,
       tools,
