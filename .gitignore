@@ -7,3 +7,5 @@ tmp-macos-sensor-*/
 .DS_Store
 *.env.*
 !.env.example
+.agents/
+.cursor/
