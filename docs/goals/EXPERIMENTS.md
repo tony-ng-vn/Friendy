@@ -1,3 +1,36 @@
+# Strict Mode and Trace Envelope Experiments
+
+## Baseline / RED
+
+- Date: 2026-05-23
+- Goal source: `docs/goals/strict-mode-trace-envelope-goal.md`.
+- Added RED tests for strict-mode env parsing, result trace presence, redacted trace fields, interpreter metadata, strict interpreter failures, unknown/unsupported routes, missing tools, ambiguous executable delete, runtime env wiring, and eval fallback reporting.
+- Initial RED failures showed the expected gaps: no `strictMode.ts`, no `FriendyTrace` on results, no route/fallback metadata from the interpreter, fallback returning normally in strict mode, raw `TypeError` for missing tools, ambiguous delete returning a clarification, runtime env not wired, and eval summaries missing fallback counts.
+
+## Focused GREEN
+
+- Date: 2026-05-23
+- Added `src/relationship/strictMode.ts` and `src/relationship/trace.ts`.
+- Threaded `FriendyTrace` through interpreted-agent return values, persisted interaction JSON, and redacted runtime trace output.
+- Added OpenRouter interpreter metadata and strict-mode fail-fast errors for missing API key, model failure, invalid schema, and fallback use.
+- Added route policy validation for unknown routes, unsupported contact-management routes, missing tools, and ambiguous executable memory mutation targets.
+- Wired `FRIENDY_STRICT_MODE` into foreground runtime config and Spectrum runtime.
+- Added eval fallback usage counting plus a strict-mode fallback-rejection eval case.
+- Focused green runs:
+  - `npm test -- src/relationship/strictMode.test.ts`
+  - `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/runtime/runtimeTrace.test.ts src/relationship/strictMode.test.ts`
+  - `npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/interpretedAgent.test.ts`
+  - `npm test -- src/relationship/runtime/friendyRuntimeCli.test.ts src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts`
+  - `npm test -- src/relationship/evals/agentEvalRunner.test.ts`
+
+## Full Verification
+
+- Date: 2026-05-23
+- `npm test`: passed with 52 files and 340 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 36/36 required cases with 0 unsafe mutations, 0 hallucinations, and `Fallback usage count: 31`.
+- `git diff --check`: passed.
+
 # State-Aware Relationship Agent Routing Experiments
 
 ## Baseline / RED

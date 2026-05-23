@@ -1,4 +1,17 @@
-# Active Goal Plan: State-Aware Relationship Agent Routing
+# Active Goal Plan: Strict Mode and Trace Envelope
+
+- [x] Read `docs/goals/strict-mode-trace-envelope-goal.md` and `docs/superpowers/plans/2026-05-23-strict-mode-trace-envelope.md`.
+- [x] Add `FRIENDY_STRICT_MODE` parser and typed `FriendyStrictModeError`.
+- [x] Add `FriendyTrace` to interpreted-agent results, persisted interaction JSON, and redacted runtime traces.
+- [x] Add interpreter route metadata: `routeSource`, `fallbackUsed`, and `fallbackReason`.
+- [x] Add strict failures for missing API key fallback, model execution failure, invalid schema, and explicit fallback interpreter use.
+- [x] Add route policy guards for unknown routes, unsupported contact-management routes, missing tools, and ambiguous executable memory mutations.
+- [x] Wire strict mode through foreground runtime config and Spectrum/iMessage runtime.
+- [x] Add eval fallback usage reporting and a strict-mode fallback-rejection eval case.
+- [x] Run full verification: `npm test`, `npm run build`, `npm run eval:agent`, and `git diff --check`.
+- [ ] Commit docs/final notes and push the branch.
+
+# Completed Goal Plan: State-Aware Relationship Agent Routing
 
 - [x] Read `docs/goals/state-aware-relationship-agent-routing-goal.md` and inspect current routing/state code.
 - [x] Add RED transcript coverage for pending-contact pronoun facts, named fact cleanup, active pending inquiry, list/search interruption, event recall, and manual add-as memory creation.
