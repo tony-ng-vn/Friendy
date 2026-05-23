@@ -20,6 +20,7 @@ import {
   type OnboardingStateController
 } from "../onboardingState";
 import { requestMacosSensorContactSnapshotReset } from "./macosSensorState";
+import { readFriendyStrictMode } from "../strictMode";
 import { terminateExistingMacosSensorProcesses } from "./terminateMacosSensorProcesses";
 import { composeRuntimeStartupReply } from "../responseComposer";
 import type { RelationshipRepository } from "../repository";
@@ -56,6 +57,7 @@ export type FriendyRuntimeConfig = {
   runtimeStore: "sqlite" | string;
   sqlitePath: string;
   sensorStateDir: string;
+  strictMode: boolean;
   sensor: FriendySensorLaunchConfig;
 };
 
@@ -112,6 +114,7 @@ export function resolveFriendyRuntimeConfig({
     runtimeStore,
     sqlitePath,
     sensorStateDir,
+    strictMode: readFriendyStrictMode(env),
     sensor: resolveSensorLaunchConfig({ cwd, env, sensorStateDir })
   };
 }
