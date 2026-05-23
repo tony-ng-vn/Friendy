@@ -273,7 +273,7 @@ describe("openrouter message interpreter", () => {
     }
   });
 
-  it("routes list-all contact recall wording to list_people in fallback mode", async () => {
+  it("routes list-all contact recall wording to search in fallback mode", async () => {
     const interpreter = createRuleBasedInterpreter();
 
     for (const text of ["Just give me all the people in my contact so far", "Do you know anyone in my contact?"]) {
@@ -283,7 +283,7 @@ describe("openrouter message interpreter", () => {
       });
 
       expect(result.interpretation).toMatchObject({
-        intent: "list_people",
+        intent: "search_memory",
         domain: "relationship_memory",
         search: {
           mode: "list_people",

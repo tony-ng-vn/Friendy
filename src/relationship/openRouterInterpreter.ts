@@ -265,16 +265,15 @@ function ruleBasedInterpret(text: string): MessageInterpretation {
 
   if (looksLikeSearch(normalized)) {
     const tags = inferTags(text);
-    const searchMode = inferSearchMode(text);
     return baseInterpretation({
-      intent: searchMode === "list_people" ? "list_people" : "search_memory",
+      intent: "search_memory",
       confidence: 0.72,
       domain: "relationship_memory",
       query: text,
       event: inferEvent(text),
       tags,
       search: {
-        mode: searchMode,
+        mode: inferSearchMode(text),
         semanticQuery: text,
         exactTerms: inferExactSearchTerms(text, tags),
         filters: tags.length > 0 ? { tags } : undefined,
@@ -508,15 +507,11 @@ const FALLBACK_SEARCH_FILLER_TERMS = new Set([
   "with",
   "from",
   "who",
-  "what",
-  "are",
   "which",
   "find",
   "give",
   "show",
   "list",
-  "bullet",
-  "bullets",
   "tell",
   "you",
   "did",
