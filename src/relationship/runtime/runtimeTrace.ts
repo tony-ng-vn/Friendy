@@ -1,9 +1,19 @@
 import { createHash } from "node:crypto";
+import type { FriendyTrace } from "../trace";
 import type { AgentToolCall } from "../types";
 
 export type AgentTrace = {
   traceId: string;
   createdAt: string;
+  strictMode?: boolean;
+  routeSource?: FriendyTrace["routeSource"];
+  fallbackUsed?: boolean;
+  fallbackReason?: string;
+  policyDecision?: FriendyTrace["policyDecision"];
+  activeFrameId?: string;
+  activeCandidateId?: string;
+  activeMemoryId?: string;
+  friendyToolCalls?: AgentToolCall[];
   inboundTextRedacted?: string;
   scopeDecision: string;
   interpretedIntent?: { intent: string; confidence?: number };
@@ -48,6 +58,7 @@ type TraceInput = {
   memoryIdsTouched?: string[];
   search?: TraceSearchInput;
   model?: AgentTrace["model"];
+  friendyTrace?: FriendyTrace;
   errors?: string[];
   now?: string;
 };
@@ -57,6 +68,15 @@ export function buildRedactedInteractionTrace(input: TraceInput): AgentTrace {
   return {
     traceId: `trace_${hashValue([input.inboundText, input.outboundText, input.now ?? ""].join("\0"))}`,
     createdAt: input.now ?? new Date().toISOString(),
+    strictMode: input.friendyTrace?.strictMode,
+    routeSource: input.friendyTrace?.routeSource,
+    fallbackUsed: input.friendyTrace?.fallbackUsed,
+    fallbackReason: input.friendyTrace?.fallbackReason,
+    policyDecision: input.friendyTrace?.policyDecision,
+    activeFrameId: input.friendyTrace?.activeFrameId,
+    activeCandidateId: input.friendyTrace?.activeCandidateId,
+    activeMemoryId: input.friendyTrace?.activeMemoryId,
+    friendyToolCalls: input.friendyTrace?.toolCalls,
     inboundTextRedacted: redactTextShape(input.inboundText),
     scopeDecision: scopeDecisionFromInterpretation(input.interpretedIntentJson),
     interpretedIntent: intentFromInterpretation(input.interpretedIntentJson),

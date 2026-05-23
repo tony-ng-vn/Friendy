@@ -1,4 +1,4 @@
-import type { AgentToolCall } from "./types";
+import type { FriendyTrace } from "./trace";
 
 export type FriendyStrictModeErrorCode =
   | "MODEL_INTERPRETATION_FAILED"
@@ -8,22 +8,6 @@ export type FriendyStrictModeErrorCode =
   | "FALLBACK_USED"
   | "UNSUPPORTED_INTENT"
   | "UNEXPECTED_AMBIGUITY";
-
-export type FriendyTraceRouteSource = "llm" | "deterministic" | "fallback";
-export type FriendyTracePolicyDecision = "allow" | "clarify" | "reject" | "unsupported";
-
-export type FriendyStrictTrace = {
-  strictMode: boolean;
-  routeSource: FriendyTraceRouteSource;
-  fallbackUsed: boolean;
-  fallbackReason?: string;
-  route?: unknown;
-  policyDecision?: FriendyTracePolicyDecision;
-  activeFrameId?: string;
-  activeCandidateId?: string;
-  activeMemoryId?: string;
-  toolCalls: AgentToolCall[];
-};
 
 type EnvLike = Partial<Record<string, string | undefined>>;
 
@@ -37,9 +21,9 @@ export function readFriendyStrictMode(env: EnvLike = process.env): boolean {
 
 export class FriendyStrictModeError extends Error {
   readonly code: FriendyStrictModeErrorCode;
-  readonly trace: FriendyStrictTrace;
+  readonly trace: FriendyTrace;
 
-  constructor(code: FriendyStrictModeErrorCode, message: string, trace: FriendyStrictTrace) {
+  constructor(code: FriendyStrictModeErrorCode, message: string, trace: FriendyTrace) {
     super(message);
     this.name = "FriendyStrictModeError";
     this.code = code;
@@ -52,7 +36,7 @@ export function assertStrictModeAllowed(input: {
   condition: boolean;
   code: FriendyStrictModeErrorCode;
   message: string;
-  trace: FriendyStrictTrace;
+  trace: FriendyTrace;
 }): void {
   if (input.strictMode && !input.condition) {
     throw new FriendyStrictModeError(input.code, input.message, input.trace);

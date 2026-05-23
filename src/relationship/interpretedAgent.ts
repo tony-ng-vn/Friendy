@@ -38,6 +38,13 @@ import { decideMessageScope, isPendingCandidateInquiry, type ScopeDecision } fro
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
+import {
+  createFriendyTrace,
+  extractFriendyTrace,
+  type FriendyPolicyDecision,
+  type FriendyRouteSource,
+  type FriendyTrace
+} from "./trace";
 import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage, RelationshipMemory } from "./types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
@@ -76,6 +83,7 @@ type InterpretedRelationshipAgentOptions = {
   tools: RelationshipTools;
   interpreter: MessageInterpreter;
   onboarding?: OnboardingStateController;
+  strictMode?: boolean;
   now?: () => string;
   timezone?: string;
 };
@@ -83,6 +91,7 @@ type InterpretedRelationshipAgentOptions = {
 /** Agent result plus the persisted interaction row for this turn. */
 type InterpretedAgentResult = AgentCoreResult & {
   interaction: AgentInteraction;
+  trace: FriendyTrace;
 };
 
 /**
@@ -119,6 +128,7 @@ export function createInterpretedRelationshipAgent({
   tools,
   interpreter,
   onboarding,
+  strictMode = false,
   now = () => new Date().toISOString(),
   timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
@@ -134,7 +144,7 @@ export function createInterpretedRelationshipAgent({
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
         const outboundText = composeOnboardingControlReply(onboardingControl);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -161,7 +171,8 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls: [],
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
@@ -177,7 +188,7 @@ export function createInterpretedRelationshipAgent({
         const mutation = executeMemoryMutationRequest(message, memoryMutationRequest, repo, tools, turnContext, toolCalls, now());
         const outboundText = mutation.outboundText;
         conversationContexts.set(message.userId, mutation.nextContext);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -204,14 +215,15 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls,
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
       if (pendingState.activeFrame && isPendingCandidateInquiry(message.text)) {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -241,7 +253,8 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls,
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
@@ -252,7 +265,7 @@ export function createInterpretedRelationshipAgent({
           ? cleanCandidateContextReply(message.text, candidate)
           : message.text.trim().replace(/\s+/g, " ");
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -283,7 +296,8 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls,
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
@@ -294,7 +308,7 @@ export function createInterpretedRelationshipAgent({
         const followUp = executeFollowUpSearchIfPresent(message, turnContext, tools, message.receivedAt);
         if (followUp) {
           conversationContexts.set(message.userId, followUp.nextContext);
-          const interaction = addInteractionWithTrace(repo, {
+          const interaction = addInteractionWithTrace(repo, strictMode, {
             id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
             userId: message.userId,
             platform: message.platform,
@@ -324,7 +338,8 @@ export function createInterpretedRelationshipAgent({
               text: followUp.outboundText
             },
             toolCalls: followUp.toolCalls,
-            interaction
+            interaction,
+            trace: traceFromInteraction(interaction)
           };
         }
       }
@@ -344,7 +359,7 @@ export function createInterpretedRelationshipAgent({
           }
         );
         const outboundText = composeSaveConfirmation({ memories: [memory] });
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -376,7 +391,8 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls,
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
@@ -390,7 +406,7 @@ export function createInterpretedRelationshipAgent({
           scopeDecision.scope === "out_of_scope"
             ? scopeDecision.redirect
             : composeClarificationReply(scopeDecision.question);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -412,14 +428,15 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls: [],
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
       if (scopeDecision.capability === "candidate_confirmation") {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
-        const interaction = addInteractionWithTrace(repo, {
+        const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
@@ -446,7 +463,8 @@ export function createInterpretedRelationshipAgent({
             text: outboundText
           },
           toolCalls,
-          interaction
+          interaction,
+          trace: traceFromInteraction(interaction)
         };
       }
 
@@ -469,7 +487,7 @@ export function createInterpretedRelationshipAgent({
         updateSearchContext(message, tools, updateConversationContext(turnContext, interpretation), interpretation)
       );
 
-      const interaction = addInteractionWithTrace(repo, {
+      const interaction = addInteractionWithTrace(repo, strictMode, {
         id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
         userId: message.userId,
         platform: message.platform,
@@ -499,25 +517,157 @@ export function createInterpretedRelationshipAgent({
           text: outboundText
         },
         toolCalls,
-        interaction
+        interaction,
+        trace: traceFromInteraction(interaction)
       };
     }
   };
 }
 
-function addInteractionWithTrace(repo: RelationshipRepository, interaction: AgentInteraction): AgentInteraction {
+function addInteractionWithTrace(
+  repo: RelationshipRepository,
+  strictMode: boolean,
+  interaction: AgentInteraction
+): AgentInteraction {
+  const friendyTrace = traceFromInteractionFields(interaction, strictMode);
+  const interpretedIntentJson = attachFriendyTrace(interaction.interpretedIntentJson, friendyTrace);
   return repo.addInteraction({
     ...interaction,
+    interpretedIntentJson,
     redactedTraceJson: buildRedactedInteractionTrace({
       inboundText: interaction.inboundText,
-      interpretedIntentJson: interaction.interpretedIntentJson,
+      interpretedIntentJson,
       toolCalls: interaction.toolCalls as AgentToolCall[],
       outboundText: interaction.outboundText,
       model: modelTraceFromInteraction(interaction.modelUsed),
+      friendyTrace,
       errors: interaction.error ? [interaction.error] : [],
       now: interaction.createdAt
     })
   });
+}
+
+function traceFromInteraction(interaction: AgentInteraction): FriendyTrace {
+  return extractFriendyTrace(interaction.interpretedIntentJson);
+}
+
+function attachFriendyTrace(value: unknown, trace: FriendyTrace): unknown {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return {
+      ...value,
+      trace
+    };
+  }
+
+  return { trace };
+}
+
+function traceFromInteractionFields(interaction: AgentInteraction, strictMode: boolean): FriendyTrace {
+  const routeSource = routeSourceFromModel(interaction.modelUsed);
+  const route = typeof interaction.interpretedIntentJson === "object" ? interaction.interpretedIntentJson : undefined;
+  const target = targetFromRoute(route);
+
+  return createFriendyTrace({
+    strictMode,
+    routeSource,
+    fallbackUsed: routeSource === "fallback",
+    fallbackReason: routeSource === "fallback" ? fallbackReasonFromInteraction(interaction) : undefined,
+    route,
+    policyDecision: policyDecisionFromInteraction(interaction),
+    activeFrameId: target.frameId,
+    activeCandidateId: target.candidateId,
+    activeMemoryId: target.memoryId,
+    toolCalls: interaction.toolCalls as AgentToolCall[]
+  });
+}
+
+function routeSourceFromModel(modelUsed: string | undefined): FriendyRouteSource {
+  if (modelUsed === "rule-based-fallback") {
+    return "fallback";
+  }
+
+  if (!modelUsed || modelUsed === "deterministic-scope") {
+    return "deterministic";
+  }
+
+  return "llm";
+}
+
+function fallbackReasonFromInteraction(interaction: AgentInteraction): string {
+  if (interaction.error) {
+    return "model_interpreter_error";
+  }
+
+  return "rule_based_interpreter";
+}
+
+function policyDecisionFromInteraction(interaction: AgentInteraction): FriendyPolicyDecision | undefined {
+  const explicit = policyDecisionFromRoute(interaction.interpretedIntentJson);
+  if (explicit) {
+    return explicit;
+  }
+
+  const scopeDecision = scopeDecisionFromRoute(interaction.interpretedIntentJson);
+  if (scopeDecision === "out_of_scope") {
+    return "reject";
+  }
+
+  if (scopeDecision === "needs_clarification") {
+    return "clarify";
+  }
+
+  return "allow";
+}
+
+function policyDecisionFromRoute(value: unknown): FriendyPolicyDecision | undefined {
+  if (typeof value !== "object" || value === null || !("policyDecision" in value)) {
+    return undefined;
+  }
+
+  const policyDecision = (value as { policyDecision?: unknown }).policyDecision;
+  if (typeof policyDecision !== "object" || policyDecision === null || !("decision" in policyDecision)) {
+    return undefined;
+  }
+
+  const decision = String((policyDecision as { decision: unknown }).decision);
+  if (decision === "allow" || decision === "clarify" || decision === "reject" || decision === "unsupported") {
+    return decision;
+  }
+
+  return undefined;
+}
+
+function scopeDecisionFromRoute(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("scopeDecision" in value)) {
+    return undefined;
+  }
+
+  const scopeDecision = (value as { scopeDecision?: unknown }).scopeDecision;
+  if (typeof scopeDecision !== "object" || scopeDecision === null || !("scope" in scopeDecision)) {
+    return undefined;
+  }
+
+  return String((scopeDecision as { scope: unknown }).scope);
+}
+
+function targetFromRoute(value: unknown): { frameId?: string; candidateId?: string; memoryId?: string } {
+  if (typeof value !== "object" || value === null || !("target" in value)) {
+    return {};
+  }
+
+  const target = (value as { target?: unknown }).target;
+  if (typeof target !== "object" || target === null) {
+    return {};
+  }
+
+  return {
+    frameId: typeof (target as { frameId?: unknown }).frameId === "string" ? (target as { frameId: string }).frameId : undefined,
+    candidateId:
+      typeof (target as { candidateId?: unknown }).candidateId === "string"
+        ? (target as { candidateId: string }).candidateId
+        : undefined,
+    memoryId: typeof (target as { memoryId?: unknown }).memoryId === "string" ? (target as { memoryId: string }).memoryId : undefined
+  };
 }
 
 function modelTraceFromInteraction(modelUsed: string | undefined): AgentTrace["model"] {

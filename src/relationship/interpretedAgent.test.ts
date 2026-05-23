@@ -80,6 +80,22 @@ describe("interpreted relationship agent", () => {
     expect(interpreterCalls).toBe(0);
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id).map((interaction) => interaction.toolCalls)).toEqual([[], [], []]);
+    expect(started.trace).toMatchObject({
+      strictMode: false,
+      routeSource: "deterministic",
+      fallbackUsed: false,
+      policyDecision: "allow",
+      toolCalls: []
+    });
+    expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
+      trace: {
+        strictMode: false,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        policyDecision: "allow",
+        toolCalls: []
+      }
+    });
   });
 
   it("captures Amaya from a natural Photon Residency message and logs the turn", async () => {
@@ -108,9 +124,20 @@ describe("interpreted relationship agent", () => {
     });
     expect(logs[0].interpretedIntentJson).toMatchObject({ intent: "capture_memory" });
     expect(logs[0].redactedTraceJson).toMatchObject({
+      strictMode: false,
+      routeSource: "fallback",
+      fallbackUsed: true,
       interpretedIntent: { intent: "capture_memory" },
       toolCalls: [{ name: "create_manual_memory", result: "success" }],
       errors: []
+    });
+    expect(result.trace).toMatchObject({
+      strictMode: false,
+      routeSource: "fallback",
+      fallbackUsed: true,
+      route: { intent: "capture_memory" },
+      policyDecision: "allow",
+      toolCalls: ["create_manual_memory"]
     });
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Amaya");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Photon Residency II");

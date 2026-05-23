@@ -74,4 +74,55 @@ describe("redacted runtime trace", () => {
     expect(trace.policy).toEqual({ decision: "allow" });
     expect(trace.tools).toEqual([{ name: "search_memories", status: "called" }]);
   });
+
+  it("records the Friendy trace envelope without leaking raw route text", () => {
+    const trace = buildRedactedInteractionTrace({
+      inboundText: "She is a community lead at Photon Residency II and her email is sarah@example.com",
+      interpretedIntentJson: {
+        intent: "capture_pending_contact_context",
+        confidence: 1,
+        target: {
+          frameId: "frame_1",
+          candidateId: "candidate_sarah",
+          displayName: "Sarah Fan"
+        },
+        extractedContext: "community lead at Photon Residency II",
+        policyDecision: { decision: "allow" }
+      },
+      toolCalls: ["list_pending_candidates", "confirm_candidate"],
+      outboundText: "Got it, saved Sarah Fan.",
+      friendyTrace: {
+        strictMode: true,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        route: {
+          intent: "capture_pending_contact_context",
+          confidence: 1,
+          target: {
+            frameId: "frame_1",
+            candidateId: "candidate_sarah",
+            displayName: "Sarah Fan"
+          },
+          extractedContext: "community lead at Photon Residency II"
+        },
+        policyDecision: "allow",
+        activeFrameId: "frame_1",
+        activeCandidateId: "candidate_sarah",
+        toolCalls: ["list_pending_candidates", "confirm_candidate"]
+      },
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(trace.strictMode).toBe(true);
+    expect(trace.routeSource).toBe("deterministic");
+    expect(trace.fallbackUsed).toBe(false);
+    expect(trace.policyDecision).toBe("allow");
+    expect(trace.activeFrameId).toBe("frame_1");
+    expect(trace.activeCandidateId).toBe("candidate_sarah");
+    expect(trace.friendyToolCalls).toEqual(["list_pending_candidates", "confirm_candidate"]);
+    expect(JSON.stringify(trace)).not.toContain("Sarah Fan");
+    expect(JSON.stringify(trace)).not.toContain("community lead");
+    expect(JSON.stringify(trace)).not.toContain("Photon Residency II");
+    expect(JSON.stringify(trace)).not.toContain("sarah@example.com");
+  });
 });
