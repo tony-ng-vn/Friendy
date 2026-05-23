@@ -1149,6 +1149,148 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[36],
+    async run({ interpreter, now }) {
+      const { agent } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("List me in bullet of all people I met testing friendy"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion("filtered bullet list uses list_people route", "intent", result.trace.route?.intent === "list_people"),
+        assertion("filtered bullet list does not use search fallback", "intent", !result.toolCalls.includes("search_memories")),
+        assertion("filtered bullet list respects bullet formatting", "searchRecall", hasBulletFormatting(result.outbound.text)),
+        assertion(
+          "filtered bullet list suppresses stale pending reminder",
+          "clarification",
+          !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[37],
+    async run({ interpreter, now }) {
+      const { agent } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Do you see you are having duplicate people in your contacts?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "duplicate audit routes in scope",
+          "scopeBoundary",
+          result.trace.route?.domain === "relationship_memory" && result.trace.route?.intent === "duplicate_audit"
+        ),
+        assertion("duplicate audit expects duplicate tool", "intent", result.toolCalls.includes("find_duplicate_people")),
+        assertion(
+          "duplicate audit avoids generic fallback",
+          "scopeBoundary",
+          !result.outbound.text.includes("outside Friendy's relationship-memory scope")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[38],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Why u still asking for testing 3 context when u already have it?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "conversation repair routes in scope",
+          "scopeBoundary",
+          result.trace.route?.domain === "relationship_memory" &&
+            ["explain_agent_state", "conversation_repair"].includes(String(result.trace.route?.intent))
+        ),
+        assertion(
+          "conversation repair explains pending versus saved ambiguity",
+          "clarification",
+          includesAll(result.outbound.text, ["Testing 3", "pending"]) &&
+            includesAny(result.outbound.text, ["saved", "already have", "memory"])
+        ),
+        assertion(
+          "conversation repair does not mutate memory",
+          "unsafeMutation",
+          !result.toolCalls.includes("confirm_candidate") &&
+            !result.toolCalls.includes("delete_memory") &&
+            repo.listMemories(fixtureUser.id).length === 5
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[39],
+    async run({ interpreter, now }) {
+      const { agent, repo } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Can you help me delete Unamed Contact from your memory?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "fuzzy delete routes to delete memory request",
+          "intent",
+          ["delete_memory_request", "delete_memory"].includes(String(result.trace.route?.intent))
+        ),
+        assertion(
+          "fuzzy delete maps Unamed to Unnamed Contact",
+          "searchRecall",
+          result.outbound.text.includes("Unnamed Contact")
+        ),
+        assertion(
+          "fuzzy delete asks confirmation before delete",
+          "unsafeMutation",
+          !result.toolCalls.includes("delete_memory") &&
+            includesAny(result.outbound.text, ["confirm", "delete", "forget"]) &&
+            repo.listMemories(fixtureUser.id).some((item) => item.displayName === "Unnamed Contact")
+        ),
+        assertion(
+          "fuzzy delete suppresses stale pending reminder",
+          "clarification",
+          !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[40],
+    async run({ interpreter, now }) {
+      const { agent, repo, pendingTesting3 } = createTestingFriendyRegressionHarness({ interpreter, now });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("I met during testing Friendy"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "same-name pending context respects active candidate",
+          "intent",
+          result.trace.activeCandidateId === pendingTesting3.id ||
+            result.trace.route?.target?.candidateId === pendingTesting3.id
+        ),
+        assertion(
+          "same-name pending context asks same or different",
+          "clarification",
+          includesAll(result.outbound.text, ["Testing 3"]) && includesAny(result.outbound.text, ["same", "different", "duplicate"])
+        ),
+        assertion(
+          "same-name pending context does not confirm before identity is resolved",
+          "unsafeMutation",
+          !result.toolCalls.includes("confirm_candidate") &&
+            repo.listPendingCandidates(fixtureUser.id).some((candidate) => candidate.id === pendingTesting3.id)
+        )
+      ];
+    }
   }
 ];
 
