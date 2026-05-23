@@ -6,6 +6,7 @@ import {
   createRuleBasedInterpreter,
   readOpenRouterConfig
 } from "./openRouterInterpreter";
+import { FriendyStrictModeError } from "./strictMode";
 import type { InboundAgentMessage } from "./types";
 
 const inbound: InboundAgentMessage = {
@@ -159,6 +160,87 @@ describe("openrouter message interpreter", () => {
     expect(result.routeSource).toBe("fallback");
     expect(result.fallbackUsed).toBe(true);
     expect(result.fallbackReason).toBe("missing_openrouter_api_key");
+  });
+
+  it("throws instead of using fallback when strict mode has no OpenRouter API key", async () => {
+    const interpreter = createOpenRouterInterpreter({
+      apiKey: "",
+      model: DEFAULT_OPENROUTER_MODEL,
+      strictMode: true,
+      fallback: createRuleBasedInterpreter()
+    });
+
+    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "FALLBACK_USED",
+      trace: {
+        strictMode: true,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        fallbackReason: "missing_openrouter_api_key"
+      }
+    });
+  });
+
+  it("throws invalid schema errors in strict mode without calling fallback", async () => {
+    let fallbackCalls = 0;
+    const interpreter = createOpenRouterInterpreter({
+      apiKey: "test-key",
+      model: "model",
+      strictMode: true,
+      fetchImpl: async () =>
+        jsonResponse({
+          choices: [{ message: { content: JSON.stringify({ intent: "capture_memory", confidence: 2 }) } }]
+        }),
+      fallback: {
+        async interpret() {
+          fallbackCalls += 1;
+          return createRuleBasedInterpreter().interpret(inbound);
+        }
+      }
+    });
+
+    await expect(interpreter.interpret(inbound)).rejects.toBeInstanceOf(FriendyStrictModeError);
+    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+      code: "INVALID_ROUTE_SCHEMA",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        fallbackReason: "invalid_model_output"
+      }
+    });
+    expect(fallbackCalls).toBe(0);
+  });
+
+  it("throws model execution errors in strict mode without calling fallback", async () => {
+    let fallbackCalls = 0;
+    const interpreter = createOpenRouterInterpreter({
+      apiKey: "test-key",
+      model: "model",
+      strictMode: true,
+      fetchImpl: async () => {
+        throw new Error("network unavailable");
+      },
+      fallback: {
+        async interpret() {
+          fallbackCalls += 1;
+          return createRuleBasedInterpreter().interpret(inbound);
+        }
+      }
+    });
+
+    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "MODEL_INTERPRETATION_FAILED",
+      trace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        fallbackReason: "model_interpreter_failed"
+      }
+    });
+    expect(fallbackCalls).toBe(0);
   });
 
   it("adds route search fields for broad related-contact recall in fallback mode", async () => {

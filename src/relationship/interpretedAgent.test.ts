@@ -4,6 +4,7 @@ import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
+import { FriendyStrictModeError } from "./strictMode";
 import { createRelationshipTools } from "./tools";
 import type { InboundAgentMessage, RelationshipMemory } from "./types";
 
@@ -143,6 +144,70 @@ describe("interpreted relationship agent", () => {
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Amaya");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Photon Residency II");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("sleep on the same bed");
+  });
+
+  it("throws when strict mode would otherwise use the fallback interpreter", async () => {
+    const { agent, repo } = createTestAgent({ strictMode: true });
+
+    await expect(agent.handleMessage(inbound("I met Amaya at Photon Residency II"))).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "FALLBACK_USED",
+      trace: {
+        strictMode: true,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        fallbackReason: "explicit_fallback",
+        toolCalls: []
+      }
+    });
+    await expect(agent.handleMessage(inbound("I met Maya at dinner"))).rejects.toBeInstanceOf(FriendyStrictModeError);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("allows expected clarification in strict mode when the route came from the model", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: {
+        async interpret() {
+          return {
+            modelUsed: "test-model",
+            error: "",
+            routeSource: "llm",
+            fallbackUsed: false,
+            interpretation: {
+              intent: "clarify",
+              confidence: 0.7,
+              people: [],
+              event: { name: "", dateText: "", location: "" },
+              dateContext: undefined,
+              contextNote: "",
+              query: "",
+              tags: [],
+              needsClarification: true,
+              clarificationQuestion: "Who should I look for?"
+            }
+          };
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("maybe that person"));
+
+    expect(result.outbound.text).toBe("Who should I look for?");
+    expect(result.trace).toMatchObject({
+      strictMode: true,
+      routeSource: "llm",
+      fallbackUsed: false,
+      route: { intent: "clarify" },
+      policyDecision: "allow"
+    });
+    expect(result.toolCalls).toEqual([]);
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
@@ -1010,13 +1075,14 @@ describe("interpreted relationship agent", () => {
   });
 });
 
-function createTestAgent() {
+function createTestAgent(options: { strictMode?: boolean } = {}) {
   const repo = createRelationshipRepository();
   const tools = createRelationshipTools(repo);
   const agent = createInterpretedRelationshipAgent({
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
+    strictMode: options.strictMode,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

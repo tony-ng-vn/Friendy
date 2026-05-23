@@ -13,6 +13,8 @@ import {
 } from "./interpretation";
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
 import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
+import { FriendyStrictModeError, type FriendyStrictModeErrorCode } from "./strictMode";
+import { createFriendyTrace } from "./trace";
 import type { InboundAgentMessage } from "./types";
 
 /** Default free-tier model when `OPENROUTER_MODEL` is unset. */
@@ -48,6 +50,7 @@ export type MessageInterpreter = {
 type OpenRouterInterpreterOptions = {
   apiKey: string;
   model: string;
+  strictMode?: boolean;
   /** Injectable HTTP client for tests; defaults to global fetch. */
   fetchImpl?: FetchLike;
   /** Rule-based interpreter used when the API key is missing or model calls fail. */
@@ -73,12 +76,21 @@ export function readOpenRouterConfig(
 export function createOpenRouterInterpreter({
   apiKey,
   model,
+  strictMode = false,
   fetchImpl = fetch,
   fallback = createRuleBasedInterpreter()
 }: OpenRouterInterpreterOptions): MessageInterpreter {
   return {
     async interpret(message) {
       if (!apiKey) {
+        throwStrictInterpreterError({
+          strictMode,
+          code: "FALLBACK_USED",
+          message: "OpenRouter API key is missing, and fallback is not allowed in strict mode.",
+          routeSource: "fallback",
+          fallbackUsed: true,
+          fallbackReason: "missing_openrouter_api_key"
+        });
         const fallbackResult = await fallback.interpret(message);
         return {
           ...fallbackResult,
@@ -102,7 +114,18 @@ export function createOpenRouterInterpreter({
           };
         } catch (error) {
           lastError = error instanceof Error ? error.message : String(error);
-          fallbackReason = isInvalidModelOutputError(lastError) ? "invalid_model_output" : "model_interpreter_failed";
+          fallbackReason = isInvalidModelOutputError(error) ? "invalid_model_output" : "model_interpreter_failed";
+          throwStrictInterpreterError({
+            strictMode,
+            code: fallbackReason === "invalid_model_output" ? "INVALID_ROUTE_SCHEMA" : "MODEL_INTERPRETATION_FAILED",
+            message:
+              fallbackReason === "invalid_model_output"
+                ? "OpenRouter returned output that did not match Friendy's interpretation schema."
+                : "OpenRouter interpretation failed, and fallback is not allowed in strict mode.",
+            routeSource: "llm",
+            fallbackUsed: false,
+            fallbackReason
+          });
         }
       }
 
@@ -135,7 +158,37 @@ export function createRuleBasedInterpreter(): MessageInterpreter {
   };
 }
 
-function isInvalidModelOutputError(message: string): boolean {
+function throwStrictInterpreterError(input: {
+  strictMode: boolean;
+  code: FriendyStrictModeErrorCode;
+  message: string;
+  routeSource: "llm" | "fallback";
+  fallbackUsed: boolean;
+  fallbackReason: NonNullable<MessageInterpreterResult["fallbackReason"]>;
+}): void {
+  if (!input.strictMode) {
+    return;
+  }
+
+  throw new FriendyStrictModeError(
+    input.code,
+    input.message,
+    createFriendyTrace({
+      strictMode: true,
+      routeSource: input.routeSource,
+      fallbackUsed: input.fallbackUsed,
+      fallbackReason: input.fallbackReason,
+      toolCalls: []
+    })
+  );
+}
+
+function isInvalidModelOutputError(error: unknown): boolean {
+  if (error instanceof SyntaxError) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
   return message.includes("Invalid message interpretation") || message.includes("JSON");
 }
 

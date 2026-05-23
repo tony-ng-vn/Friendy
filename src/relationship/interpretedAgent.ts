@@ -38,6 +38,7 @@ import { decideMessageScope, isPendingCandidateInquiry, type ScopeDecision } fro
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
+import { FriendyStrictModeError } from "./strictMode";
 import {
   createFriendyTrace,
   extractFriendyTrace,
@@ -469,6 +470,21 @@ export function createInterpretedRelationshipAgent({
       }
 
       const interpreted = await interpreter.interpret(message);
+      if (strictMode && interpreted.fallbackUsed) {
+        throw new FriendyStrictModeError(
+          "FALLBACK_USED",
+          "Fallback interpreter is not allowed in Friendy strict mode.",
+          createFriendyTrace({
+            strictMode: true,
+            routeSource: "fallback",
+            fallbackUsed: true,
+            fallbackReason: interpreted.fallbackReason,
+            route: interpreted.interpretation,
+            policyDecision: "reject",
+            toolCalls: []
+          })
+        );
+      }
       const interpretation = enrichInterpretationWithContext(
         interpreted.interpretation,
         turnContext,
