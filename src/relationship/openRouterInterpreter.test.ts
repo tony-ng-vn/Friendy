@@ -51,6 +51,9 @@ describe("openrouter message interpreter", () => {
     const body = JSON.parse(String(calls[0].init.body));
 
     expect(result.interpretation.intent).toBe("search_memory");
+    expect(result.routeSource).toBe("llm");
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.fallbackReason).toBeUndefined();
     expect(calls[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(calls[0].init.headers).toMatchObject({
       Authorization: "Bearer test-key",
@@ -129,6 +132,9 @@ describe("openrouter message interpreter", () => {
     expect(result.interpretation.people[0].name).toBe("Amaya");
     expect(result.modelUsed).toBe("rule-based-fallback");
     expect(result.error).toContain("Invalid message interpretation");
+    expect(result.routeSource).toBe("fallback");
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.fallbackReason).toBe("invalid_model_output");
   });
 
   it("uses deterministic fallback when no OpenRouter API key exists", async () => {
@@ -150,6 +156,9 @@ describe("openrouter message interpreter", () => {
       companyOrSchool: "CMU",
       classYear: "2028"
     });
+    expect(result.routeSource).toBe("fallback");
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.fallbackReason).toBe("missing_openrouter_api_key");
   });
 
   it("adds route search fields for broad related-contact recall in fallback mode", async () => {

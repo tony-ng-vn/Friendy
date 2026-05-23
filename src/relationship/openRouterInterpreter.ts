@@ -35,6 +35,9 @@ export type MessageInterpreterResult = {
   interpretation: MessageInterpretation;
   modelUsed: string;
   error: string;
+  routeSource: "llm" | "fallback";
+  fallbackUsed: boolean;
+  fallbackReason?: "missing_openrouter_api_key" | "model_interpreter_failed" | "invalid_model_output" | "explicit_fallback";
 };
 
 /** Contract for turning inbound agent text into validated {@link MessageInterpretation} JSON. */
@@ -76,16 +79,30 @@ export function createOpenRouterInterpreter({
   return {
     async interpret(message) {
       if (!apiKey) {
-        return fallback.interpret(message);
+        const fallbackResult = await fallback.interpret(message);
+        return {
+          ...fallbackResult,
+          routeSource: "fallback",
+          fallbackUsed: true,
+          fallbackReason: "missing_openrouter_api_key"
+        };
       }
 
       let lastError = "";
+      let fallbackReason: MessageInterpreterResult["fallbackReason"] = "model_interpreter_failed";
       for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt += 1) {
         try {
           const interpretation = await callOpenRouter({ apiKey, model, fetchImpl, message });
-          return { interpretation, modelUsed: model, error: "" };
+          return {
+            interpretation,
+            modelUsed: model,
+            error: "",
+            routeSource: "llm",
+            fallbackUsed: false
+          };
         } catch (error) {
           lastError = error instanceof Error ? error.message : String(error);
+          fallbackReason = isInvalidModelOutputError(lastError) ? "invalid_model_output" : "model_interpreter_failed";
         }
       }
 
@@ -93,7 +110,10 @@ export function createOpenRouterInterpreter({
       return {
         interpretation: fallbackResult.interpretation,
         modelUsed: fallbackResult.modelUsed,
-        error: lastError || fallbackResult.error
+        error: lastError || fallbackResult.error,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        fallbackReason
       };
     }
   };
@@ -106,10 +126,17 @@ export function createRuleBasedInterpreter(): MessageInterpreter {
       return {
         interpretation: validateMessageInterpretation(ruleBasedInterpret(message.text)),
         modelUsed: "rule-based-fallback",
-        error: ""
+        error: "",
+        routeSource: "fallback",
+        fallbackUsed: true,
+        fallbackReason: "explicit_fallback"
       };
     }
   };
+}
+
+function isInvalidModelOutputError(message: string): boolean {
+  return message.includes("Invalid message interpretation") || message.includes("JSON");
 }
 
 async function callOpenRouter({

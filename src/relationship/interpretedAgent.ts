@@ -497,6 +497,9 @@ export function createInterpretedRelationshipAgent({
             ...interpretation,
             scopeDecision,
             interpretation,
+            routeSource: interpreted.routeSource,
+            fallbackUsed: interpreted.fallbackUsed,
+            fallbackReason: interpreted.fallbackReason,
             policyDecision: { decision: "allow" },
             normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined
           },
@@ -563,7 +566,7 @@ function attachFriendyTrace(value: unknown, trace: FriendyTrace): unknown {
 }
 
 function traceFromInteractionFields(interaction: AgentInteraction, strictMode: boolean): FriendyTrace {
-  const routeSource = routeSourceFromModel(interaction.modelUsed);
+  const routeSource = routeSourceFromInteraction(interaction);
   const route = typeof interaction.interpretedIntentJson === "object" ? interaction.interpretedIntentJson : undefined;
   const target = targetFromRoute(route);
 
@@ -593,12 +596,44 @@ function routeSourceFromModel(modelUsed: string | undefined): FriendyRouteSource
   return "llm";
 }
 
+function routeSourceFromInteraction(interaction: AgentInteraction): FriendyRouteSource {
+  const routeSource = routeSourceMetadataFromRoute(interaction.interpretedIntentJson);
+  return routeSource ?? routeSourceFromModel(interaction.modelUsed);
+}
+
+function routeSourceMetadataFromRoute(value: unknown): FriendyRouteSource | undefined {
+  if (typeof value !== "object" || value === null || !("routeSource" in value)) {
+    return undefined;
+  }
+
+  const routeSource = String((value as { routeSource?: unknown }).routeSource);
+  if (routeSource === "llm" || routeSource === "deterministic" || routeSource === "fallback") {
+    return routeSource;
+  }
+
+  return undefined;
+}
+
 function fallbackReasonFromInteraction(interaction: AgentInteraction): string {
+  const routeFallbackReason = fallbackReasonMetadataFromRoute(interaction.interpretedIntentJson);
+  if (routeFallbackReason) {
+    return routeFallbackReason;
+  }
+
   if (interaction.error) {
     return "model_interpreter_error";
   }
 
   return "rule_based_interpreter";
+}
+
+function fallbackReasonMetadataFromRoute(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("fallbackReason" in value)) {
+    return undefined;
+  }
+
+  const fallbackReason = (value as { fallbackReason?: unknown }).fallbackReason;
+  return typeof fallbackReason === "string" && fallbackReason.length > 0 ? fallbackReason : undefined;
 }
 
 function policyDecisionFromInteraction(interaction: AgentInteraction): FriendyPolicyDecision | undefined {

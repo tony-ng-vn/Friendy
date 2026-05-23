@@ -135,6 +135,7 @@ describe("interpreted relationship agent", () => {
       strictMode: false,
       routeSource: "fallback",
       fallbackUsed: true,
+      fallbackReason: "explicit_fallback",
       route: { intent: "capture_memory" },
       policyDecision: "allow",
       toolCalls: ["create_manual_memory"]
