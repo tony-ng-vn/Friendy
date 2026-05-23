@@ -9,7 +9,7 @@
 - [x] Wire strict mode through foreground runtime config and Spectrum/iMessage runtime.
 - [x] Add eval fallback usage reporting and a strict-mode fallback-rejection eval case.
 - [x] Run full verification: `npm test`, `npm run build`, `npm run eval:agent`, and `git diff --check`.
-- [ ] Commit docs/final notes and push the branch.
+- [x] Commit docs/final notes and push the branch.
 
 # Completed Goal Plan: State-Aware Relationship Agent Routing
 

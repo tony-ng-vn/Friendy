@@ -37,7 +37,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
 | **Latest fix** | Strict mode and trace envelope implemented on `feat/strict-mode-trace-envelope`; final verification passed |
 | **Active goal** | `docs/goals/strict-mode-trace-envelope-goal.md` |
-| **Branch** | `feat/strict-mode-trace-envelope` |
+| **Branch** | `feat/strict-mode-trace-envelope` (pushed) |
 
 ### Active implementation status (2026-05-23, strict mode)
 
