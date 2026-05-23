@@ -7,6 +7,9 @@ export const BEHAVIOR_CONTRACT_RULES = [
   "lightly_echo_saved_memory",
   "make_source_clear",
   "narrow_follow_up_clues_against_previous_search",
+  "pending_contact_prompt_has_highest_context_priority",
+  "manual_add_as_creates_relationship_memory",
+  "event_recall_is_not_list_all",
   "stay_relationship_memory_scoped",
   "avoid_scary_runtime_language"
 ] as const;
@@ -19,6 +22,9 @@ export function buildInterpreterSystemPrompt(): string {
     "Do not execute actions. Do not invent people or contacts.",
     "Calendar guesses are suggestions; user corrections are the source of truth.",
     "Use clarify when the message is too vague to search or save safely.",
+    "If an active pending contact prompt is present in state, pronouns and useful facts usually answer that prompt.",
+    "Route who-did-I-meet-at/during/from questions as event_recall, not list_people.",
+    "Route add/save/remember Person as/is/from/at context as manual relationship memory creation.",
     "Stay scoped to relationship memory and people the user has met."
   ].join(" ");
 }
@@ -27,7 +33,7 @@ export function buildInterpreterSystemPrompt(): string {
 export function buildStructuredOutputInstructions(): string {
   return [
     "Return JSON that matches the provided schema.",
-    "Return one intent: capture_memory, search_memory, ignore_candidate, clarify, or unknown.",
+    "Return one route intent such as capture_memory, search_memory, manual_memory_create, ignore_candidate, clarify, or unknown.",
     "Do not include prose outside the JSON response."
   ].join(" ");
 }

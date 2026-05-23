@@ -11,6 +11,10 @@ export function isListPeopleRecall(text: string): boolean {
     return false;
   }
 
+  if (isEventRecallQuestion(normalized)) {
+    return false;
+  }
+
   return [
     /\b(give|show|list|tell)\b.*\b(all|every|everyone|everybody)\b.*\b(people|persons?|contacts?|network)\b/,
     /\b(give|show|list|tell)\b.*\b(everyone|everybody)\b.*\b(i\s+)?(know|met|saved|remember)\b/,
@@ -19,4 +23,14 @@ export function isListPeopleRecall(text: string): boolean {
     /\bwho\b.*\b(do\s+i\s+|i\s+)(know|have|met|saved|remember)\b/,
     /\b(people|contacts?)\b.*\b(i\s+)?(know|have|met|saved|remember)\b.*\bso far\b/
   ].some((pattern) => pattern.test(normalized));
+}
+
+export function isEventRecallQuestion(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/\bu\b/g, "you");
+  return (
+    /\bwho\b.*\b(?:did\s+i\s+)?(?:meet|met|add|added|save|saved)\b.*\b(?:at|during|from|while)\b.+/.test(
+      normalized
+    ) ||
+    /\banyone\b.*\b(?:i\s+)?(?:met|meet|added|saved)\b.*\b(?:at|during|from|while)\b.+/.test(normalized)
+  );
 }

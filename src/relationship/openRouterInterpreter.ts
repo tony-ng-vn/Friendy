@@ -12,7 +12,7 @@ import {
   validateMessageInterpretation
 } from "./interpretation";
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
-import { isListPeopleRecall } from "./listPeopleRecall";
+import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
 import type { InboundAgentMessage } from "./types";
 
 /** Default free-tier model when `OPENROUTER_MODEL` is unset. */
@@ -361,6 +361,10 @@ function looksLikeSearch(normalized: string): boolean {
 function inferSearchMode(text: string): NonNullable<MessageInterpretation["search"]>["mode"] {
   if (looksLikeRelatedPeopleSearch(text)) {
     return "list_related_people";
+  }
+
+  if (isEventRecallQuestion(text)) {
+    return "event_recall";
   }
 
   if (isListPeopleRecall(text)) {

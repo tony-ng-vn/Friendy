@@ -13,9 +13,13 @@ export type AgentTrace = {
     domain?: string;
     intent: string;
     confidence?: number;
+    conversationRelation?: string;
+    targetDisplayName?: string;
+    targetCandidateId?: string;
     searchMode?: string;
     exactTerms?: string[];
     normalizedQuery?: string;
+    hasExtractedContext?: boolean;
   };
   policy?: { decision: "allow" | "reject" | "clarify"; reason?: string };
   tools: Array<{ name: AgentToolCall; status: "called" | "skipped" | "failed" }>;
@@ -117,6 +121,9 @@ function routeFromInterpretation(value: unknown): AgentTrace["route"] {
     intent?: unknown;
     confidence?: unknown;
     domain?: unknown;
+    conversationRelation?: unknown;
+    target?: { displayName?: unknown; candidateId?: unknown };
+    extractedContext?: unknown;
     search?: { mode?: unknown; exactTerms?: unknown };
     normalizedQuery?: unknown;
   };
@@ -125,9 +132,13 @@ function routeFromInterpretation(value: unknown): AgentTrace["route"] {
     domain: typeof route.domain === "string" ? route.domain : undefined,
     intent: String(route.intent ?? "unknown"),
     confidence: typeof route.confidence === "number" ? route.confidence : undefined,
+    conversationRelation: typeof route.conversationRelation === "string" ? route.conversationRelation : undefined,
+    targetDisplayName: typeof route.target?.displayName === "string" ? "present" : undefined,
+    targetCandidateId: typeof route.target?.candidateId === "string" ? route.target.candidateId : undefined,
     searchMode: typeof route.search?.mode === "string" ? route.search.mode : undefined,
     exactTerms: Array.isArray(route.search?.exactTerms) ? route.search.exactTerms.map(String) : undefined,
-    normalizedQuery: typeof route.normalizedQuery === "string" ? route.normalizedQuery : undefined
+    normalizedQuery: typeof route.normalizedQuery === "string" ? route.normalizedQuery : undefined,
+    hasExtractedContext: typeof route.extractedContext === "string" && route.extractedContext.length > 0 ? true : undefined
   };
 }
 

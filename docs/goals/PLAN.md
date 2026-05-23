@@ -1,3 +1,21 @@
+# Active Goal Plan: State-Aware Relationship Agent Routing
+
+- [x] Read `docs/goals/state-aware-relationship-agent-routing-goal.md` and inspect current routing/state code.
+- [x] Add RED transcript coverage for pending-contact pronoun facts, named fact cleanup, active pending inquiry, list/search interruption, event recall, and manual add-as memory creation.
+- [x] Reconstruct an active pending-contact context frame from durable candidate prompt fields before previous-search follow-up handling.
+- [x] Route pending-contact inquiry/context through deterministic candidate tools and log state-aware route fields.
+- [x] Clean pending-contact context notes such as `She is a...` and `Sarah Fan is a...` before saving.
+- [x] Route `Who did I meet/met at X?` as event recall, not list-all.
+- [x] Add deterministic manual relationship memory creation for `add/save/remember Person as/is/from/at context`.
+- [x] Add eval coverage for the new state-aware routing cases.
+- [x] Replace remaining generic recoverable fallback copy with specific clarification/blocker language.
+- [x] Run full verification: `npm test`, `npm run build`, `npm run eval:agent`, and `git diff --check`.
+- [ ] Commit incrementally and push `main`.
+
+## Deferred Within Goal
+
+- Full SQLite-backed conversation-frame table is not added in the first slice. The active pending-contact frame is reconstructable from already durable `ContactCandidate` prompt fields (`promptSpaceId`, `promptedAt`, `promptInteractionId`). The concrete table design for remaining frame types is recorded in `docs/goals/state-aware-relationship-agent-routing-goal.md`.
+
 # Mac-Only MVP Final Goal Plan
 
 ## Option B E2E Contact Detection Follow-Up

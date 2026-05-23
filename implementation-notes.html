@@ -6,6 +6,19 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>State-Aware Relationship Agent Routing (2026-05-23)</h2>
+    <ul>
+      <li>Added focused RED coverage for the current live transcript failures: pending prompt plus <code>She is...</code>, named Sarah Fan fact cleanup, active pending inquiry, list-all interruption with a pending prompt, Photon Residency event recall, and manual <code>add Sarah Chen as...</code> memory creation.</li>
+      <li>Implemented <code>conversationState.ts</code> as the first durable/reconstructable conversation-state slice. It derives an active <code>pending_contact_context</code> frame from already persisted candidate prompt fields instead of introducing a new SQLite table in this pass.</li>
+      <li>Changed interpreted-agent priority so active pending-contact inquiry/context is handled before previous-search follow-up. This prevents pronouns like <code>She is...</code> from being stolen by the follow-up search narrower.</li>
+      <li>Cleaned pending-contact context notes by stripping simple pronoun/name copula wrappers. <code>She is a community lead at Photon Residency II</code> and <code>Sarah Fan is a community lead at Photon Residency II</code> now save <code>community lead at Photon Residency II</code>.</li>
+      <li>Added deterministic manual Friendy-memory creation for <code>add/save/remember Person as/is/from/at context</code>. This does not write to Apple Contacts.</li>
+      <li>Changed event recall routing so <code>Who did I meet/met at X?</code> is <code>event_recall</code>, not list-all recall.</li>
+      <li>Extended route/eval trace shape with state-aware route fields such as conversation relation, target candidate id, and extracted-context presence while keeping redacted trace text private.</li>
+      <li>Removed the old generic user-facing fallback string from the scope boundary. Recoverable ambiguity should ask a concrete question, while true out-of-scope/adversarial messages now explain the specific blocker.</li>
+      <li>Focused verification passed: interpreted-agent, candidate-intake, response-composer, scope-boundary, OpenRouter interpreter, tools, eval-runner, runtime-trace, behavior-contract tests, plus <code>npm run build</code>.</li>
+      <li>Full verification passed: <code>npm test</code> 51 files/322 tests, <code>npm run build</code>, <code>npm run eval:agent</code> 35/35 required cases with zero unsafe mutations and zero hallucinations, and <code>git diff --check</code>.</li>
+    </ul>
     <h2>Current State</h2>
     <ul>
       <li>Friendy is currently an iMessage-first relationship memory system. The canonical architecture source is <code>docs/ai-system-architecture.md</code>.</li>

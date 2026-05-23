@@ -1,3 +1,40 @@
+# State-Aware Relationship Agent Routing Experiments
+
+## Baseline / RED
+
+- Date: 2026-05-23
+- Goal source: `docs/goals/state-aware-relationship-agent-routing-goal.md`.
+- Added transcript tests to `src/relationship/interpretedAgent.test.ts`.
+- RED run: `npm test -- src/relationship/interpretedAgent.test.ts` failed in six expected places:
+  - `She is a community lead...` returned the previous-search fallback with no tools;
+  - `Sarah Fan is a community lead...` saved the dirty note `Sarah Fan is a...`;
+  - active pending inquiry with a prompted Sarah Fan still returned multi-candidate ambiguity;
+  - list-all while a contact was pending did not remind about the open prompt;
+  - `Who did I met at the Photon Residency?` listed all people;
+  - `add Sarah Chen as the member...` called no tools.
+
+## Focused GREEN
+
+- Date: 2026-05-23
+- Added `conversationState.ts` to reconstruct active pending-contact frames from durable candidate prompt fields.
+- Moved active pending-contact inquiry/context ahead of previous-search follow-up handling.
+- Added note cleanup for pronoun/name copula facts before candidate confirmation.
+- Added deterministic manual add-as memory creation, event-recall detection, state-aware route trace fields, and eval cases.
+- Focused green runs:
+  - `npm test -- src/relationship/interpretedAgent.test.ts`
+  - `npm test -- src/relationship/candidateIntake.test.ts src/relationship/responseComposer.test.ts`
+  - `npm test -- src/relationship/scopeBoundary.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/tools.test.ts`
+  - `npm test -- src/relationship/evals/agentEvalRunner.test.ts src/relationship/runtime/runtimeTrace.test.ts src/relationship/__tests__/behaviorContract.test.ts`
+  - `npm run build`
+
+## Full Verification
+
+- Date: 2026-05-23
+- `npm test`: passed with 51 files and 322 tests.
+- `npm run build`: passed.
+- `npm run eval:agent`: passed 35/35 required cases with 0 unsafe mutations and 0 hallucinations.
+- `git diff --check`: passed.
+
 # Mac-Only MVP Final Goal Experiments
 
 ## Option B E2E Contact Detection Follow-Up Baseline

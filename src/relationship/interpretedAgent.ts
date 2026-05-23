@@ -9,7 +9,13 @@
 import { createHash } from "node:crypto";
 import { buildSearchQueryFromInterpretation, type MessageInterpretation } from "./interpretation";
 import { isConfirmationReply } from "./candidateConfirmation";
-import { createCandidateIntake, type CandidateIgnoreResult, type CandidateReplyResult } from "./candidateIntake";
+import {
+  cleanCandidateContextReply,
+  createCandidateIntake,
+  type CandidateIgnoreResult,
+  type CandidateReplyResult
+} from "./candidateIntake";
+import { buildConversationState, type ConversationState, type PendingContactContextFrame } from "./conversationState";
 import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
@@ -23,6 +29,7 @@ import {
   composeNoMatchReply,
   composeNoPendingCandidateReply,
   composePendingCandidateInquiryReply,
+  composePendingContactReminder,
   composeOnboardingControlReply,
   composeSaveConfirmation,
   composeSearchReply
@@ -38,6 +45,11 @@ type CandidateIntake = ReturnType<typeof createCandidateIntake>;
 type MemoryMutationRequest =
   | { kind: "delete"; query: string }
   | { kind: "update"; query?: string; contextNote: string };
+type ManualMemoryCreateRequest = {
+  displayName: string;
+  contextNote: string;
+  eventTitle?: string;
+};
 type SearchContext = {
   searchContextId: string;
   createdAt: string;
@@ -153,44 +165,11 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      if (isSearchContextReset(message.text)) {
-        turnContext = clearSearchContext(existingContext);
-        conversationContexts.set(message.userId, turnContext);
-      } else {
-        const followUp = executeFollowUpSearchIfPresent(message, turnContext, tools, message.receivedAt);
-        if (followUp) {
-          conversationContexts.set(message.userId, followUp.nextContext);
-          const interaction = addInteractionWithTrace(repo, {
-            id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
-            userId: message.userId,
-            platform: message.platform,
-            spaceId: message.spaceId,
-            inboundText: message.text,
-            interpretedIntentJson: {
-              intent: "followup_search",
-              confidence: 1,
-              searchContextId: existingContext.lastSearch?.searchContextId
-            },
-            outboundText: followUp.outboundText,
-            toolCalls: followUp.toolCalls,
-            modelUsed: "deterministic-scope",
-            confidence: 1,
-            latencyMs: Date.now() - startedAt,
-            createdAt: now()
-          });
-
-          return {
-            outbound: {
-              userId: message.userId,
-              platform: message.platform,
-              spaceId: message.spaceId,
-              text: followUp.outboundText
-            },
-            toolCalls: followUp.toolCalls,
-            interaction
-          };
-        }
-      }
+      const pendingState = buildConversationState({
+        userId: message.userId,
+        spaceId: message.spaceId,
+        pendingCandidates: repo.listPendingCandidates(message.userId)
+      });
 
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
       if (memoryMutationRequest) {
@@ -229,9 +208,181 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
+      if (pendingState.activeFrame && isPendingCandidateInquiry(message.text)) {
+        const toolCalls: AgentToolCall[] = [];
+        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const interaction = addInteractionWithTrace(repo, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: routeLog({
+            intent: "explain_pending_workflow",
+            conversationRelation: "asks_about_open_workflow",
+            frame: pendingState.activeFrame,
+            confidence: 1,
+            traceReason: "User asked which pending contact Friendy is asking about.",
+            policyDecision: { decision: "allow" }
+          }),
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction
+        };
+      }
+
+      if (pendingState.activeFrame && looksLikeDirectPendingContactContext(message.text, pendingState.activeFrame)) {
+        const toolCalls: AgentToolCall[] = [];
+        const candidate = tools.get_candidate(message.userId, pendingState.activeFrame.candidateId);
+        const extractedContext = candidate
+          ? cleanCandidateContextReply(message.text, candidate)
+          : message.text.trim().replace(/\s+/g, " ");
+        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const interaction = addInteractionWithTrace(repo, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: routeLog({
+            intent: "capture_pending_contact_context",
+            conversationRelation: "answers_open_workflow",
+            frame: pendingState.activeFrame,
+            extractedContext,
+            confidence: 1,
+            traceReason: "User supplied plausible relationship context for the active pending contact.",
+            policyDecision: { decision: "allow" }
+          }),
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction
+        };
+      }
+
+      if (isSearchContextReset(message.text)) {
+        turnContext = clearSearchContext(existingContext);
+        conversationContexts.set(message.userId, turnContext);
+      } else {
+        const followUp = executeFollowUpSearchIfPresent(message, turnContext, tools, message.receivedAt);
+        if (followUp) {
+          conversationContexts.set(message.userId, followUp.nextContext);
+          const interaction = addInteractionWithTrace(repo, {
+            id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            inboundText: message.text,
+            interpretedIntentJson: {
+              domain: "relationship_memory",
+              intent: "followup_search",
+              conversationRelation: "continues_previous_search",
+              confidence: 1,
+              searchContextId: existingContext.lastSearch?.searchContextId,
+              policyDecision: { decision: "allow" }
+            },
+            outboundText: followUp.outboundText,
+            toolCalls: followUp.toolCalls,
+            modelUsed: "deterministic-scope",
+            confidence: 1,
+            latencyMs: Date.now() - startedAt,
+            createdAt: now()
+          });
+
+          return {
+            outbound: {
+              userId: message.userId,
+              platform: message.platform,
+              spaceId: message.spaceId,
+              text: followUp.outboundText
+            },
+            toolCalls: followUp.toolCalls,
+            interaction
+          };
+        }
+      }
+
+      const manualMemoryCreateRequest = detectManualMemoryCreateRequest(message.text);
+      if (manualMemoryCreateRequest) {
+        const toolCalls: AgentToolCall[] = ["create_manual_memory"];
+        const memory = tools.create_manual_memory(
+          message.userId,
+          manualMemoryCreateRequest.displayName,
+          manualMemoryCreateRequest.contextNote,
+          "manual contact",
+          {
+            eventTitle: manualMemoryCreateRequest.eventTitle,
+            idempotencyKey: manualMemoryIdempotencyKey(message, manualMemoryCreateRequest.displayName, 0),
+            createdFromInteractionId: message.interactionId
+          }
+        );
+        const outboundText = composeSaveConfirmation({ memories: [memory] });
+        const interaction = addInteractionWithTrace(repo, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            domain: "relationship_memory",
+            intent: "manual_memory_create",
+            conversationRelation: "starts_new_relationship_task",
+            target: { displayName: manualMemoryCreateRequest.displayName },
+            extractedContext: manualMemoryCreateRequest.contextNote,
+            confidence: 1,
+            traceReason: "User explicitly asked Friendy to add relationship memory for a named person.",
+            policyDecision: { decision: "allow" }
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction
+        };
+      }
+
       const scopeDecision = decideMessageScope({
         text: message.text,
-        hasPendingCandidate: repo.listPendingCandidates(message.userId).length > 0
+        hasPendingCandidate: pendingState.pendingContactQueue.length > 0
       });
 
       if (scopeDecision.scope === "out_of_scope" || scopeDecision.scope === "needs_clarification") {
@@ -267,7 +418,7 @@ export function createInterpretedRelationshipAgent({
 
       if (scopeDecision.capability === "candidate_confirmation") {
         const toolCalls: AgentToolCall[] = [];
-        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls);
+        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
         const interaction = addInteractionWithTrace(repo, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -309,7 +460,10 @@ export function createInterpretedRelationshipAgent({
       const toolCalls: AgentToolCall[] = [];
       const searchRequestForTrace =
         interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
-      const outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls);
+      let outboundText = executeInterpretation(message, interpretation, tools, candidateIntake, toolCalls, pendingState);
+      if (pendingState.activeFrame && interpretation.intent === "search_memory") {
+        outboundText = `${outboundText} ${composePendingContactReminder(pendingState.activeFrame.displayName)}`;
+      }
       conversationContexts.set(
         message.userId,
         updateSearchContext(message, tools, updateConversationContext(turnContext, interpretation), interpretation)
@@ -378,6 +532,120 @@ function modelTraceFromInteraction(modelUsed: string | undefined): AgentTrace["m
     modelName: modelUsed,
     fallbackUsed: deterministic
   };
+}
+
+function routeLog({
+  intent,
+  conversationRelation,
+  frame,
+  extractedContext,
+  confidence,
+  traceReason,
+  policyDecision
+}: {
+  intent: string;
+  conversationRelation: string;
+  frame: PendingContactContextFrame;
+  extractedContext?: string;
+  confidence: number;
+  traceReason: string;
+  policyDecision: { decision: "allow" | "reject" | "clarify"; reason?: string };
+}) {
+  return {
+    domain: "relationship_memory",
+    intent,
+    conversationRelation,
+    target: {
+      frameId: frame.frameId,
+      candidateId: frame.candidateId,
+      displayName: frame.displayName
+    },
+    extractedContext,
+    confidence,
+    traceReason,
+    policyDecision
+  };
+}
+
+function looksLikeDirectPendingContactContext(text: string, frame: PendingContactContextFrame): boolean {
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase().replace(/\bu\b/g, "you");
+
+  if (!trimmed || trimmed.length > 220 || trimmed.includes("?")) {
+    return false;
+  }
+
+  if (/^(ignore|delete|remove|forget)\b/i.test(trimmed)) {
+    return false;
+  }
+
+  if (/^(who|what|where|when|why|how|find|show|list|give|tell)\b/i.test(trimmed)) {
+    return false;
+  }
+
+  if (/^(?:ok\s+)?(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:add|save|remember)\b/i.test(trimmed)) {
+    return false;
+  }
+
+  if (/^(she|he|they|them|her|him)\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had)\b/i.test(trimmed)) {
+    return true;
+  }
+
+  const firstName = frame.displayName.split(/\s+/).filter(Boolean)[0] ?? "";
+  const namePattern = [frame.displayName, firstName].filter(Boolean).map(escapeRegExp).join("|");
+  if (namePattern.length > 0) {
+    const namedFact = new RegExp(
+      `^(?:${namePattern})\\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had)\\b`,
+      "i"
+    );
+    if (namedFact.test(trimmed)) {
+      return true;
+    }
+  }
+
+  return /^(met|need to follow up|follow up|talked|we talked|works?|knows?|community lead|member|founder|designer|from|at|through)\b/.test(
+    lower
+  );
+}
+
+function detectManualMemoryCreateRequest(text: string): ManualMemoryCreateRequest | undefined {
+  const normalized = text
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[?.!]+$/g, "");
+  const match =
+    /^(?:ok\s+)?(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:add|save|remember)\s+([A-Z][\p{L}'-]*(?:\s+[A-Z][\p{L}'-]*){1,3})\s+(?:as\s+(?:the\s+|an?\s+)?|is\s+(?:the\s+|an?\s+)?|from\s+|at\s+)(.+?)(?:\s+too)?(?:\s+for\s+me)?(?:\s+please)?$/iu.exec(
+      normalized
+    );
+  if (!match?.[1] || !match[2]) {
+    return undefined;
+  }
+
+  const displayName = match[1].trim();
+  const contextNote = cleanManualMemoryContext(match[2]);
+  if (!contextNote) {
+    return undefined;
+  }
+
+  return {
+    displayName,
+    contextNote,
+    eventTitle: extractManualEventTitle(contextNote)
+  };
+}
+
+function cleanManualMemoryContext(value: string): string {
+  return value
+    .trim()
+    .replace(/^(?:the\s+|an?\s+)/i, "")
+    .replace(/\s+/g, " ");
+}
+
+function extractManualEventTitle(contextNote: string): string | undefined {
+  const match = /\b(?:at|from|of)\s+([A-Z][\p{L}0-9&.'-]*(?:\s+[A-Z0-9IIIVX][\p{L}0-9&.'-]*){0,5})$/u.exec(
+    contextNote
+  );
+  return match?.[1]?.trim();
 }
 
 function executeMemoryMutationRequest(
@@ -694,10 +962,11 @@ function executeInterpretation(
   interpretation: MessageInterpretation,
   tools: RelationshipTools,
   candidateIntake: CandidateIntake,
-  toolCalls: AgentToolCall[]
+  toolCalls: AgentToolCall[],
+  pendingState?: ConversationState
 ): string {
   if (isConfirmationReply(message.text)) {
-    return confirmPendingCandidate(message, candidateIntake, tools, toolCalls);
+    return confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
   }
 
   if (interpretation.needsClarification || interpretation.intent === "clarify") {
@@ -713,6 +982,25 @@ function executeInterpretation(
 
   if (interpretation.intent === "search_memory") {
     return searchMemories(message, interpretation, tools, toolCalls);
+  }
+
+  if (interpretation.intent === "list_people") {
+    return searchMemories(
+      message,
+      {
+        ...interpretation,
+        intent: "search_memory",
+        query: interpretation.query || message.text,
+        search: interpretation.search ?? {
+          mode: "list_people",
+          semanticQuery: message.text,
+          exactTerms: [],
+          topK: 10
+        }
+      },
+      tools,
+      toolCalls
+    );
   }
 
   if (interpretation.intent === "ignore_candidate") {
@@ -805,13 +1093,15 @@ function confirmPendingCandidate(
   message: InboundAgentMessage,
   candidateIntake: CandidateIntake,
   tools: RelationshipTools,
-  toolCalls: AgentToolCall[]
+  toolCalls: AgentToolCall[],
+  pendingState?: ConversationState
 ): string {
   toolCalls.push("list_pending_candidates");
   const pending = tools.list_pending_candidates(message.userId);
   if (isPendingCandidateInquiry(message.text)) {
     return composePendingCandidateInquiryReply({
-      candidates: pending.map((candidate) => ({ displayName: candidate.displayName }))
+      candidates: pending.map((candidate) => ({ displayName: candidate.displayName })),
+      activeDisplayName: pendingState?.activeFrame?.displayName
     });
   }
 
@@ -947,4 +1237,8 @@ function isAmbiguous(matches: MemorySearchResult[]): boolean {
 
 function isEventWideRecallQuery(text: string): boolean {
   return /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

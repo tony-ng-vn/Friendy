@@ -14,7 +14,25 @@ export const messageInterpretationJsonSchema = {
   properties: {
     intent: {
       type: "string",
-      enum: ["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"],
+      enum: [
+        "capture_memory",
+        "capture_pending_contact_context",
+        "continue_recent_saved_contact",
+        "explain_pending_workflow",
+        "list_people",
+        "search_memory",
+        "manual_memory_create",
+        "update_memory",
+        "delete_memory",
+        "draft_message",
+        "request_contact_create",
+        "request_contact_edit",
+        "request_contact_delete",
+        "ignore_candidate",
+        "clarify",
+        "reject",
+        "unknown"
+      ],
       description: "The single action Friendy should take after interpreting the user message."
     },
     confidence: {
@@ -28,11 +46,38 @@ export const messageInterpretationJsonSchema = {
       enum: [
         "relationship_memory",
         "relationship_drafting",
+        "contact_management",
         "lifecycle_control",
         "general_assistant",
         "unsafe_or_adversarial"
       ],
       description: "High-level route domain for policy validation."
+    },
+    conversationRelation: {
+      type: "string",
+      enum: [
+        "answers_open_workflow",
+        "asks_about_open_workflow",
+        "continues_recent_saved_contact",
+        "continues_previous_search",
+        "starts_new_relationship_task",
+        "starts_new_contact_management_task",
+        "starts_new_out_of_scope_task",
+        "unclear"
+      ]
+    },
+    target: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        frameId: { type: "string" },
+        candidateId: { type: "string" },
+        memoryId: { type: "string" },
+        displayName: { type: "string" }
+      }
+    },
+    extractedContext: {
+      type: "string"
     },
     search: {
       type: ["object", "null"],
@@ -157,9 +202,41 @@ const eventInterpretationSchema = z
 const routeDomainSchema = z.enum([
   "relationship_memory",
   "relationship_drafting",
+  "contact_management",
   "lifecycle_control",
   "general_assistant",
   "unsafe_or_adversarial"
+]);
+
+const routeIntentSchema = z.enum([
+  "capture_memory",
+  "capture_pending_contact_context",
+  "continue_recent_saved_contact",
+  "explain_pending_workflow",
+  "list_people",
+  "search_memory",
+  "manual_memory_create",
+  "update_memory",
+  "delete_memory",
+  "draft_message",
+  "request_contact_create",
+  "request_contact_edit",
+  "request_contact_delete",
+  "ignore_candidate",
+  "clarify",
+  "reject",
+  "unknown"
+]);
+
+const conversationRelationSchema = z.enum([
+  "answers_open_workflow",
+  "asks_about_open_workflow",
+  "continues_recent_saved_contact",
+  "continues_previous_search",
+  "starts_new_relationship_task",
+  "starts_new_contact_management_task",
+  "starts_new_out_of_scope_task",
+  "unclear"
 ]);
 
 const searchPlanSchema = z
@@ -185,9 +262,21 @@ const searchPlanSchema = z
 /** Zod schema mirroring `messageInterpretationJsonSchema` for runtime validation. */
 export const messageInterpretationSchema = z
   .object({
-    intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
+    intent: routeIntentSchema,
     confidence: z.number().min(0).max(1),
     domain: routeDomainSchema.optional(),
+    conversationRelation: conversationRelationSchema.optional(),
+    target: z
+      .object({
+        frameId: z.string().optional(),
+        candidateId: z.string().optional(),
+        memoryId: z.string().optional(),
+        displayName: z.string().optional()
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    extractedContext: z.string().optional(),
     search: searchPlanSchema.nullable().optional(),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),

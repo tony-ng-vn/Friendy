@@ -108,7 +108,8 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
 
       const candidate = selected ?? promptedForSpace ?? onlyReviewable ?? candidates[0];
       const eventMatches = tools.list_candidate_event_matches(input.scope.userId, candidate.id);
-      const confirmation = resolveCandidateConfirmation(stripCandidateSelector(input.replyText, candidate), eventMatches);
+      const contextText = cleanCandidateContextReply(stripCandidateSelector(input.replyText, candidate), candidate);
+      const confirmation = resolveCandidateConfirmation(contextText, eventMatches);
       const memory = tools.confirm_candidate(
         input.scope.userId,
         candidate.id,
@@ -219,6 +220,29 @@ function stripCandidateSelector(replyText: string, candidate: ContactCandidate):
 
   const selectorPattern = new RegExp(`^(yes|yep|yeah)\\s+${escapeRegExp(firstName)}\\b\\s*,?\\s*`, "i");
   return replyText.replace(selectorPattern, "$1, ").replace(/,\s*$/, "").trim();
+}
+
+export function cleanCandidateContextReply(replyText: string, candidate: Pick<ContactCandidate, "displayName">): string {
+  const normalized = replyText.trim().replace(/\s+/g, " ");
+  const firstName = candidate.displayName.split(/\s+/).filter(Boolean)[0] ?? "";
+  const escapedFullName = escapeRegExp(candidate.displayName);
+  const escapedFirstName = escapeRegExp(firstName);
+  const nameAlternatives = [escapedFullName, escapedFirstName].filter(Boolean).join("|");
+
+  if (nameAlternatives.length > 0) {
+    const nameCopula = new RegExp(
+      `^(?:${nameAlternatives})\\s+(?:is|was|are|were)\\s+(?:an?\\s+|the\\s+)?`,
+      "i"
+    );
+    const cleaned = normalized.replace(nameCopula, "").trim();
+    if (cleaned !== normalized && cleaned.length > 0) {
+      return cleaned;
+    }
+  }
+
+  const pronounCopula = /^(?:she|he|they|them|her|him)\s+(?:is|was|are|were)\s+(?:an?\s+|the\s+)?/i;
+  const cleaned = normalized.replace(pronounCopula, "").trim();
+  return cleaned.length > 0 ? cleaned : normalized;
 }
 
 function escapeRegExp(value: string): string {

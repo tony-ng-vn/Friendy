@@ -29,7 +29,7 @@ describe("interpreted relationship agent", () => {
 
     expect(interpreterCalls).toBe(0);
     expect(result.toolCalls).toEqual([]);
-    expect(result.outbound.text).toContain("people you know");
+    expect(result.outbound.text).toContain("ignore or override");
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
       scopeDecision: { scope: "out_of_scope" }
@@ -253,7 +253,7 @@ describe("interpreted relationship agent", () => {
       expect(result.toolCalls).toContain("search_memories");
       expect(result.outbound.text).toContain("Testing 1");
       expect(result.outbound.text).toContain("Testing 12");
-      expect(result.outbound.text).not.toContain("people you know");
+      expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
       expect(result.interaction.interpretedIntentJson).toMatchObject({
         intent: "search_memory",
         domain: "relationship_memory"
@@ -401,6 +401,94 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)[0].contextNote).toContain("test friendy");
   });
 
+  it("captures pronoun facts as context for the active pending contact before follow-up search", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101050"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for active pending-contact context");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("She is a community lead at Photon Residency II"));
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(result.outbound.text).toContain("Sarah Fan is a community lead at Photon Residency II");
+    expect(result.outbound.text).not.toContain("previous search");
+    expect(memory).toMatchObject({
+      displayName: "Sarah Fan",
+      contextNote: "community lead at Photon Residency II"
+    });
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      domain: "relationship_memory",
+      intent: "capture_pending_contact_context",
+      conversationRelation: "answers_open_workflow",
+      target: {
+        candidateId: candidate.id,
+        displayName: "Sarah Fan"
+      },
+      extractedContext: "community lead at Photon Residency II",
+      policyDecision: { decision: "allow" }
+    });
+  });
+
+  it("cleans named pending-contact facts before saving the note", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101051"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah_named", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(
+      inboundInSpace("Sarah Fan is  a community lead at Photon Residency II")
+    );
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(memory.contextNote).toBe("community lead at Photon Residency II");
+    expect(result.outbound.text).toContain("Sarah Fan is a community lead at Photon Residency II");
+    expect(result.outbound.text).not.toContain("I'll remember is");
+    expect(result.outbound.text).not.toContain("is  a");
+  });
+
   it("explains which contact is pending when the user asks who they added", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
@@ -423,6 +511,43 @@ describe("interpreted relationship agent", () => {
     expect(result.toolCalls).toEqual(["list_pending_candidates"]);
     expect(result.outbound.text).toContain("Testing 4");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
+  });
+
+  it("explains the active pending contact and queued next contact", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const testing2 = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 2",
+      phoneNumbers: ["+15550101032"]
+    });
+    const sarah = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101033"]
+    });
+    repo.markCandidatePrompted(sarah.id, "interaction_prompt_sarah_first", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T12:01:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for pending-contact inquiry");
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("Who are you asking about?"));
+
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(result.outbound.text).toContain("I'm asking about Sarah Fan");
+    expect(result.outbound.text).toContain("Testing 2 is next");
+    expect(result.outbound.text).not.toContain("Which one");
+    expect(repo.getCandidate(sarah.id)?.status).toBe("prompted");
+    expect(repo.getCandidate(testing2.id)?.status).toBe("pending");
   });
 
   it("explains multiple pending contacts when the user asks which prompt is being referenced", async () => {
@@ -485,7 +610,8 @@ describe("interpreted relationship agent", () => {
 
     expect(result.toolCalls).toEqual(["search_memories"]);
     expect(result.outbound.text).toContain("Testing 2");
-    expect(result.outbound.text).not.toContain("Unnamed Contact");
+    expect(result.outbound.text).toContain("I still need context for Unnamed Contact");
+    expect(result.outbound.text).not.toContain("saved Unnamed Contact");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 2"]);
     expect(repo.listPendingCandidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
       "Unnamed Contact"
@@ -575,6 +701,52 @@ describe("interpreted relationship agent", () => {
     expect(eventSearch.outbound.text).toContain("Leo");
     expect(eventSearch.outbound.text).toContain("Rina");
     expect(eventSearch.outbound.text).not.toContain("Which person");
+  });
+
+  it("routes Photon Residency meeting recall as event recall instead of listing all people", async () => {
+    const { agent } = createTestAgentWithMemories([
+      { ...memoryFixture("Testing 2", "Met during testing Friendy"), eventTitle: undefined },
+      memoryFixture("Sarah Fan", "community lead at Photon Residency II"),
+      memoryFixture("Sarah Chen", "member of Photon Residency II")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Who did I met at the Photon Residency?"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("Sarah Fan");
+    expect(result.outbound.text).toContain("Sarah Chen");
+    expect(result.outbound.text).not.toContain("Testing 2");
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      intent: "search_memory",
+      search: {
+        mode: "event_recall",
+        semanticQuery: expect.stringContaining("Photon Residency"),
+        exactTerms: expect.arrayContaining(["photon", "residency"])
+      }
+    });
+  });
+
+  it("creates manual relationship memory from add-as phrasing without Apple Contacts mutation", async () => {
+    const { agent, repo } = createTestAgent();
+
+    const result = await agent.handleMessage(inbound("Ok can u add Sarah Chen as the member of Photon Residency II too for me please?"));
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(result.toolCalls).toEqual(["create_manual_memory"]);
+    expect(result.outbound.text).toContain("Sarah Chen is a member of Photon Residency II");
+    expect(memory).toMatchObject({
+      displayName: "Sarah Chen",
+      contextNote: "member of Photon Residency II",
+      primaryContactLabel: "manual contact"
+    });
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      domain: "relationship_memory",
+      intent: "manual_memory_create",
+      conversationRelation: "starts_new_relationship_task",
+      target: { displayName: "Sarah Chen" },
+      extractedContext: "member of Photon Residency II",
+      policyDecision: { decision: "allow" }
+    });
   });
 
   it("keeps ambiguous dinner-founder queries as narrowing questions", async () => {
@@ -855,5 +1027,12 @@ function inbound(text: string, receivedAt = "2026-05-20T12:00:00.000Z"): Inbound
     platform: "terminal",
     text,
     receivedAt
+  };
+}
+
+function inboundInSpace(text: string, receivedAt = "2026-05-20T12:00:00.000Z"): InboundAgentMessage {
+  return {
+    ...inbound(text, receivedAt),
+    spaceId: "imessage_space_sarah"
   };
 }

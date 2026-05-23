@@ -179,7 +179,7 @@ describe("relationship agent scope boundary", () => {
     });
 
     expect(decision.scope).toBe("out_of_scope");
-    expect(outOfScopeRedirect(decision)).toContain("people you know");
+    expect(outOfScopeRedirect(decision)).toContain("ignore or override");
   });
 });
 

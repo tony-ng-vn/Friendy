@@ -48,17 +48,18 @@ export function composeSaveConfirmation({ memories }: SaveConfirmationInput): st
     const memory = memories[0];
     const event = getEventTitle(memory);
     const context = summarizeMemoryContext(memory);
+    const savedContext = context ? phraseSavedContext(memory.displayName, context) : "";
 
-    if (event && context) {
-      return `Got it, saved ${memory.displayName} from ${event}. I'll remember ${context}.`;
+    if (event && savedContext) {
+      return `Got it, saved ${memory.displayName} from ${event}. I'll remember ${savedContext}.`;
     }
 
     if (event) {
       return `Got it, saved ${memory.displayName} from ${event}.`;
     }
 
-    if (context) {
-      return `Got it, saved ${memory.displayName}. I'll remember ${context}.`;
+    if (savedContext) {
+      return `Got it, saved ${memory.displayName}. I'll remember ${savedContext}.`;
     }
 
     return `Got it, saved ${memory.displayName}.`;
@@ -121,12 +122,24 @@ export function composeNoPendingCandidateReply(): string {
 
 /** Explains which contact is waiting for meeting context when the user asks mid-prompt. */
 export function composePendingCandidateInquiryReply({
-  candidates
+  candidates,
+  activeDisplayName
 }: {
   candidates: Array<{ displayName: string }>;
+  activeDisplayName?: string;
 }): string {
   if (candidates.length === 0) {
     return composeNoPendingCandidateReply();
+  }
+
+  if (activeDisplayName) {
+    if (activeDisplayName === "Unnamed Contact") {
+      return "I'm asking about a new contact you just added — Contacts hasn't given me the name yet. What should I remember about them?";
+    }
+
+    const nextCandidate = candidates.find((candidate) => candidate.displayName !== activeDisplayName);
+    const suffix = nextCandidate ? ` ${nextCandidate.displayName} is next.` : "";
+    return `I'm asking about ${activeDisplayName} — what should I remember about them?${suffix}`;
   }
 
   if (candidates.length > 1) {
@@ -139,6 +152,10 @@ export function composePendingCandidateInquiryReply({
   }
 
   return `I'm asking about ${name}, the contact you just added. Where did you meet them?`;
+}
+
+export function composePendingContactReminder(displayName: string): string {
+  return `I still need context for ${displayName} — what should I remember about them?`;
 }
 
 /** Keeps model-provided or deterministic clarification questions short and chat-native. */
@@ -216,6 +233,30 @@ function summarizeMemoryContext(memory: RelationshipMemory): string {
     .map((part) => part.text);
 
   return parts.join("; ");
+}
+
+function phraseSavedContext(displayName: string, context: string): string {
+  if (/^they\b/i.test(context)) {
+    return context;
+  }
+
+  if (/^(?:works?|worked|knows?|knew|met|talked|needs?|need|we talked)\b/i.test(context)) {
+    return `${displayName} ${context}`;
+  }
+
+  if (/^(?:community lead|member|founder|designer|engineer|operator|mentor|friend|collaborator|classmate)\b/i.test(context)) {
+    return `${displayName} is ${withIndefiniteArticle(context)}`;
+  }
+
+  return context;
+}
+
+function withIndefiniteArticle(context: string): string {
+  if (/^(?:a|an|the)\s+/i.test(context)) {
+    return context;
+  }
+
+  return /^[aeiou]/i.test(context) ? `an ${context}` : `a ${context}`;
 }
 
 function normalizeContextPart(

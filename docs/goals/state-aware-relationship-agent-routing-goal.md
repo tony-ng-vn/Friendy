@@ -556,3 +556,49 @@ Also run any new targeted test file(s) during TDD red/green cycles.
 - Required verification commands pass with current evidence.
 - Changes are committed incrementally.
 - `main` is pushed when complete.
+
+## Implementation Progress
+
+- 2026-05-23: Added failing transcript coverage in `src/relationship/interpretedAgent.test.ts` and eval coverage in `src/relationship/evals/agentEvalRunner.ts`.
+- 2026-05-23: Implemented reconstructable active pending-contact frames in `src/relationship/conversationState.ts` using durable candidate prompt fields (`promptSpaceId`, `promptedAt`, `promptInteractionId`).
+- 2026-05-23: Pending-contact inquiry/context now runs before previous-search follow-up; pronoun facts like `She is...` confirm the active pending contact.
+- 2026-05-23: Pending-contact note cleanup strips simple `She is a...` / `Sarah Fan is a...` wrappers before save.
+- 2026-05-23: Event recall routing now treats `Who did I meet/met at X?` as `event_recall`, not `list_people`.
+- 2026-05-23: Manual `add/save/remember Person as/is/from/at context` creates Friendy memory through deterministic tools and does not mutate Apple Contacts.
+- 2026-05-23: Removed the old generic user-facing scope fallback and replaced it with specific blocker copy.
+- 2026-05-23: Focused verification passed for interpreted agent, scope boundary, candidate intake, response composer, tools, OpenRouter interpreter, eval runner, runtime trace, behavior contract, and `npm run build`.
+- 2026-05-23: Full verification passed: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
+
+## Durable Conversation State Design
+
+The implemented slice reconstructs the active pending-contact frame from durable candidate fields. If/when the remaining frame types move out of the process-local `conversationContexts` map, use one SQLite table rather than separate tables per frame type:
+
+```sql
+create table conversation_frames (
+  frame_id text primary key,
+  user_id text not null,
+  space_id text,
+  type text not null,
+  status text not null,
+  priority integer not null default 0,
+  opened_at text not null,
+  expires_at text,
+  payload_json text not null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create index conversation_frames_active_idx
+  on conversation_frames (user_id, space_id, status, priority, opened_at);
+```
+
+Frame payloads should stay type-specific JSON projections:
+
+- `pending_contact_context`: `candidateId`, `displayName`, `lastFriendyPrompt`, `expectedInput`;
+- `pending_contact_queue`: ordered candidate ids and display names;
+- `previous_search`: original query, result memory ids, last question, expiry;
+- `recent_saved_contact`: display name, memory id, saved timestamp;
+- `clarification`: question, expected answer shape, target ids if any;
+- `drafting`: target person/memory id and draft intent.
+
+Temporary frames should have TTL-driven `expires_at`; durable relationship memory remains canonical in `memories`, not in frame payloads.

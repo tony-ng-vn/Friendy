@@ -40,8 +40,10 @@ export type ScopeBoundaryInput = {
   hasPendingCandidate: boolean;
 };
 
-const DEFAULT_REDIRECT =
-  "I am here to help with people you know, relationship memory, and follow-ups. If this is about someone in your network, tell me who and I can help.";
+const OUTSIDE_RELATIONSHIP_REDIRECT =
+  "That is outside Friendy's relationship-memory scope. Tell me the person, contact, memory, follow-up, or message you want help with.";
+const ADVERSARIAL_REDIRECT =
+  "I can't follow requests to ignore or override Friendy's instructions. Ask me about a specific person, contact, or relationship memory instead.";
 const GENERAL_TASK_REDIRECT =
   "I am not the right tool for general tasks like that. I can help if it connects to someone you know or something you want to remember about them.";
 const CODING_REDIRECT =
@@ -65,7 +67,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
   }
 
   if (isAdversarialGeneralAssistantRequest(lower)) {
-    return outOfScope("adversarial_general_assistant_request", DEFAULT_REDIRECT);
+    return outOfScope("adversarial_general_assistant_request", ADVERSARIAL_REDIRECT);
   }
 
   if (hasPendingCandidate) {
@@ -82,7 +84,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
     }
 
     if (isClearlyOffTopicWhilePending(lower)) {
-      return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
+      return outOfScope("outside_relationship_memory_domain", OUTSIDE_RELATIONSHIP_REDIRECT);
     }
 
     if (isRelationshipRecall(lower)) {
@@ -96,7 +98,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
       );
     }
 
-    return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
+    return outOfScope("outside_relationship_memory_domain", OUTSIDE_RELATIONSHIP_REDIRECT);
   }
 
   if (isIgnoreCandidate(lower)) {
@@ -132,7 +134,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
   }
 
   if (isGeneralKnowledgeTask(lower) || isGenericAdviceTask(lower)) {
-    return outOfScope("general_assistant_task", DEFAULT_REDIRECT);
+    return outOfScope("general_assistant_task", OUTSIDE_RELATIONSHIP_REDIRECT);
   }
 
   if (isFollowupPlanning(lower)) {
@@ -155,7 +157,7 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
     return inScope("relationship_recall", "User is weakly referring to a person in their relationship memory.");
   }
 
-  return outOfScope("outside_relationship_memory_domain", DEFAULT_REDIRECT);
+  return outOfScope("outside_relationship_memory_domain", OUTSIDE_RELATIONSHIP_REDIRECT);
 }
 
 function inScope(capability: ScopeCapability, reason: string): ScopeDecision {

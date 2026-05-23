@@ -30,14 +30,29 @@ Whenever you **finish meaningful work**, **change runtime behavior**, **close a 
 
 Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
-## Current Status (2026-05-22)
+## Current Status (2026-05-23)
 
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix commit** | `1d62345` — `fix:repair macOS contact detection through debounce and snapshot fallback` |
-| **Active goal** | `docs/goals/mac-mvp-e2e-contact-detection-goal.md` — **complete** (see goal file); next work: `docs/goals/mac-mvp-final-goal-runbook.md` |
-| **Branch** | `main` (pushed) |
+| **Latest pushed commit** | `9f162bf` — `docs:add state-aware routing goal` |
+| **Active goal** | `docs/goals/state-aware-relationship-agent-routing-goal.md` — **in progress** |
+| **Branch** | `main` (local changes not pushed yet during active implementation) |
+
+### Active implementation status (2026-05-23)
+
+- RED transcript coverage was added for the Sarah Fan / Photon Residency routing failures.
+- Focused fixes are implemented and focused tests/build are green:
+  - active pending-contact context now routes before previous-search follow-up;
+  - `She is a community lead...` confirms the active pending contact;
+  - `Sarah Fan is a community lead...` saves a clean note;
+  - active pending inquiry identifies the active prompt and queued next contact;
+  - list-all search while a contact prompt is open answers the list and reminds about the pending prompt;
+  - `Who did I meet/met at Photon Residency?` routes as event recall;
+  - `add/save/remember Person as/is/from/at context` creates Friendy memory only.
+  - generic recoverable fallback copy was removed from the scope boundary.
+- Full verification passed on 2026-05-23: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
+- Still open before goal completion: commit, push, and update goal status.
 
 ### Verified live flow (2026-05-22)
 

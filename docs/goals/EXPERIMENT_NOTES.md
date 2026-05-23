@@ -1,3 +1,14 @@
+# State-Aware Relationship Agent Routing Notes
+
+- 2026-05-23: The first implementation slice treats the active pending-contact prompt as reconstructable durable state instead of adding a new table immediately. The source of truth is existing candidate prompt fields persisted by both repositories: `status=prompted`, `promptSpaceId`, `promptedAt`, and `promptInteractionId`.
+- 2026-05-23: Previous-search follow-up remains process-local for now, but it no longer preempts active pending-contact context. Pronoun facts like `She is...` are routed to candidate confirmation first when a pending-contact frame is active.
+- 2026-05-23: The pending prompt copy still says `Where did you meet them?`, but routing now treats the expected input as `any_useful_relationship_context`; role, project, follow-up, relationship, and meeting-place facts are valid.
+- 2026-05-23: Saved note cleanup intentionally strips only copula wrappers (`She is a...`, `Sarah Fan is a...`) in this slice. Other predicates such as `works at`, `knows`, or `we talked about` are left as predicates so response wording can remain natural.
+- 2026-05-23: Manual `add/save/remember Person as/is/from/at context` creates Friendy memory through `create_manual_memory` only. It does not mutate Apple Contacts.
+- 2026-05-23: The eval catalog now has 35 required cases, adding pending-contact pronoun context, event recall not list-all, and manual add-as memory.
+- 2026-05-23: Removed the old generic user-facing fallback copy from `scopeBoundary.ts`. Out-of-scope and adversarial paths now explain the exact blocker instead of saying `I am here to help...`.
+- 2026-05-23: Full verification passed: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
+
 # Mac-Only MVP Final Goal Notes
 
 - 2026-05-22: The runbook contains 13 task goals. They should mostly run sequentially because later tasks build on repository, runtime, prompt, and eval surfaces changed by earlier tasks.
