@@ -207,10 +207,20 @@ describe("relationship tools", () => {
   });
 
   it("lists Friendy memory as structured people without using search results", () => {
-    const tools = createToolsWithMemories([
-      memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
-      memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
-    ]);
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
+        memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
+      ]
+    });
+    const searchMemoryDocuments = vi.fn(() => {
+      throw new Error("list_people must not call searchMemoryDocuments");
+    });
+    const tools = createRelationshipTools({
+      ...repo,
+      searchMemoryDocuments
+    });
 
     const result = tools.list_people(fixtureUser.id, {
       source: "friendy_memory",
@@ -230,6 +240,7 @@ describe("relationship tools", () => {
     ]);
     expect(result.duplicateGroups).toEqual([]);
     expect(result.pendingCandidates).toEqual([]);
+    expect(searchMemoryDocuments).not.toHaveBeenCalled();
   });
 
   it("filters listed people by meaningful Friendy terms", () => {
@@ -256,6 +267,23 @@ describe("relationship tools", () => {
       "memory_testing_12",
       "memory_testing_3"
     ]);
+  });
+
+  it("limits listed Friendy memory results", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
+      memory("Testing 3", "testing Friendy", "I met testing 3 during testing Friendy"),
+      memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 2,
+      dedupeByPerson: true
+    });
+
+    expect(result.people.map((person) => person.displayName)).toEqual(["Testing 12", "Testing 3"]);
+    expect(result.people).toHaveLength(2);
   });
 
   it("groups exact duplicate display names without destructive merging", () => {
