@@ -8,6 +8,7 @@
 - 2026-05-23: The eval catalog now has 35 required cases, adding pending-contact pronoun context, event recall not list-all, and manual add-as memory.
 - 2026-05-23: Removed the old generic user-facing fallback copy from `scopeBoundary.ts`. Out-of-scope and adversarial paths now explain the exact blocker instead of saying `I am here to help...`.
 - 2026-05-23: Full verification passed: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
+- 2026-05-23: Implementation commit `1f2bdb1` was pushed to `main`.
 
 # Mac-Only MVP Final Goal Notes
 

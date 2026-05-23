@@ -35,9 +35,9 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest pushed commit** | `9f162bf` — `docs:add state-aware routing goal` |
-| **Active goal** | `docs/goals/state-aware-relationship-agent-routing-goal.md` — **in progress** |
-| **Branch** | `main` (local changes not pushed yet during active implementation) |
+| **Latest pushed commit** | `1f2bdb1` — `fix:add state-aware relationship routing` |
+| **Active goal** | `docs/goals/state-aware-relationship-agent-routing-goal.md` — **complete** |
+| **Branch** | `main` (pushed) |
 
 ### Active implementation status (2026-05-23)
 
@@ -52,7 +52,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
   - `add/save/remember Person as/is/from/at context` creates Friendy memory only.
   - generic recoverable fallback copy was removed from the scope boundary.
 - Full verification passed on 2026-05-23: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
-- Still open before goal completion: commit, push, and update goal status.
+- Goal implementation commit was pushed to `main` as `1f2bdb1`.
 
 ### Verified live flow (2026-05-22)
 

@@ -10,7 +10,7 @@
 - [x] Add eval coverage for the new state-aware routing cases.
 - [x] Replace remaining generic recoverable fallback copy with specific clarification/blocker language.
 - [x] Run full verification: `npm test`, `npm run build`, `npm run eval:agent`, and `git diff --check`.
-- [ ] Commit incrementally and push `main`.
+- [x] Commit incrementally and push `main`.
 
 ## Deferred Within Goal
 
