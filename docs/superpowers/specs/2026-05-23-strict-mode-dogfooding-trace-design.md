@@ -1,154 +1,164 @@
-# Strict-Mode Dogfooding Trace Design (Concrete Fix Stack — PR 9)
+# Strict-Mode Dogfooding and Trace Completion (Concrete Fix Stack — PR 9)
 
 ## Summary
 
-PR 9 makes **strict mode the default local dogfooding experience** for the foreground Friendy runtime and expands compact traces so engineers can see *why* a turn routed the way it did. When `FRIENDY_STRICT_MODE=1`, any fallback, unknown route, schema failure, missing tool, or unexpected ambiguity must **fail loudly** — not silently degrade to rule-based behavior.
+PR 9 completes **local dogfooding observability** on top of strict-mode infrastructure that already landed (see merged work in `src/relationship/strictMode.ts`, `src/relationship/trace.ts`, and plan `docs/superpowers/plans/2026-05-23-strict-mode-trace-envelope.md`).
 
-Strict mode infrastructure already exists (`strictMode.ts`, `openRouterInterpreter.ts`, partial `FriendyTrace`), but dogfooding lacks:
+This PR is **not** a greenfield strict-mode implementation. It adds:
 
-- Documented default command: `FRIENDY_STRICT_MODE=1 npm run agent:friendy`
-- Complete trace envelope matching introspection requirements
-- Runtime/process exit or surfaced error on fallback during dogfood runs
-- Consistent trace fields across interpreted agent, OpenRouter interpreter, and runtime logs
+- documented dogfood commands and runtime warnings;
+- trace fields still missing from the baseline envelope;
+- scope-boundary visibility when routing never reaches OpenRouter;
+- joint acceptance criteria with PR 4 so the May 23 log cannot silently fall back.
+
+When `FRIENDY_STRICT_MODE=1`, fallback, schema failure, unknown executable routes, missing tools, and unexpected ambiguity must **fail loudly** — not degrade to rule-based routing that looks like success.
 
 ## Stack numbering
 
 | PR | Topic | Status |
 |----|--------|--------|
-| PR 9 | Strict-mode dogfooding + trace envelope | **This spec** |
+| PR 1–3 | Regression freeze, `list_people`, structured router | Done |
+| PR 4 | Pass state into LLM router | Executing |
+| PR 5 | Pending reminder policy | Plan ready |
+| PR 6–8 | Identity, delete/update, sensor | Spec only |
+| PR 9 | Strict-mode dogfooding + trace completion | **This spec** |
+| PR 10 | Durable conversation session | Spec only (deferred; see PR 10) |
 
-Builds on PR 3 router, PR 7 confirmation traces, PR 8 sensor reliability. Can land independently.
+**Relationship to prior strict-mode work:** baseline strict throws, `FriendyTrace`, runtime CLI wiring, and eval `strict-mode-fallback-rejection` already exist. PR 9 success criteria below list **deltas only** — do not re-implement merged behavior.
 
 ## Problem
 
-### Failure — silent fallback masks production issues
+### Failure — dogfood runs hid routing problems
 
-Current behavior:
+The May 23 log showed `"strictMode": false` and repeated:
 
-- `readFriendyStrictMode()` defaults **true** when env unset.
-- Evals and E2E often set `FRIENDY_STRICT_MODE=0` for deterministic runs.
-- Local dogfooding docs do not emphasize strict mode; engineers may run without OpenRouter and not notice fallback.
-- `FriendyTrace` omits several introspection fields the team expects when debugging router regressions.
+- `modelUsed: "rule-based-fallback"`
+- `intent: "search_memory"` on list/delete turns
+- `intent: "unknown"` at ~5ms for repair/duplicate questions (scope or pre-model short-circuit)
 
-Introspection / regression guidance (implementation-notes + eval `strict-mode-fallback-rejection`):
+That is not a model-quality failure. Engineers ran without strict dogfood discipline and could not see **why** Friendy never reached a state-aware LLM plan.
 
-> In test mode and dogfooding, fallback, unknown routes, schema failures, missing tools, and ambiguous unexpected state should fail.
+### Already fixed (do not redo in PR 9)
 
-Today traces include `routeSource`, `fallbackUsed`, `fallbackReason`, but not model metadata or active workflow kind uniformly.
+- `readFriendyStrictMode()` and `FriendyStrictModeError` codes
+- Strict-mode throw on fallback when strict is on (`openRouterInterpreter.ts`, `interpretedAgent.ts`)
+- Base `FriendyTrace` with `routeSource`, `fallbackUsed`, `fallbackReason`, `toolCalls`
+- `friendyRuntimeCli.ts` reads `FRIENDY_STRICT_MODE` into runtime config
+- Eval case `strict-mode-fallback-rejection`
+
+### Still missing (PR 9 scope)
+
+- Dogfood docs/commands that **require** strict mode for manual validation
+- Runtime startup warning when strict is explicitly disabled during dogfood
+- Trace fields: `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode`, `activeWorkflowKind`, `selectedTool`
+- Trace when **`decideMessageScope`** rejects before OpenRouter (deterministic out-of-scope at ~5ms)
+- Doctor hint when strict on but `OPENROUTER_API_KEY` missing
+- Joint transcript test with PR 4: May 23 turns must not use fallback when strict on + OpenRouter configured
 
 ## Goals
 
-- Document and standardize dogfooding command:
+- Document canonical dogfood commands:
 
 ```bash
 FRIENDY_STRICT_MODE=1 npm run agent:friendy
+FRIENDY_STRICT_MODE=1 npm run agent:spectrum
+npm run doctor:friendy
 ```
 
-- Extend `FriendyTrace` (and redacted runtime trace) with:
+- Extend `FriendyTrace` and redacted runtime traces with **delta fields**:
 
 ```ts
 {
-  routeSource: "llm" | "deterministic" | "fallback";
+  routeSource: "llm" | "deterministic" | "fallback" | "scope_boundary";
   fallbackUsed: boolean;
   fallbackReason?: string;
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: string;
-  activeWorkflowKind?: string;
-  selectedTool?: string;
+  activeWorkflowKind?: ActiveWorkflowKind;
+  selectedTool?: AgentToolCall | string;
+  scopeDecision?: "in_scope" | "out_of_scope" | "clarify";
 }
 ```
 
-- On fallback in strict mode: throw `FriendyStrictModeError` with code `FALLBACK_USED` (existing) and attach full trace — **already partially implemented**; extend to all entry points (`agent:friendy`, `agent:spectrum`, runtime inbound agent).
-- Strict mode failures must be visible in:
-  - CLI stderr / logged error
-  - compact interaction trace (`interpretedIntentJson.trace`)
-  - runtime trace file (`runtimeTrace.ts`) when sensor/runtime handles inbound messages
-- Map OpenRouter failures to `modelErrorCode` (`INVALID_ROUTE_SCHEMA`, `MODEL_INTERPRETATION_FAILED`, `MISSING_OPENROUTER_API_KEY`, etc.).
-- Set `modelResponseSchemaValid: false` on schema reject paths before throw.
-- Populate `activeWorkflowKind` from active frames (PR 6 duplicate, PR 7 pending delete/update, default pending contact).
-- Populate `selectedTool` with last executed or policy-selected tool for the turn.
-- Add doctor check hint when strict mode on but OpenRouter key missing.
+- Log one-line runtime warning when `FRIENDY_STRICT_MODE=0` (or `false`/`off`) and interpreted inbound agent is enabled — dogfood may hide routing failures.
+- Ensure strict failures surface in: stderr/logger, `interpretedIntentJson.trace`, and `runtimeTrace.ts`.
+- Add doctor check: strict enabled + missing OpenRouter key → warn before first message.
+- Add integration coverage with PR 4 envelope: May 23 transcript routes without `routeSource: "fallback"`.
 
 ## Non-Goals
 
+- Do not re-implement base strict-mode throws or `FriendyTrace` constructor (already merged).
 - Do not enable strict mode for all eval runs by default (keep `FRIENDY_STRICT_MODE=0` in `agentEvalRunner` except dedicated strict cases).
-- Do not change production Spectrum deployment defaults without explicit env.
-- Do not add new fallback paths.
-- Do not expose raw model prompts in traces (redaction rules unchanged).
+- Do not change production Spectrum defaults without explicit env.
+- Do not add new fallback paths or disable strict mode by default in code.
+- Do not `process.exit(1)` on first strict error — long-running sensor runtime stays up; fail the **turn** only.
+- Do not expose raw model prompts or secrets in traces.
 
 ## Design approaches considered
 
 ### Approach A — Logging only
 
-Log fallback warnings without failing.
+Log fallback warnings without failing when strict is on.
 
-| Pros | Cons |
-|------|------|
-| Never blocks demo | Violates introspection dogfooding rule |
+**Verdict:** Rejected — already solved by merged strict mode; PR 9 adds visibility, not softer failures.
 
-**Verdict:** Rejected for strict mode on.
+### Approach B — Trace completion + dogfood docs (recommended)
 
-### Approach B — Fail loud + enriched trace (recommended)
-
-Keep throws; enrich trace; document env for local runs.
-
-| Pros | Cons |
-|------|------|
-| Matches eval contract | Engineers must configure OpenRouter for happy path |
+Add delta trace fields, scope-boundary source, doctor/docs, joint PR 4 acceptance.
 
 **Verdict:** Recommended.
 
-### Approach C — Strict mode exits process on first error
+### Approach C — Force strict on in code always
 
-`process.exit(1)` from runtime CLI.
+Remove env toggle.
 
-| Pros | Cons |
-|------|------|
-| Very visible | Too aggressive for long-running sensor runtime |
+**Verdict:** Rejected — evals and fixtures still need `FRIENDY_STRICT_MODE=0`.
 
-**Verdict:** Reject global exit; throw on inbound turn, keep runtime alive with logged fatal for that message only.
+## Trace envelope (delta only)
 
-## Trace envelope
-
-### Type changes (`trace.ts`)
+Extend existing `FriendyTrace` in `trace.ts`:
 
 ```ts
+export type FriendyRouteSource =
+  | "llm"
+  | "deterministic"
+  | "fallback"
+  | "scope_boundary";
+
+export type ActiveWorkflowKind =
+  | "pending_contact_confirm"
+  | "duplicate_resolution"
+  | "pending_delete_confirm"
+  | "pending_update_confirm"
+  | "none";
+
 export type FriendyTrace = {
-  strictMode: boolean;
+  // existing fields...
   routeSource: FriendyRouteSource;
-  fallbackUsed: boolean;
-  fallbackReason?: string;
-  route?: FriendyRouteTrace;
-  policyDecision?: FriendyPolicyDecision;
-  suppressedPendingReminder?: boolean;
-  pendingReminderDecision?: string;  // PR 5 optional cross-ref
-  activeFrameId?: string;
-  activeCandidateId?: string;
-  activeMemoryId?: string;
-  activeWorkflowKind?: "pending_contact_confirm" | "duplicate_resolution" | "pending_delete_confirm" | "pending_update_confirm" | "none";
+  scopeDecision?: "in_scope" | "out_of_scope" | "clarify";
+  activeWorkflowKind?: ActiveWorkflowKind;
   selectedTool?: AgentToolCall | string;
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: string;
-  toolCalls: AgentToolCall[];
 };
 ```
 
-Population rules:
+Population rules (new or clarified):
 
 | Field | Source |
 |-------|--------|
-| `modelRequested` | OpenRouter config model id for turn |
-| `modelResponseSchemaValid` | `true` on successful Zod parse of model JSON; `false` before strict throw |
-| `modelErrorCode` | `FriendyStrictModeError.code` or OpenRouter error mapping |
-| `activeWorkflowKind` | Active conversation frame kind or `"none"` |
-| `selectedTool` | Primary tool for turn (last mutation tool, else lookup, else route default) |
-| `routeSource` | `"llm"` when OpenRouter succeeded; `"deterministic"` for frame/policy fast paths; `"fallback"` only when strict off |
+| `routeSource: "scope_boundary"` | `decideMessageScope` returned out-of-scope/clarify before interpreter |
+| `modelRequested` | OpenRouter config model id for the turn |
+| `modelResponseSchemaValid` | `true` after successful route JSON parse; `false` before strict throw on invalid schema |
+| `modelErrorCode` | `FriendyStrictModeError.code` or mapped OpenRouter failure |
+| `activeWorkflowKind` | Active session/frame: pending contact (now), duplicate (PR 6), delete/update confirm (PR 7) |
+| `selectedTool` | Primary tool executed or policy-mandated next tool (`lookup_memory_target`, etc.) |
 
-Redaction (`runtimeTrace.ts`): keep `targetDisplayName` hashed/redacted; model id allowed.
+Redaction unchanged: no raw contact methods; model id allowed.
 
-## Strict mode behavior matrix
+## Strict mode behavior matrix (reference — baseline merged)
 
 | Condition | strictMode=true | strictMode=false |
 |-----------|-----------------|------------------|
@@ -159,91 +169,120 @@ Redaction (`runtimeTrace.ts`): keep `targetDisplayName` hashed/redacted; model i
 | Required tool missing | throw `TOOL_NOT_AVAILABLE` | clarify / reject |
 | Unexpected ambiguity on mutation | throw `UNEXPECTED_AMBIGUITY` | clarify |
 
-Ensure `interpretedAgent.ts` checks run **before** attaching success trace.
+PR 9 adds tracing for scope-boundary and pre-interpreter deterministic paths without changing this matrix.
+
+## Scope-boundary tracing
+
+When `scopeBoundary.ts` returns out-of-scope before OpenRouter:
+
+- set `routeSource: "scope_boundary"`
+- set `scopeDecision: "out_of_scope"` (or `"clarify"`)
+- set `modelResponseSchemaValid: undefined` (interpreter not invoked)
+- include `activeWorkflowKind` from pending frame if present
+
+This explains May 23 turns like duplicate audit and conversation repair that showed `unknown` at ~5ms without looking like model failure.
 
 ## Dogfooding workflow
 
-### Commands
+### Required manual validation
 
 ```bash
-# Recommended local dogfood
+# 1. Verify env
+npm run doctor:friendy
+
+# 2. Foreground runtime (strict)
 FRIENDY_STRICT_MODE=1 npm run agent:friendy
 
-# Spectrum inbound with strict routing
+# 3. Spectrum inbound (strict)
 FRIENDY_STRICT_MODE=1 npm run agent:spectrum
-
-# Verify config before long run
-npm run doctor:friendy
 ```
 
-### Doctor additions (`friendyDoctor.ts`)
+### Runtime warning (new)
 
-When `FRIENDY_STRICT_MODE` enabled:
+On startup when inbound interpreted agent is enabled and `FRIENDY_STRICT_MODE` resolves to `false`:
 
-- Warn if `OPENROUTER_API_KEY` missing (strict runs will fail on first interpreted message).
-- Print effective model id.
+```text
+WARN: FRIENDY_STRICT_MODE is off — rule-based fallback and silent routing degradation are allowed. Use FRIENDY_STRICT_MODE=1 for dogfood.
+```
 
-### Runtime inbound agent
+### Doctor additions
 
-`friendyRuntimeCli.ts` already reads strict flag into config — ensure inbound Spectrum agent inherits same flag and trace builder.
+When strict mode is enabled:
+
+- warn if `OPENROUTER_API_KEY` is missing;
+- print effective `OPENROUTER_MODEL`;
+- print resolved `strictMode: true`.
+
+## Joint acceptance with PR 4
+
+After PR 4 lands, add one integration test (or eval fixture) replaying May 23 user turns with:
+
+- `FRIENDY_STRICT_MODE=1`
+- mocked OpenRouter returning correct structured intents
+- assertions per turn:
+
+| User message | Must NOT see | Must see |
+|--------------|--------------|----------|
+| List … testing friendy (bullets) | `fallback`, `search_memories` only | `list_people`, no stale pending append |
+| Duplicate people in contacts? | `unknown`, `scope_boundary` out-of-scope | `duplicate_audit`, `find_duplicate_people` |
+| Why still asking Testing 3 context? | `unknown` | `explain_agent_state` or `conversation_repair` |
+| Delete Unamed Contact | `search_memory` fallback | `delete_memory_request`, fuzzy confirm |
+| I met during testing Friendy | premature `confirm_candidate` when same-name unresolved | same/different or correct active candidate |
+
+Without PR 4 envelope, strict mode alone will still fail loudly — that is correct. PR 9 ensures failures are **visible**; PR 4 ensures the model gets state to route correctly.
 
 ## Testing strategy
 
 Unit:
 
-- `strictMode.test.ts` — env parsing (existing + new trace attachment).
-- `trace.test.ts` — schema validation for new fields.
+- `strictMode.test.ts` — unchanged baseline; add tests for new trace fields only
+- New or extended `trace.test.ts` — `scope_boundary` route source, workflow kind
 
 Integration:
 
-- `interpretedAgent.test.ts` — strict fallback throw includes enriched trace.
-- `openRouterInterpreter.test.ts` — schema invalid sets `modelResponseSchemaValid: false`.
-- `spectrumTransport.test.ts` — passes strict flag (existing test extended for new fields).
-- Eval: keep `strict-mode-fallback-rejection` green; add assertion on trace fields.
+- `openRouterInterpreter.test.ts` — `modelResponseSchemaValid: false` on schema reject
+- `interpretedAgent.test.ts` — scope-boundary trace shape
+- `spectrumTransport.test.ts` — strict flag + delta fields in compact log
+- Keep eval `strict-mode-fallback-rejection` green
 
 Commands:
 
 ```bash
 npm test -- src/relationship/strictMode.test.ts
-npm test -- src/relationship/trace.ts
+npm test -- src/relationship/trace.test.ts
 npm test -- src/relationship/interpretedAgent.test.ts
 npm test -- src/relationship/openRouterInterpreter.test.ts
 npm run eval:agent
 ```
 
-Manual dogfood checklist:
-
-1. Run with strict on + valid OpenRouter key → trace shows `routeSource: "llm"`, `modelResponseSchemaValid: true`.
-2. Run with strict on + invalid key → turn fails loud; trace includes `fallbackUsed: true`, `modelErrorCode`.
-3. Trigger deterministic pending-contact frame → `routeSource: "deterministic"`, `activeWorkflowKind: "pending_contact_confirm"`.
-
 ## Documentation updates
 
-- `REFERENCE.md` — dogfooding command block.
-- `docs/agent-handoff.md` — strict mode as default for manual validation.
-- `implementation-notes.html` — trace envelope decision.
+- `REFERENCE.md` — dogfood command block + strict mode note
+- `docs/agent-handoff.md` — manual validation requires strict on
+- `implementation-notes.html` — PR 9 delta vs merged strict-mode PR
 
 ## Boundaries
 
-- **Always:** fail loud on fallback when strict on; redact secrets in traces.
-- **Ask first:** changing default strict mode for CI eval jobs.
-- **Never:** silently swallow `FriendyStrictModeError` in dogfood paths.
+- **Always:** fail loud on fallback when strict on (existing); redact secrets
+- **Ask first:** changing CI eval default strict mode
+- **Never:** re-implement merged strict-mode core; silently swallow `FriendyStrictModeError`
 
-## Success criteria
+## Success criteria (delta only)
 
-- [ ] Trace includes all fields in envelope above for interpreted turns.
-- [ ] `FRIENDY_STRICT_MODE=1 npm run agent:friendy` documented and works with OpenRouter configured.
-- [ ] Fallback paths throw in strict mode with populated `modelErrorCode` / `fallbackReason`.
-- [ ] `activeWorkflowKind` and `selectedTool` populated for pending contact, duplicate (PR 6), delete confirm (PR 7).
-- [ ] `strict-mode-fallback-rejection` eval passes with trace assertions.
-- [ ] Doctor warns when strict mode + missing API key.
+- [ ] `FriendyTrace` includes `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode`, `activeWorkflowKind`, `selectedTool`, and `scopeDecision` where applicable.
+- [ ] `routeSource: "scope_boundary"` recorded when `decideMessageScope` blocks before OpenRouter.
+- [ ] Runtime logs warning when strict is explicitly off and inbound interpreted agent runs.
+- [ ] Doctor warns when strict on + missing `OPENROUTER_API_KEY`.
+- [ ] `REFERENCE.md` and handoff doc list `FRIENDY_STRICT_MODE=1` dogfood commands.
+- [ ] Joint May 23 transcript test passes with PR 4 + strict on (no fallback on listed turns).
+- [ ] Existing eval `strict-mode-fallback-rejection` still passes (no regression).
 
 ## Dependencies
 
-- `src/relationship/strictMode.ts`
-- `src/relationship/trace.ts`
-- `src/relationship/openRouterInterpreter.ts`
-- `src/relationship/interpretedAgent.ts`
-- `src/relationship/runtime/runtimeTrace.ts`
-- `docs/superpowers/specs/2026-05-23-structured-intent-router-design.md`
-- Eval case `strict-mode-fallback-rejection` in `agentEvalRunner.ts`
+- Merged: `src/relationship/strictMode.ts`, `src/relationship/trace.ts`, `openRouterInterpreter.ts`, `interpretedAgent.ts`, `runtimeTrace.ts`, `friendyRuntimeCli.ts`
+- In flight: `docs/superpowers/specs/2026-05-23-pass-state-into-llm-router-design.md` (PR 4)
+- Future trace consumers: PR 5 (`pendingReminderDecision`), PR 6/7 (`activeWorkflowKind` values)
+
+## Implementation note
+
+Create plan `docs/superpowers/plans/2026-05-23-strict-mode-dogfooding-trace.md` as a **delta plan** referencing the merged strict-mode plan — task list should skip already-completed parser/error/trace baseline work.
