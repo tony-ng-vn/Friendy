@@ -23,6 +23,62 @@ export type MemorySearchResult = {
   reason: string;
 };
 
+export type ListPeopleSource = "friendy_memory" | "apple_contacts" | "both";
+
+export type ListPeopleRequest = {
+  source: ListPeopleSource;
+  limit: number;
+  cursor?: string;
+  dedupeByPerson?: boolean;
+  includePending?: boolean;
+};
+
+export type InternalListPeopleRequest = ListPeopleRequest & {
+  filter?: {
+    rawText?: string;
+    exactTerms?: string[];
+    eventName?: string;
+    topic?: string;
+    tags?: string[];
+  };
+};
+
+export type ListedPersonMemory = {
+  memoryId: string;
+  summary: string;
+};
+
+export type ListedPerson = {
+  personId?: string;
+  displayName: string;
+  memories: ListedPersonMemory[];
+  duplicateGroupId?: string;
+  pendingCandidateIds?: string[];
+};
+
+export type DuplicateGroup = {
+  duplicateGroupId: string;
+  reason: "same_display_name" | "similar_display_name" | "same_contact_method" | "pending_matches_saved";
+  displayNames: string[];
+  memoryIds: string[];
+  pendingCandidateIds: string[];
+};
+
+export type PendingCandidateSummary = {
+  candidateId: string;
+  displayName: string;
+  status: "pending" | "prompted";
+};
+
+export type ListPeopleResult = {
+  people: ListedPerson[];
+  duplicateGroups: DuplicateGroup[];
+  pendingCandidates: PendingCandidateSummary[];
+  appliedFilterLabel?: string;
+  nextCursor?: string;
+  unsupportedSources?: ListPeopleSource[];
+};
+
 type SearchQueryAnalysis = {
   terms: string[];
   isEventWide: boolean;

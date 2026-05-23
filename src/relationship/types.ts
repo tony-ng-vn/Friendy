@@ -212,6 +212,7 @@ export type OutboundAgentMessage = {
  * search, manual capture). Keeps behavior testable and auditable.
  */
 export type AgentToolCall =
+  | "list_people"
   | "search_memories"
   | "list_pending_candidates"
   | "list_candidate_event_matches"

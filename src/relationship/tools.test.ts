@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools, normalizeMemorySearchQuery } from "./tools";
-import type { RelationshipMemory } from "./types";
+import type { ContactCandidateDetected, RelationshipMemory } from "./types";
 
 describe("relationship tools", () => {
   it("lists and confirms pending candidates through bounded tools", () => {
@@ -206,6 +206,157 @@ describe("relationship tools", () => {
     expect(results[0].reason).toContain("fts");
   });
 
+  it("lists Friendy memory as structured people without using search results", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
+      memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true
+    });
+
+    expect(result.people).toEqual([
+      {
+        displayName: "Testing 12",
+        memories: [{ memoryId: "memory_testing_12", summary: "Met them during testing Friendy" }]
+      },
+      {
+        displayName: "Sarah Fan",
+        memories: [{ memoryId: "memory_sarah_fan", summary: "community lead at Photon Residency II" }]
+      }
+    ]);
+    expect(result.duplicateGroups).toEqual([]);
+    expect(result.pendingCandidates).toEqual([]);
+  });
+
+  it("filters listed people by meaningful Friendy terms", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
+      memory("Testing 3", "testing Friendy", "I met testing 3 during testing Friendy"),
+      memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      filter: {
+        rawText: "List me in bullet of all people I met testing friendy",
+        exactTerms: ["testing", "friendy"],
+        tags: ["testing", "friendy"]
+      }
+    });
+
+    expect(result.appliedFilterLabel).toBe("testing friendy");
+    expect(result.people.map((person) => person.displayName)).toEqual(["Testing 12", "Testing 3"]);
+    expect(result.people.flatMap((person) => person.memories.map((item) => item.memoryId))).toEqual([
+      "memory_testing_12",
+      "memory_testing_3"
+    ]);
+  });
+
+  it("groups exact duplicate display names without destructive merging", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 1", "testing Friendy", "Testing Friendy"),
+      { ...memory("Testing 1", "", "im just testing for friendy at the moment"), id: "memory_testing_1_retry" }
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      filter: { exactTerms: ["testing", "friendy"] }
+    });
+
+    expect(result.people).toHaveLength(1);
+    expect(result.people[0]).toMatchObject({
+      displayName: "Testing 1",
+      duplicateGroupId: "duplicate_testing_1",
+      memories: [
+        { memoryId: "memory_testing_1", summary: "Testing Friendy" },
+        { memoryId: "memory_testing_1_retry", summary: "im just testing for friendy at the moment" }
+      ]
+    });
+    expect(result.duplicateGroups).toEqual([
+      {
+        duplicateGroupId: "duplicate_testing_1",
+        reason: "same_display_name",
+        displayNames: ["Testing 1"],
+        memoryIds: ["memory_testing_1", "memory_testing_1_retry"],
+        pendingCandidateIds: []
+      }
+    ]);
+  });
+
+  it("links pending candidates to same-name saved people when requested", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [memory("Testing 3", "testing Friendy", "I met testing 3 during testing Friendy")]
+    });
+    const tools = createRelationshipTools(repo);
+    const pending = tools.create_contact_candidate(candidate("Testing 3", "contact_testing_3_pending"));
+    repo.markCandidatePrompted(pending.id, "interaction_prompt_testing_3", {
+      spaceId: "imessage_testing",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      includePending: true
+    });
+
+    expect(result.pendingCandidates).toEqual([
+      {
+        candidateId: pending.id,
+        displayName: "Testing 3",
+        status: "prompted"
+      }
+    ]);
+    expect(result.people[0].pendingCandidateIds).toEqual([pending.id]);
+    expect(result.duplicateGroups).toEqual([
+      {
+        duplicateGroupId: "duplicate_testing_3",
+        reason: "pending_matches_saved",
+        displayNames: ["Testing 3"],
+        memoryIds: ["memory_testing_3"],
+        pendingCandidateIds: [pending.id]
+      }
+    ]);
+  });
+
+  it("marks Apple Contacts sources unsupported without pretending to list them", () => {
+    const tools = createToolsWithMemories([memory("Testing 12", "testing Friendy", "Met them during testing Friendy")]);
+
+    expect(
+      tools.list_people(fixtureUser.id, {
+        source: "apple_contacts",
+        limit: 20,
+        dedupeByPerson: true
+      })
+    ).toEqual({
+      people: [],
+      duplicateGroups: [],
+      pendingCandidates: [],
+      unsupportedSources: ["apple_contacts"]
+    });
+
+    expect(
+      tools.list_people(fixtureUser.id, {
+        source: "both",
+        limit: 20,
+        dedupeByPerson: true
+      })
+    ).toMatchObject({
+      people: [{ displayName: "Testing 12" }],
+      unsupportedSources: ["apple_contacts"]
+    });
+  });
+
   it("updates a memory through a bounded tool and records a revision", () => {
     const { repo, tools, memory } = seededMemoryHarness("building recruiting agents");
 
@@ -297,6 +448,16 @@ function seededMemoryHarness(contextNote: string) {
   const memory = tools.confirm_candidate(fixtureUser.id, candidate.id, contextNote, fixtureShortEvent.id);
 
   return { repo, tools, memory };
+}
+
+function candidate(displayName: string, contactIdentifier: string): ContactCandidateDetected {
+  return {
+    ...fixtureDetectedContact,
+    displayName,
+    contactIdentifier,
+    phoneNumbers: ["+15550101903"],
+    emails: []
+  };
 }
 
 function memory(displayName: string, eventTitle: string, contextNote: string): RelationshipMemory {
