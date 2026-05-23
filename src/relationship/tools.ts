@@ -275,8 +275,7 @@ function listPeopleFromRepository(
 
   const memories = repo
     .listMemories(userId)
-    .filter((memory) => memoryMatchesListFilter(memory, request.filter))
-    .slice(0, Math.max(0, request.limit));
+    .filter((memory) => memoryMatchesListFilter(memory, request.filter));
   const pendingCandidates = request.includePending
     ? repo
         .listPendingCandidates(userId)
@@ -288,14 +287,18 @@ function listPeopleFromRepository(
         }))
     : [];
 
-  const grouped = request.dedupeByPerson === false ? groupMemoriesIndividually(memories) : groupMemoriesByPerson(memories);
-  const duplicateGroups = buildDuplicateGroups(grouped, pendingCandidates);
-  const people = grouped.map((group) => {
+  const grouped =
+    request.dedupeByPerson === false
+      ? groupMemoriesIndividually(memories)
+      : groupMemoriesByPerson(memories, meaningfulListTerms(request.filter));
+  const limitedGroups = grouped.slice(0, Math.max(0, request.limit));
+  const duplicateGroups = buildDuplicateGroups(limitedGroups, pendingCandidates);
+  const people = limitedGroups.map((group) => {
     const duplicateGroup = duplicateGroups.find((item) =>
       item.memoryIds.some((memoryId) => group.memories.some((memory) => memory.id === memoryId))
     );
     const pendingCandidateIds = pendingCandidates
-      .filter((candidate) => normalizedPersonName(candidate.displayName) === group.key)
+      .filter((candidate) => normalizedPersonName(candidate.displayName, group.contextTerms) === group.key)
       .map((candidate) => candidate.candidateId);
 
     return {
@@ -321,6 +324,7 @@ function listPeopleFromRepository(
 type MemoryGroup = {
   key: string;
   displayName: string;
+  contextTerms: Set<string>;
   memories: RelationshipMemory[];
 };
 
@@ -328,24 +332,29 @@ function groupMemoriesIndividually(memories: RelationshipMemory[]): MemoryGroup[
   return memories.map((memory) => ({
     key: memory.id,
     displayName: memory.displayName,
+    contextTerms: new Set<string>(),
     memories: [memory]
   }));
 }
 
-function groupMemoriesByPerson(memories: RelationshipMemory[]): MemoryGroup[] {
+function groupMemoriesByPerson(memories: RelationshipMemory[], filterTerms: string[]): MemoryGroup[] {
   const groups = new Map<string, MemoryGroup>();
+  const sharedContextTerms = sharedMemoryContextTerms(memories);
 
   for (const memory of memories) {
-    const key = normalizedPersonName(memory.displayName);
+    const contextTerms = memoryGroupingContextTerms(memory, filterTerms, sharedContextTerms);
+    const key = normalizedPersonName(memory.displayName, contextTerms);
     const existing = groups.get(key);
     if (existing) {
       existing.memories.push(memory);
+      contextTerms.forEach((term) => existing.contextTerms.add(term));
       continue;
     }
 
     groups.set(key, {
       key,
-      displayName: baseDisplayName(memory.displayName),
+      displayName: baseDisplayName(memory.displayName, contextTerms),
+      contextTerms,
       memories: [memory]
     });
   }
@@ -357,7 +366,9 @@ function buildDuplicateGroups(groups: MemoryGroup[], pendingCandidates: PendingC
   const duplicateGroups: DuplicateGroup[] = [];
 
   for (const group of groups) {
-    const matchingPending = pendingCandidates.filter((candidate) => normalizedPersonName(candidate.displayName) === group.key);
+    const matchingPending = pendingCandidates.filter(
+      (candidate) => normalizedPersonName(candidate.displayName, group.contextTerms) === group.key
+    );
     const displayNames = uniqueStrings([
       ...group.memories.map((memory) => memory.displayName),
       ...matchingPending.map((candidate) => candidate.displayName)
@@ -393,10 +404,10 @@ function memoryMatchesListFilter(memory: RelationshipMemory, filter: InternalLis
     ...(memory.tags ?? []),
     buildMemorySearchDocument(memory).text
   ]
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
+  const tokens = normalizedListTokens(document);
 
-  return terms.every((term) => document.includes(term));
+  return terms.every((term) => tokens.has(term));
 }
 
 function meaningfulListTerms(filter: InternalListPeopleRequest["filter"]): string[] {
@@ -432,16 +443,66 @@ function summarizeListedMemory(memory: RelationshipMemory): string {
   return context || event || "saved in Friendy memory";
 }
 
-function normalizedPersonName(displayName: string): string {
-  return baseDisplayName(displayName)
+function normalizedPersonName(displayName: string, contextTerms: Set<string> = new Set()): string {
+  return baseDisplayName(displayName, contextTerms)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
 }
 
-function baseDisplayName(displayName: string): string {
-  return displayName.replace(/\s+from\s+.+$/i, "").trim();
+function baseDisplayName(displayName: string, contextTerms: Set<string> = new Set()): string {
+  const match = displayName.match(/^(.*?)\s+from\s+(.+)$/i);
+  if (!match) {
+    return displayName.trim();
+  }
+
+  const [, baseName, suffix] = match;
+  const suffixTerms = normalizedListTokens(suffix);
+  const shouldStripContext = [...suffixTerms].some((term) => contextTerms.has(term));
+
+  return shouldStripContext ? baseName.trim() : displayName.trim();
+}
+
+function memoryGroupingContextTerms(
+  memory: RelationshipMemory,
+  filterTerms: string[],
+  sharedContextTerms: Set<string>
+): Set<string> {
+  const terms = new Set(filterTerms);
+  for (const term of memoryContextTokens(memory)) {
+    if (sharedContextTerms.has(term)) {
+      terms.add(term);
+    }
+  }
+  return terms;
+}
+
+function sharedMemoryContextTerms(memories: RelationshipMemory[]): Set<string> {
+  const counts = new Map<string, number>();
+
+  for (const memory of memories) {
+    for (const term of memoryContextTokens(memory)) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return new Set([...counts].filter(([, count]) => count > 1).map(([term]) => term));
+}
+
+function memoryContextTokens(memory: RelationshipMemory): Set<string> {
+  return normalizedListTokens([memory.eventTitle ?? "", memory.contextNote, ...(memory.tags ?? [])].join(" "));
+}
+
+function normalizedListTokens(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .split(/\s+/)
+      .flatMap((term) => term.split(/[^a-z0-9-]+/))
+      .map((term) => term.trim())
+      .filter(Boolean)
+  );
 }
 
 function duplicateGroupId(key: string): string {

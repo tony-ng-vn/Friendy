@@ -288,6 +288,44 @@ describe("relationship tools", () => {
     expect(result.people).toHaveLength(2);
   });
 
+  it("applies list limit after grouping duplicate memories into people", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 1", "testing Friendy", "Testing Friendy"),
+      { ...memory("Testing 1", "testing Friendy", "retry during testing Friendy"), id: "memory_testing_1_retry" },
+      memory("Testing 2", "testing Friendy", "second person during testing Friendy")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 2,
+      dedupeByPerson: true,
+      filter: { exactTerms: ["testing", "friendy"] }
+    });
+
+    expect(result.people.map((person) => person.displayName)).toEqual(["Testing 1", "Testing 2"]);
+    expect(result.people[0].memories.map((item) => item.memoryId)).toEqual([
+      "memory_testing_1",
+      "memory_testing_1_retry"
+    ]);
+    expect(result.duplicateGroups.map((group) => group.duplicateGroupId)).toEqual(["duplicate_testing_1"]);
+  });
+
+  it("filters listed people by whole normalized tokens instead of substrings", () => {
+    const tools = createToolsWithMemories([
+      memory("Art Lee", "Gallery opening", "artist building installations"),
+      memory("Maya", "Cartwheel Summit", "startup founder")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      filter: { exactTerms: ["art"] }
+    });
+
+    expect(result.people.map((person) => person.displayName)).toEqual(["Art Lee"]);
+  });
+
   it("groups exact duplicate display names without destructive merging", () => {
     const tools = createToolsWithMemories([
       memory("Testing 1", "testing Friendy", "Testing Friendy"),
@@ -319,6 +357,22 @@ describe("relationship tools", () => {
         pendingCandidateIds: []
       }
     ]);
+  });
+
+  it("does not group unrelated from-suffix display names without shared context", () => {
+    const tools = createToolsWithMemories([
+      memory("Alex from Sales", "Pipeline Review", "account executive"),
+      memory("Alex from Support", "Customer Review", "support lead")
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true
+    });
+
+    expect(result.people.map((person) => person.displayName)).toEqual(["Alex from Sales", "Alex from Support"]);
+    expect(result.duplicateGroups).toEqual([]);
   });
 
   it("links pending candidates to same-name saved people when requested", () => {
