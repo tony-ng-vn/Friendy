@@ -82,7 +82,7 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id).map((interaction) => interaction.toolCalls)).toEqual([[], [], []]);
     expect(started.trace).toMatchObject({
-      strictMode: false,
+      strictMode: true,
       routeSource: "deterministic",
       fallbackUsed: false,
       policyDecision: "allow",
@@ -90,7 +90,7 @@ describe("interpreted relationship agent", () => {
     });
     expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
       trace: {
-        strictMode: false,
+        strictMode: true,
         routeSource: "deterministic",
         fallbackUsed: false,
         policyDecision: "allow",
@@ -254,6 +254,7 @@ describe("interpreted relationship agent", () => {
         confidence: 0.82,
         target: { displayName: "Maya" }
       }),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -325,6 +326,7 @@ describe("interpreted relationship agent", () => {
           topK: 10
         }
       }),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -447,6 +449,51 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("I still need context for Testing 3");
+  });
+
+  it("normalizes search_memory list_people mode to the list_people tool", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memoryFixture("Testing 12", "Met them during testing Friendy"),
+          id: "memory_testing_12",
+          eventTitle: "testing Friendy",
+          tags: ["testing", "friendy"]
+        },
+        {
+          ...memoryFixture("Sarah Fan", "community lead at Photon Residency II"),
+          id: "memory_sarah",
+          eventTitle: "Photon Residency II",
+          tags: ["photon", "residency"]
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        confidence: 0.92,
+        query: "testing friendy",
+        search: {
+          mode: "list_people",
+          semanticQuery: "people I met testing Friendy",
+          exactTerms: ["testing", "friendy"],
+          topK: 20
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List people I met testing friendy"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.outbound.text).toContain("Testing 12");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
   });
 
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
@@ -684,6 +731,7 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -808,6 +856,7 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
@@ -936,15 +985,18 @@ describe("interpreted relationship agent", () => {
       repo,
       tools,
       interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
       now: () => "2026-05-20T12:00:00.000Z",
       timezone: "America/Los_Angeles"
     });
 
     const result = await agent.handleMessage(inbound("Just give me all the people in my contact so far"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
-    expect(result.outbound.text).toContain("I still need context for Unnamed Contact");
+    expect(result.outbound.text).toContain("I also see pending contacts not saved as memories yet:");
+    expect(result.outbound.text).toContain("Unnamed Contact");
+    expect(result.outbound.text).not.toContain("I still need context for Unnamed Contact");
     expect(result.outbound.text).not.toContain("saved Unnamed Contact");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 2"]);
     expect(repo.listPendingCandidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
@@ -957,8 +1009,8 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("What person do I know so far?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
-    expect(result.outbound.text).toContain("don't have any saved people");
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.outbound.text).toContain("don't have any");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
@@ -970,7 +1022,7 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("Do you know anyone in my contact?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
     expect(result.outbound.text).toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
@@ -1346,7 +1398,7 @@ function createTestAgent(options: { strictMode?: boolean } = {}) {
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    strictMode: options.strictMode,
+    strictMode: options.strictMode ?? false,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });
@@ -1414,7 +1466,7 @@ function createTestAgentWithMemories(memories: RelationshipMemory[], options: { 
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    strictMode: options.strictMode,
+    strictMode: options.strictMode ?? false,
     now: () => "2026-05-20T12:00:00.000Z",
     timezone: "America/Los_Angeles"
   });

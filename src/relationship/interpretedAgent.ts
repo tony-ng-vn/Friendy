@@ -135,7 +135,7 @@ export function createInterpretedRelationshipAgent({
   tools,
   interpreter,
   onboarding,
-  strictMode = false,
+  strictMode = true,
   now = () => new Date().toISOString(),
   timezone = "UTC"
 }: InterpretedRelationshipAgentOptions) {
@@ -666,8 +666,12 @@ function requiredToolForInterpretation(interpretation: MessageInterpretation): A
     return "list_people";
   }
 
-  if (interpretation.intent === "search_memory") {
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode !== "list_people") {
     return "search_memories";
+  }
+
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode === "list_people") {
+    return "list_people";
   }
 
   if (interpretation.intent === "capture_memory") {
@@ -1353,6 +1357,10 @@ function executeInterpretation(
     return captureMemories(message, interpretation, tools, toolCalls);
   }
 
+  if (interpretation.intent === "search_memory" && interpretation.search?.mode === "list_people") {
+    return listPeople(message, interpretation, tools, toolCalls);
+  }
+
   if (interpretation.intent === "search_memory") {
     return searchMemories(message, interpretation, tools, toolCalls);
   }
@@ -1461,7 +1469,7 @@ function shouldRemindPendingContact(
   pendingState: ConversationState,
   interpretation: MessageInterpretation
 ): pendingState is ConversationState & { activeFrame: PendingContactContextFrame } {
-  if (interpretation.intent === "list_people") {
+  if (interpretation.intent === "list_people" || interpretation.search?.mode === "list_people") {
     return false;
   }
 

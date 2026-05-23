@@ -411,7 +411,12 @@ function memoryMatchesListFilter(memory: RelationshipMemory, filter: InternalLis
 }
 
 function meaningfulListTerms(filter: InternalListPeopleRequest["filter"]): string[] {
-  const rawTerms = [...(filter?.exactTerms ?? []), ...(filter?.tags ?? [])];
+  const rawTerms = [
+    ...(filter?.exactTerms ?? []),
+    ...(filter?.tags ?? []),
+    filter?.eventName ?? "",
+    filter?.topic ?? ""
+  ];
   const generic = new Set(["all", "bullet", "contacts", "contact", "list", "met", "people", "person"]);
   const seen = new Set<string>();
 

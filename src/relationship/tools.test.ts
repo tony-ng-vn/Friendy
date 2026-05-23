@@ -271,6 +271,35 @@ describe("relationship tools", () => {
     ]);
   });
 
+  it("filters listed people by structured topic and event fields", () => {
+    const tools = createToolsWithMemories([
+      memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
+      memory("Sarah Fan", "Photon Residency II", "community lead at Photon Residency II")
+    ]);
+
+    const byTopic = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      filter: {
+        topic: "testing friendy"
+      }
+    });
+    const byEvent = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true,
+      filter: {
+        eventName: "Photon Residency II"
+      }
+    });
+
+    expect(byTopic.people.map((person) => person.displayName)).toEqual(["Testing 12"]);
+    expect(byTopic.appliedFilterLabel).toBe("testing friendy");
+    expect(byEvent.people.map((person) => person.displayName)).toEqual(["Sarah Fan"]);
+    expect(byEvent.appliedFilterLabel).toBe("photon residency ii");
+  });
+
   it("limits listed Friendy memory results", () => {
     const tools = createToolsWithMemories([
       memory("Testing 12", "testing Friendy", "Met them during testing Friendy"),
