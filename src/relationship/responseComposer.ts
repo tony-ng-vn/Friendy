@@ -104,19 +104,30 @@ export function composeListPeopleReply({ result, preferBullets = false }: ListPe
     return "I can list people from Friendy memory right now. Apple Contacts listing is not connected yet.";
   }
 
-  if (result.people.length === 0) {
-    return "I don't have any matching people in Friendy memory yet.";
-  }
+  const sections: string[] = [];
 
-  const heading = result.appliedFilterLabel
-    ? `I remember these people from ${result.appliedFilterLabel}:`
-    : `I remember ${result.people.length === 1 ? "this person" : "these people"} in Friendy memory:`;
-  const peopleLines = result.people.map((person) => formatListedPerson(person, preferBullets));
-  const sections = [heading, "", ...peopleLines];
+  if (result.people.length === 0) {
+    sections.push(
+      result.appliedFilterLabel
+        ? "I don't have any matching people in Friendy memory yet."
+        : "I don't have any saved people in Friendy memory yet."
+    );
+  } else {
+    const heading = result.appliedFilterLabel
+      ? `I remember these people from ${result.appliedFilterLabel}:`
+      : `I remember ${result.people.length === 1 ? "this person" : "these people"} in Friendy memory:`;
+    const peopleLines = result.people.map((person) => formatListedPerson(person, preferBullets));
+    sections.push(heading, "", ...peopleLines);
+  }
 
   const duplicateLines = result.duplicateGroups.map((group) => formatDuplicateGroup(group)).filter(Boolean);
   if (duplicateLines.length > 0) {
     sections.push("", "I also see possible duplicates:", "", ...duplicateLines);
+  }
+
+  const pendingLines = result.pendingCandidates.map((candidate) => formatPendingCandidate(candidate, preferBullets));
+  if (pendingLines.length > 0) {
+    sections.push("", "I also see pending contacts not saved as memories yet:", "", ...pendingLines);
   }
 
   if (result.unsupportedSources?.includes("apple_contacts")) {
@@ -141,6 +152,11 @@ function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]
   }
 
   return `${prefix}${group.displayNames.join(" / ")} may be the same person`;
+}
+
+function formatPendingCandidate(candidate: ListPeopleResult["pendingCandidates"][number], preferBullets: boolean): string {
+  const prefix = preferBullets ? "- " : "";
+  return `${prefix}${candidate.displayName}`;
 }
 
 /** Formats a no-match reply that asks for one more useful clue. */

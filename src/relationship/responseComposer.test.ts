@@ -111,11 +111,40 @@ describe("relationship response composer", () => {
       preferBullets: true
     });
 
-    expect(reply).toContain("I remember these people from testing friendy:");
-    expect(reply).toContain("- Testing 12 - Met them during testing Friendy");
-    expect(reply).toContain("- Testing 1 - Testing Friendy");
-    expect(reply).toContain("I also see possible duplicates:");
-    expect(reply).toContain("- Testing 1 appears twice");
+    expect(reply).toBe(
+      [
+        "I remember these people from testing friendy:",
+        "",
+        "- Testing 12 - Met them during testing Friendy",
+        "- Testing 1 - Testing Friendy",
+        "",
+        "I also see possible duplicates:",
+        "",
+        "- Testing 1 appears twice"
+      ].join("\n")
+    );
+    expectNoInternalLanguage(reply);
+  });
+
+  it("formats pending candidates without exposing candidate internals", () => {
+    const reply = composeListPeopleReply({
+      result: listPeopleResult({
+        people: [],
+        pendingCandidates: [{ candidateId: "candidate_testing_3", displayName: "Testing 3", status: "prompted" }]
+      }),
+      preferBullets: true
+    });
+
+    expect(reply).toBe(
+      [
+        "I don't have any saved people in Friendy memory yet.",
+        "",
+        "I also see pending contacts not saved as memories yet:",
+        "",
+        "- Testing 3"
+      ].join("\n")
+    );
+    expect(reply).not.toContain("I still need context");
     expectNoInternalLanguage(reply);
   });
 
@@ -185,4 +214,9 @@ function expectNoInternalLanguage(reply: string) {
   expect(reply).not.toContain("Your saved note");
   expect(reply).not.toContain("manual contact");
   expect(reply).not.toContain("score");
+  expect(reply).not.toContain("memory_");
+  expect(reply).not.toContain("duplicate_");
+  expect(reply).not.toContain("candidate_");
+  expect(reply).not.toContain("same_display_name");
+  expect(reply).not.toContain("pending_matches_saved");
 }
