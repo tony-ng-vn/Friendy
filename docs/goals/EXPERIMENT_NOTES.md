@@ -1,3 +1,9 @@
+# Friendy Regression Freeze Tests Notes
+
+- 2026-05-23: This task is tests-only. The new eval cases are intentionally RED because they freeze live failures before behavior changes.
+- 2026-05-23: Do not make production changes in the regression-freeze task. The next implementation goal should make the RED cases pass.
+- 2026-05-23: Current RED summary is 36/41 eval cases passing. Failures are the five new regression-freeze cases only.
+
 # Strict Mode and Trace Envelope Notes
 
 - 2026-05-23: Strict mode is intentionally opt-in. Non-strict local/runtime flows still tolerate model fallback, but every turn now records whether fallback was used.

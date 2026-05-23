@@ -1,3 +1,15 @@
+# Friendy Regression Freeze Tests
+
+## RED
+
+- Date: 2026-05-23
+- Goal source: `docs/superpowers/specs/2026-05-23-friendy-regression-freeze-design.md`.
+- Added tests-only eval cases for filtered bullet list routing, duplicate audit, conversation repair, fuzzy delete confirmation, and same-name pending contact disambiguation.
+- Focused command: `npm test -- src/relationship/evals/agentEvalRunner.test.ts`.
+- Eval command: `npm run eval:agent`.
+- Observed status: 36/41 eval cases pass. The five new regression-freeze cases fail for the expected behavior gaps.
+- Expected status: RED until follow-up implementation adds explicit list/filter routing, duplicate audit tooling, state repair routing, fuzzy delete confirmation, and same-name pending contact disambiguation.
+
 # Strict Mode and Trace Envelope Experiments
 
 ## Baseline / RED

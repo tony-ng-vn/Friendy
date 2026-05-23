@@ -6,6 +6,12 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Friendy Regression Freeze Tests (2026-05-23)</h2>
+    <ul>
+      <li>Added tests-only eval coverage for five live failure classes: filtered bullet list routing, duplicate audit, conversation repair, fuzzy delete confirmation, and same-name pending contact disambiguation.</li>
+      <li>This is intentionally RED coverage. The tests encode expected future behavior and should fail until the follow-up implementation goal adds the required route/tool behavior.</li>
+      <li>No production routing, repository, tool, Apple Contacts, retrieval, or response-composition behavior changed in this task.</li>
+    </ul>
     <h2>Strict Mode and Trace Envelope (2026-05-23)</h2>
     <ul>
       <li>Added opt-in <code>FRIENDY_STRICT_MODE</code> parsing with a typed <code>FriendyStrictModeError</code>. Supported truthy values are <code>1</code>, <code>true</code>, <code>yes</code>, and <code>on</code>.</li>
