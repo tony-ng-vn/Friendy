@@ -8,11 +8,11 @@ This PR gives the router enough state to choose the right `FriendyIntent` withou
 
 ## Assumptions
 
-- PR 3's `FriendyIntent` vocabulary is the canonical route vocabulary for this work.
+- PR 3's current `MessageInterpretation["intent"]` vocabulary is the canonical route vocabulary for this work. Do not introduce new intent strings in PR 4 unless the schema and policy validator are migrated in the same PR.
 - `explain_agent_state` and `conversation_repair` remain first-class routes, not aliases for `clarify` or `unsupported`.
 - The LLM router still returns validated structured JSON through `MessageInterpretation`; deterministic tools still execute all reads and mutations.
 - State sent to OpenRouter must be compact and privacy-minimized. It may include display names and ids needed for routing, but not raw full contact payloads, phone numbers, emails, or unbounded message history.
-- This spec covers the interpreted/OpenRouter path first. The rule-based fallback should accept the new interpreter input shape but can use a smaller subset.
+- This spec covers the interpreted/OpenRouter path first. Production fallback remains disallowed in strict mode; the rule-based interpreter is only a test/local-fixture interpreter and should accept the new interpreter input shape without becoming a live routing fallback.
 
 ## Problem
 
@@ -117,7 +117,8 @@ type RouterInputEnvelope = {
   userText: string;
   conversationState: RouterConversationState;
   domainStateSummary: RouterDomainStateSummary;
-  availableTools: RouterAvailableTool[];
+  availableTools: AgentToolCall[];
+  availableRouteCapabilities: RouterRouteCapability[];
 };
 ```
 
@@ -127,9 +128,10 @@ type RouterInputEnvelope = {
 type RouterConversationState = {
   activeWorkflow?: {
     kind: "pending_contact_confirmation";
+    frameId: string;
     candidateId: string;
     displayName: string;
-    lastPromptText: string;
+    lastFriendyPrompt: string;
     promptedAt?: string;
   };
   recentAgentMessages: Array<{
@@ -161,7 +163,7 @@ type RouterDomainStateSummary = {
     displayName: string;
     status: "pending" | "prompted";
     isActive: boolean;
-    lastPromptText?: string;
+    lastFriendyPrompt?: string;
     eventGuessNames?: string[];
   }>;
   possibleDuplicates: Array<{
@@ -178,22 +180,43 @@ type RouterDomainStateSummary = {
 };
 ```
 
-### Available tools
+### Available tools and route capabilities
+
+`availableTools` must use the real deterministic tool names from `src/relationship/types.ts` (`AgentToolCall`). Do not list router intents or response composers as tools.
+
+`availableRouteCapabilities` is advisory context for the model. It tells the model which route intents the current runtime can validate and execute or compose after validation.
 
 ```ts
-type RouterAvailableTool =
-  | "confirm_candidate"
-  | "ignore_candidate"
+type AgentToolCall =
   | "list_people"
   | "search_memories"
   | "find_duplicate_people"
-  | "request_delete_memory_confirmation"
-  | "request_update_memory_confirmation"
+  | "list_pending_candidates"
+  | "list_candidate_event_matches"
+  | "get_candidate"
+  | "confirm_candidate"
+  | "ignore_candidate"
+  | "create_manual_memory"
+  | "update_memory"
+  | "delete_memory";
+
+type RouterRouteCapability =
+  | "answer_pending_contact_prompt"
+  | "capture_pending_contact_context"
+  | "ignore_candidate"
+  | "list_people"
+  | "search_memory"
+  | "duplicate_audit"
+  | "delete_memory_request"
+  | "update_memory"
   | "explain_agent_state"
-  | "conversation_repair";
+  | "explain_pending_workflow"
+  | "conversation_repair"
+  | "clarify"
+  | "reject";
 ```
 
-The tool list is advisory for route planning. The model may name an intent, but deterministic policy still decides whether a tool can run.
+Both lists are advisory for route planning. The model may name an intent, but deterministic policy still decides whether a tool can run.
 
 ## Serialization For OpenRouter
 
@@ -252,6 +275,8 @@ type MessageInterpreterInput = {
 
 `createRuleBasedInterpreter()` can ignore most context initially, but tests should prove it does not break when context is present.
 
+Production strict mode must still reject fallback use. Updating the test/local fixture interpreter to accept the new input object is a compatibility task only, not permission to reintroduce live fallback routing.
+
 ## Context Sources
 
 Use existing state first:
@@ -268,7 +293,9 @@ Use existing state first:
   - saved memories matching active display name;
   - deterministic duplicate audit summary when cheap.
 
-If some fields do not exist yet, implement minimal placeholders with empty arrays and document the missing source. Do not block the envelope rollout waiting for perfect history.
+If some fields do not exist yet, implement minimal placeholders with empty arrays and document the missing source. This is acceptable for `recentAgentMessages`, `recentEntityRefs`, `lastListResultIds`, and `lastToolErrors`.
+
+Do not placeholder the core state required for this PR's main routing bug. When an active workflow exists or the user text contains a display name, `knownPeopleNamed` and the cheap bounded `possibleDuplicates` summary must include same-display-name saved memories and pending candidates for that name where they exist.
 
 ## Routing Rules Enabled By State
 
@@ -280,7 +307,7 @@ The model prompt and test cases should make these distinctions explicit.
 | Active pending Testing 3, known saved Testing 3 memory | `why are you still asking for Testing 3 context?` | `explain_agent_state` |
 | Active pending Testing 3, known saved Testing 3 memory | `you already know this` | `conversation_repair` |
 | Active pending Testing 3, possible duplicates Testing 3 | `do you see duplicate people?` | `duplicate_audit` |
-| Active pending Testing 3 | `ignore this one` | `ignore_pending_candidate` |
+| Active pending Testing 3 | `ignore this one` | `ignore_candidate` |
 | Recent list returned memory ids | `delete the unnamed one` | `delete_memory_request` |
 | No active workflow | `who did I meet at Photon?` | `search_memory` |
 | No active workflow | `list everyone I know` | `list_people` |
@@ -295,6 +322,8 @@ Update the structured-output instructions so the model knows:
 - Duplicate questions route to `duplicate_audit`.
 - Delete/update requests route to memory-management intents even if a pending candidate exists.
 - `answer_pending_contact_prompt` requires useful relationship context, not merely the words "context", "already", "why", or a repeated name.
+- Emit only intent strings accepted by `src/relationship/interpretation.ts` for this PR. Current accepted route strings include `answer_pending_contact_prompt`, `capture_pending_contact_context`, `explain_pending_workflow`, `explain_agent_state`, `conversation_repair`, `duplicate_audit`, `delete_memory_request`, `list_people`, `search_memory`, `manual_memory_create`, `update_memory`, `delete_memory`, `ignore_candidate`, `clarify`, `reject`, and `unknown`.
+- `conversationRelation` is supporting route metadata for trace and policy validation. It must not override `intent`; deterministic policy should reject or clarify inconsistent combinations instead of treating relation as a second intent classifier.
 
 ## Privacy And Size Rules
 
@@ -306,7 +335,8 @@ The envelope must be bounded:
 - max last list result ids: 10;
 - max tool errors: 3;
 - max prompt/message text per field: 240 chars;
-- no phone numbers, emails, raw Apple Contacts ids beyond internal candidate ids, or full contact payload JSON.
+- max serialized envelope content: 8 KB before JSON stringification into the OpenRouter message;
+- no phone numbers, emails, raw Apple Contacts ids, `contactIdentifier`, raw contact method hashes, or full contact payload JSON.
 
 If a value is redacted, omit it or use a neutral marker. Do not send `[REDACTED PHONE]` style strings that still reveal field existence unless routing needs that fact.
 
@@ -318,11 +348,13 @@ Add RED tests before implementation:
   - OpenRouter request user content is the serialized envelope, not raw text only.
   - Envelope includes active workflow when router context is supplied.
   - Envelope omits phone/email/private contact payload fields.
+  - Envelope exposes real `AgentToolCall` names separately from route capabilities.
   - Strict JSON schema response path still validates.
 - `routerInputEnvelope.test.ts`
   - builds active pending workflow from conversation state;
   - caps arrays and truncates long text;
   - includes possible duplicate and known-name summaries;
+  - active same-name saved/pending summaries are not placeholder-empty when matching state exists;
   - stable snapshots for deterministic ordering.
 - `interpretedAgent.test.ts`
   - passes conversation/domain state into interpreter before route selection;
@@ -351,10 +383,12 @@ git diff --check
 - OpenRouter receives a compact routing envelope as the user content.
 - The envelope includes active pending workflow state when present.
 - The envelope includes domain summaries for pending candidates, duplicates, and known people names where available.
+- The active same-name pending/saved conflict is represented in `possibleDuplicates` and `knownPeopleNamed`.
 - The envelope never includes phone numbers, emails, raw contact payloads, or unbounded message history.
 - `explain_agent_state` and `conversation_repair` route correctly for stale-prompt/meta complaints even when a pending candidate is active.
 - Direct context answers still confirm pending candidates.
 - Strict mode still fails loudly on missing API key, model failure, invalid schema, and fallback use.
+- Test/local fixture fallback accepts the new input object without being used by production strict mode.
 - Existing PR 3 route-policy behavior remains intact.
 
 ## Implementation Notes Requirement

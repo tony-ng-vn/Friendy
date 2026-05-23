@@ -67,7 +67,7 @@ That is necessary but not sufficient.
 - Do not append when the user just complained about the prompt (current turn repair/explain, or prior-turn complaint signal).
 - Enforce a **TTL** so the same pending contact is not reminded more than once per window unless the user explicitly re-opens the workflow.
 - When a reminder is appropriate, use a **separate footer section** — not a trailing sentence glued to the search/list body.
-- Preserve the goal-doc behavior: search/list **may** remind after answering, when policy says it is helpful and not confusing.
+- Preserve the goal-doc behavior for search interruptions: `search_memory` may remind after answering, when policy says it is helpful and not confusing. `list_people` never appends a reminder footer in PR 5 because list replies already have their own pending-contact inventory section.
 - Log reminder decisions on `FriendyTrace` for evals and strict-mode debugging.
 - Keep all reminder copy **deterministic** (composers only; no LLM prose).
 
@@ -147,7 +147,7 @@ Reminder runs **after** the primary answer is known (`responseKind`) so list/sea
 
 ## Shared context with PR 4
 
-PR 4 introduces `RouterTurnContext` for the OpenRouter call. PR 5 consumes a **subset** of the same facts — computed once per turn in a builder both PRs can share later.
+PR 4 introduces `RouterInputEnvelope` for the OpenRouter call. PR 5 consumes a **subset** of the same facts through `PendingReminderContext` — computed once per turn in a builder both PRs can share later.
 
 ```ts
 /** Subset used by PR 5; full shape owned by PR 4 spec. */
@@ -157,9 +157,10 @@ type PendingReminderContext = {
   responseKind: PendingReminderResponseKind;
   activeWorkflow?: {
     kind: "pending_contact_confirmation";
+    frameId: string;
     candidateId: string;
     displayName: string;
-    lastPromptText: string;
+    lastFriendyPrompt: string;
   };
   pendingCandidates: Array<{ candidateId: string; displayName: string; status: string }>;
   savedMemoriesForActiveName: Array<{ memoryId: string; displayName: string }>;
@@ -205,7 +206,6 @@ const NEVER_REMIND_INTENTS = [
   "delete_memory_request",
   "delete_memory",
   "update_memory",
-  "update_memory_request", // alias when schema migrates
   "explain_agent_state",
   "explain_pending_workflow",
   "conversation_repair",
@@ -217,6 +217,8 @@ const NEVER_REMIND_INTENTS = [
 ```
 
 Also suppress when `search.mode === "list_people"` even if intent is `search_memory`.
+
+If a future schema migration adds `update_memory_request`, add it to this set in that same migration. PR 5 should not introduce unsupported intent strings by itself.
 
 ### Rule 2 — Response-kind suppression
 
@@ -232,7 +234,26 @@ Rationale: reminding "I still need context for Testing 3" while Friendy also has
 
 - saved memories exist for normalized `activeWorkflow.displayName`, and
 - pending candidate for that display name is still open, and
-- no interaction in the current space has recorded `same_or_different_resolved` for that candidate since the ambiguous context reply.
+- the current process-local conversation context has not recorded a `sameOrDifferentResolution` for that candidate.
+
+Add this process-local field for PR 5:
+
+```ts
+type SameOrDifferentResolution = {
+  candidateId: string;
+  resolvedAt: string;
+  resolution: "same_person" | "different_person";
+};
+
+type PendingReminderState = {
+  lastReminderAt?: string;
+  lastRemindedCandidateId?: string;
+  lastUserComplaintAt?: string;
+  sameOrDifferentResolutions?: SameOrDifferentResolution[];
+};
+```
+
+Set the resolution only when the same/different clarification flow receives a user answer and policy allows the workflow to proceed. Clear or ignore entries when the active candidate changes, the candidate is confirmed/ignored, or the resolution is older than the pending frame.
 
 ### Rule 4 — User complaint
 
@@ -262,6 +283,8 @@ Append footer only when **all** hold:
 - `userIntent === "search_memory"` (or follow-up search deterministic path with equivalent intent trace),
 - rules 1–5 did not suppress/defer,
 - primary response successfully answered the user (non-empty search/list body or explicit "no match" is still a valid primary answer).
+
+`list_people` is intentionally excluded even when a goal-doc example says "search/list may remind." In PR 5, list replies should surface pending candidates inside the structured list response, not through the pending-reminder footer. `search_memory` remains the only read-only route that may append the footer.
 
 ### Rule 7 — Multiple pending candidates
 
@@ -342,6 +365,11 @@ type PendingReminderState = {
   lastReminderAt?: string;
   lastRemindedCandidateId?: string;
   lastUserComplaintAt?: string;
+  sameOrDifferentResolutions?: Array<{
+    candidateId: string;
+    resolvedAt: string;
+    resolution: "same_person" | "different_person";
+  }>;
 };
 ```
 
@@ -354,13 +382,23 @@ Attach to existing `conversationContexts` map keyed by `userId` (same lifetime a
 Extend `FriendyTrace`:
 
 ```ts
+// Existing PR 3 field kept for one migration window.
+suppressedPendingReminder?: boolean;
 pendingReminderDecision?: "suppressed" | "deferred" | "appended_footer";
 pendingReminderReason?: string;
 ```
 
+During PR 5, `pendingReminderDecision` is the source of truth for new behavior. Keep `suppressedPendingReminder` populated as a compatibility projection:
+
+- `true` when decision is `suppressed` or `deferred`;
+- `false` when decision is `appended_footer`;
+- `undefined` only when no active workflow existed and reminder policy did not run.
+
 ### PR 1 regression — must still pass
 
 All existing "does not contain `I still need context for Testing 3`" assertions remain green.
+
+Those assertions should be interpreted as stale same-name reminder guards. New footer tests may allow a footer for a different pending contact, but not for the saved+pending same-name Testing 3 ambiguity.
 
 ### New eval cases (PR 5)
 
@@ -396,7 +434,7 @@ One test per rule 1–6 boundary; table-driven.
 3. Add `composePendingContactsFooter`.
 4. Wire `interpretedAgent.ts`; add `PendingReminderState` to context.
 5. Extend trace + evals.
-6. Remove redundant inline append and migrate `suppressPendingReminder` off route policy.
+6. Remove redundant inline append and migrate append/defer decisions off route policy. Keep `suppressPendingReminder` as a compatibility trace projection for one migration window.
 7. Update `implementation-notes.html` and `docs/agent-handoff.md`.
 
 ## Relationship to PR 4
@@ -408,7 +446,7 @@ One test per rule 1–6 boundary; table-driven.
 | Shared `duplicateRisk` / pending summary | Builds for LLM | Consumes for policy |
 | Spec timing | Can draft in parallel | This spec |
 
-Implement PR 5 before or after PR 4; no hard dependency. Ship PR 5 first for faster UX on reminders.
+Implement PR 4 first when correctness is the priority: PR 5 cannot prevent a wrong route from capturing context before reminder policy runs. PR 5 can still be implemented independently after PR 3 if the goal is only to improve reminder presentation for already-correct routes.
 
 ## References
 
