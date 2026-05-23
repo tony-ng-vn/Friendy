@@ -942,9 +942,11 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("Just give me all the people in my contact so far"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
-    expect(result.outbound.text).toContain("I still need context for Unnamed Contact");
+    expect(result.outbound.text).toContain("I also see pending contacts not saved as memories yet:");
+    expect(result.outbound.text).toContain("Unnamed Contact");
+    expect(result.outbound.text).not.toContain("I still need context for Unnamed Contact");
     expect(result.outbound.text).not.toContain("saved Unnamed Contact");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 2"]);
     expect(repo.listPendingCandidates(fixtureUser.id).map((candidate) => candidate.displayName)).toEqual([
@@ -957,7 +959,7 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("What person do I know so far?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("don't have any saved people");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
@@ -970,12 +972,12 @@ describe("interpreted relationship agent", () => {
 
     const result = await agent.handleMessage(inbound("Do you know anyone in my contact?"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.outbound.text).toContain("Testing 2");
     expect(result.outbound.text).toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
     expect(result.interaction.interpretedIntentJson).toMatchObject({
-      intent: "search_memory",
+      intent: "list_people",
       search: { mode: "list_people" }
     });
   });

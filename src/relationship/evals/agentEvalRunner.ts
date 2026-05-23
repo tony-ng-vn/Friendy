@@ -207,9 +207,9 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "broad related-contact recall does not redirect"
   ]),
   evalCase("list-all-contact-recall", "interpreted", [
-    "list-all contact recall calls search",
+    "list-all contact recall calls list_people",
     "list-all contact recall returns saved people",
-    "list-all contact recall reminds about pending contact",
+    "list-all contact recall includes pending contact",
     "list-all contact recall leaves pending candidate pending",
     "list-all contact recall does not create unnamed memory"
   ]),
@@ -948,12 +948,14 @@ const executableEvalCases: ExecutableEvalCase[] = [
       const result = await agent.handleMessage(interpretedInbound("Just give me all the people in my contact so far"));
 
       return [
-        assertion("list-all contact recall calls search", "intent", result.toolCalls.includes("search_memories")),
+        assertion("list-all contact recall calls list_people", "intent", toolCallsInclude(result.toolCalls, "list_people")),
         assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
         assertion(
-          "list-all contact recall reminds about pending contact",
+          "list-all contact recall includes pending contact",
           "clarification",
-          result.outbound.text.includes("I still need context for Unnamed Contact")
+          result.outbound.text.includes("I also see pending contacts not saved as memories yet:") &&
+            result.outbound.text.includes("Unnamed Contact") &&
+            !includesStalePendingReminder(result.outbound.text, "Unnamed Contact")
         ),
         assertion(
           "list-all contact recall leaves pending candidate pending",
@@ -1155,7 +1157,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
     ...relationshipAgentEvalCases[36],
     async run({ interpreter, now }) {
       const { agent } = createTestingFriendyRegressionHarness({
-        interpreter: createListPeopleRegressionInterpreter(interpreter),
+        interpreter,
         now,
         includeUnrelatedSarah: true
       });
@@ -1418,37 +1420,6 @@ function trackInterpreterFallbackUsage(
         fallbackUsage.count += 1;
       }
       return result;
-    }
-  };
-}
-
-function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter): MessageInterpreter {
-  return {
-    async interpret(message) {
-      const result = await interpreter.interpret(message);
-      if (message.text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
-        return result;
-      }
-
-      return {
-        ...result,
-        interpretation: {
-          ...result.interpretation,
-          intent: "list_people",
-          domain: "relationship_memory",
-          query: message.text,
-          search: {
-            mode: "list_people",
-            semanticQuery: message.text,
-            exactTerms: ["testing", "friendy"],
-            filters: { tags: ["testing", "friendy"] },
-            topK: 20
-          },
-          tags: ["testing", "friendy"],
-          needsClarification: false,
-          clarificationQuestion: ""
-        }
-      };
     }
   };
 }
