@@ -33,16 +33,51 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ## Current Status (2026-05-24)
 
+### Live Sarah Fan Memory Append Follow-up
+
+- Fixed a live iMessage regression from 2026-05-24 where `For Sarah Fan beside I met her during photon residency ii, she is also a community lead there` could produce an OpenAI invalid-output diagnostic for `search.filters: null`, then fall through to an unhelpful `I don't have enough...` reply instead of editing the existing Sarah Fan memory.
+- The interpretation schema now accepts `search.filters: null` from strict structured model output and normalizes it to no filters, matching the JSON schema that already allowed nullable filters.
+- Added bounded append semantics to `update_memory`: `mode: "append"` preserves the existing note and adds the new fact with a revision reason of `user_note_added`. This is a relationship-memory edit only; it does not mutate Apple Contacts.
+- Added a narrow deterministic update detector for `for <person> beside/besides/also ...` relationship-memory notes. It resolves the person through existing target lookup, asks confirmation before writing, and then appends the new fact after `yes`.
+- Added `sarah-fan-beside-role-update-regression`; `npm run eval:agent` now passes 49/49 with 0 unsafe mutations and 0 hallucinations.
+- Verification on 2026-05-24: focused tests passed 4 files/136 tests; `npm run eval:agent` passed 49/49; `npm run build` passed; full `npm test` passed 74 files/581 tests; `git diff --check` passed.
+- Follow-up live log on 2026-05-24 showed two more issues:
+  - `List me everyone` / `List everyone` went through OpenAI, which returned `search.topK: 1`; `list_people` honored that model limit and hid saved people such as `Testing` even though `search_memories` could still find them.
+  - `Sarah Fan is also a community leader too` was classified as `capture_memory` and called `create_manual_memory`, creating a duplicate Sarah Fan memory instead of editing the existing one.
+- `List me everyone` and `List everyone` now route through the deterministic broad-inventory path with the normal list limit and no model call.
+- Named append phrasing like `<person> is also ... too` now routes through the same confirmed append-memory path and does not create a duplicate manual memory.
+- Added `sarah-fan-named-role-update-regression`; `npm run eval:agent` now passes 50/50 with 0 unsafe mutations and 0 hallucinations.
+- Verification on 2026-05-24: focused router/interpreted/eval tests passed 3 files/106 tests; `npm run eval:agent` passed 50/50; `npm run build` passed; full `npm test` passed 74 files/588 tests; `git diff --check` passed.
+
+### Relationship-Memory Routing/Delete Cleanup
+
+- Follow-up work on top of the merged PR 1-10 stack is in progress on branch `codex/relationship-routing-delete-cleanup`.
+- Added a small `deterministicRouter.ts` route boundary for broad people inventory and bulk delete/clear confirmation detection. It replaces the local interpreted-agent list bypass without turning deterministic routing into a broad regex router.
+- Added `targetQueryCleanup.ts` and conservative short-name matching so polite wrappers like `Z2 please`, `Sarah thank you`, `delete Z2 please`, and `forget AJ from memory` are cleaned before lookup while short names like `Z` and `Z2` do not cross-match.
+- Memory delete/update lookup now groups duplicate display names before fuzzy matching and deduplicates ambiguity options by normalized display name. Matched person deletes store all associated memory ids and only delete after an explicit `yes`.
+- Single-person delete confirmation copy is now `Do you want me to forget <name>? Reply yes to confirm or no to cancel.`
+- `list_people` turns now retain a short-lived recent people list for exact-name follow-up deletes. Trace metadata now includes model-call, raw/cleaned target query, lookup projection, match reason, confirmation requirement, and safe invalid-schema recovery markers where available.
+- OpenAI invalid structured-output recovery is intentionally narrow: strict-mode invalid schema output can recover only to safe deterministic `list_people`; destructive routes still do not recover from invalid model output.
+- Verification on 2026-05-24: focused relationship tests passed 3 files/102 tests; focused router/cleanup/OpenAI/composer tests passed 4 files/46 tests; full `npm test` passed 74 files/577 tests; `npm run eval:agent` passed 48/48 with 0 unsafe mutations and 0 hallucinations; `npm run build` passed; `git diff --check` passed.
+- Follow-up duplicate-name delete bug fixed: exact duplicate display names no longer collapse into one person-level delete target. `Delete Sarah Fan` with two Sarah Fan memories now asks a numbered disambiguation question with context snippets and stores the candidate memory IDs in the pending delete workflow.
+- A numbered reply such as `1` deletes only that stored memory ID. A reply of `both`/`all` deletes all IDs from the disambiguation payload. The bounded `delete_memory` tool still rejects raw display names and only mutates by stored memory ID.
+- Added `duplicate-exact-name-delete-disambiguation-regression`; verification on 2026-05-24 passed focused relationship tests 3 files/108 tests and focused composer/tools/session/eval tests 4 files/67 tests. Final full gate in this worktree passed: `npm test` 74 files/591 tests, `npm run eval:agent` 51/51 with 0 unsafe mutations and 0 hallucinations, `npm run build`, and `git diff --check`.
+
 ### Live List Formatting and Bulk Delete Follow-up
 
 - Fixed live iMessage follow-up issues from 2026-05-24:
   - `list_people` replies now always use `<name> - <context>` bullets for saved people, including broad inventory and filtered list requests.
   - Multi-person event recall replies such as `Who did I meet during the photon residency?` now use the same bullet list format, for example `- Sarah Fan - Photon Residency`, instead of `I found 2 people: Sarah Fan, Cecelia.`
-  - Second-person inventory wording such as `What people do you know yet in my contact?` now bypasses OpenAI and routes deterministically to `list_people` instead of risking a structured-output schema fallback.
+  - Broad inventory wording such as `What are all the people I know?`, `Who are all the people I know?`, `Show everyone I know`, `What do you remember?`, and `What people do you know yet in my contact?` now bypasses OpenAI and routes deterministically to `list_people` instead of risking a structured-output schema fallback.
+  - Filtered list wording such as `List me in bullet of all people I met testing friendy` remains list-like for pending-contact safety, but still goes through model interpretation so filters are preserved.
   - `Can you delete everyone for me?` now opens a confirmation gate instead of falling into single-target lookup. Friendy deletes all saved memories through the bounded `clear_memories` tool only after the user replies `yes`.
   - If the user asks to clear/delete everyone when no Friendy memories are saved, Friendy replies `You haven't saved anyone in Friendy memory yet.`
-- Added `delete-everyone-confirmation-regression`; the `list-all-contact-recall` eval now freezes the live second-person inventory wording and asserts deterministic routing.
-- Verification on 2026-05-24: focused RED/GREEN cases passed, focused routing/eval suite passed 5 files/101 tests, `npm run eval:agent` passed 48/48, full `npm test` passed 72 files/544 tests, and `npm run build` passed.
+- OpenAI invalid structured-output failures now print a local diagnostic log before the strict error is thrown:
+  - log tag: `[friendy:openai_interpreter:invalid_output]`;
+  - fields: `model`, raw model `rawOutput`, and `validationError`.
+  - This keeps the same strict-mode behavior while preserving exactly what OpenAI returned for the next fix pass.
+- Added `delete-everyone-confirmation-regression`; the `list-all-contact-recall` eval now freezes the live inventory variants and asserts deterministic routing without unsafe pending-candidate mutation.
+- Verification on 2026-05-24: focused RED/GREEN cases passed, `npm run eval:agent` passed 48/48, full `npm test` passed 72 files/549 tests, `npm run build` passed, and `git diff --check` passed.
 
 ### OpenAI Model Provider Switch
 
