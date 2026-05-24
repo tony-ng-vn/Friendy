@@ -12,8 +12,14 @@
  */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
+import {
+  normalizeDisplayNameForIdentity,
+  type AppleContactLink,
+  type PersonIdentity
+} from "./personIdentity";
 import {
   buildMemorySearchDocument,
   scoreMemorySearchDocument,
@@ -28,10 +34,14 @@ import type {
 } from "./runtime/friendyRuntime";
 import {
   calculateCandidateExpiresAt,
+  candidateMethodFingerprint,
+  computeLegacyMemoryMethodFingerprint,
   expireCandidateIfStale,
   extractTags,
   type ConfirmCandidateOptions,
+  type CreatePersonIdentityInput,
   type DeleteMemoryInput,
+  type LinkAppleContactInput,
   type MarkCandidatePromptedOptions,
   type RelationshipRepository,
   type RepositorySeed,
@@ -268,15 +278,17 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         }
 
         const confirmedCandidate: ContactCandidate = { ...currentCandidate, status: "confirmed" };
-        upsertCandidate(db, confirmedCandidate);
-
         const confirmedAt = options.confirmedAt ?? new Date().toISOString();
+        const personId = ensureSqliteCandidatePersonId(db, currentCandidate, confirmedAt);
+        upsertCandidate(db, { ...confirmedCandidate, personId });
+
         const selectedMatch =
           options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
         const memory: RelationshipMemory = {
           id: `memory_${currentCandidate.id}`,
           userId: currentCandidate.userId,
           candidateId: currentCandidate.id,
+          personId,
           displayName: currentCandidate.displayName,
           primaryContactLabel: currentCandidate.phoneNumbers[0] ?? currentCandidate.emails[0] ?? "contact saved",
           eventId: selectedMatch?.calendarEventId,
@@ -421,6 +433,105 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       }
 
       return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY insert_order, id").all());
+    },
+
+    createPersonIdentity(input: CreatePersonIdentityInput): PersonIdentity {
+      return runTransaction(db, () => {
+        const timestamp = input.createdAt ?? new Date().toISOString();
+        const person: PersonIdentity = {
+          id: `person_${randomUUID()}`,
+          userId: input.userId,
+          canonicalDisplayName: input.canonicalDisplayName,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        upsertPersonIdentity(db, person);
+        return person;
+      });
+    },
+
+    linkAppleContact(input: LinkAppleContactInput): AppleContactLink {
+      return runTransaction(db, () => {
+        const person = readOptionalRow<PersonIdentity>(
+          db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(input.personId)
+        );
+        if (!person || person.userId !== input.userId) {
+          throw new Error(`Person not found: ${input.personId}`);
+        }
+
+        const linkedAt = input.linkedAt ?? new Date().toISOString();
+        const link: AppleContactLink = {
+          id: `apple_contact_link_${randomUUID()}`,
+          personId: input.personId,
+          userId: input.userId,
+          contactIdentifier: input.contactIdentifier,
+          unifiedContactIdentifier: input.unifiedContactIdentifier,
+          containerIdentifier: input.containerIdentifier,
+          methodFingerprint: input.methodFingerprint,
+          displayNameSnapshot: input.displayNameSnapshot,
+          sensorEventId: input.sensorEventId,
+          linkedAt
+        };
+        upsertAppleContactLink(db, link);
+        return link;
+      });
+    },
+
+    findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined {
+      const link = readOptionalRow<AppleContactLink>(
+        db
+          .prepare("SELECT raw_json FROM apple_contact_links WHERE user_id = ? AND method_fingerprint = ?")
+          .get(userId, methodFingerprint)
+      );
+      if (!link) {
+        return undefined;
+      }
+
+      const person = readOptionalRow<PersonIdentity>(
+        db.prepare("SELECT raw_json FROM person_identities WHERE id = ? AND user_id = ?").get(link.personId, userId)
+      );
+      if (!person || person.mergedIntoPersonId) {
+        return undefined;
+      }
+
+      return person;
+    },
+
+    findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[] {
+      const normalizedDisplayName = normalizeDisplayNameForIdentity(displayName);
+      if (!normalizedDisplayName) {
+        return [];
+      }
+
+      return readRows<PersonIdentity>(
+        db.prepare("SELECT raw_json FROM person_identities WHERE user_id = ? ORDER BY created_at, id").all(userId)
+      ).filter(
+        (person) =>
+          !person.mergedIntoPersonId &&
+          normalizeDisplayNameForIdentity(person.canonicalDisplayName) === normalizedDisplayName
+      );
+    },
+
+    attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+
+        const person = readOptionalRow<PersonIdentity>(
+          db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(personId)
+        );
+        if (!person || person.userId !== candidate.userId) {
+          throw new Error(`Person not found: ${personId}`);
+        }
+
+        const attachedCandidate: ContactCandidate = { ...candidate, personId };
+        upsertCandidate(db, attachedCandidate);
+        return attachedCandidate;
+      });
     },
 
     close(): void {
@@ -856,6 +967,219 @@ function setupSchema(db: DatabaseSync): void {
   `);
   setupMemorySearchFts(db);
   backfillMemorySearchDocuments(db);
+  runPersonIdentityMigration(db);
+  if (sqliteTableHasColumn(db, "memories", "person_id")) {
+    backfillMemoryPersonIdentities(db);
+  }
+}
+
+function runPersonIdentityMigration(db: DatabaseSync): void {
+  const currentVersion = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (currentVersion >= 3) {
+    return;
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS person_identities (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      canonical_display_name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      merged_into_person_id TEXT,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS person_identities_user_name_idx
+      ON person_identities(user_id, canonical_display_name);
+
+    CREATE TABLE IF NOT EXISTS apple_contact_links (
+      id TEXT PRIMARY KEY,
+      person_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      method_fingerprint TEXT NOT NULL,
+      display_name_snapshot TEXT NOT NULL,
+      linked_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(person_id) REFERENCES person_identities(id)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS apple_contact_links_user_fingerprint_idx
+      ON apple_contact_links(user_id, method_fingerprint);
+  `);
+
+  if (!sqliteTableHasColumn(db, "memories", "person_id")) {
+    db.exec("ALTER TABLE memories ADD COLUMN person_id TEXT");
+  }
+
+  backfillMemoryPersonIdentities(db);
+
+  db.prepare(
+    `
+      INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+      VALUES (3, '3_person_identity_resolution', ?)
+    `
+  ).run(new Date().toISOString());
+  db.exec("PRAGMA user_version = 3");
+}
+
+function sqliteTableHasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return columns.some((item) => item.name === column);
+}
+
+function backfillMemoryPersonIdentities(db: DatabaseSync): void {
+  const memories = readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+
+  for (const memory of memories) {
+    if (memory.personId) {
+      continue;
+    }
+
+    const candidate = memory.candidateId
+      ? readOptionalRow<ContactCandidate>(db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(memory.candidateId))
+      : undefined;
+    const timestamp = memory.updatedAt ?? memory.createdAt;
+    let personId: string;
+
+    if (candidate) {
+      personId = ensureSqliteCandidatePersonId(db, candidate, timestamp);
+    } else {
+      const methodFingerprint = computeLegacyMemoryMethodFingerprint(memory.displayName, memory.id);
+      const existingPerson = readOptionalRow<PersonIdentity>(
+        db
+          .prepare(
+            `
+              SELECT p.raw_json
+              FROM apple_contact_links l
+              JOIN person_identities p ON p.id = l.person_id
+              WHERE l.user_id = ? AND l.method_fingerprint = ?
+            `
+          )
+          .get(memory.userId, methodFingerprint)
+      );
+
+      if (existingPerson) {
+        personId = existingPerson.id;
+      } else {
+        const person: PersonIdentity = {
+          id: `person_${randomUUID()}`,
+          userId: memory.userId,
+          canonicalDisplayName: memory.displayName,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        upsertPersonIdentity(db, person);
+        upsertAppleContactLink(db, {
+          id: `apple_contact_link_${randomUUID()}`,
+          personId: person.id,
+          userId: memory.userId,
+          methodFingerprint,
+          displayNameSnapshot: memory.displayName,
+          linkedAt: timestamp
+        });
+        personId = person.id;
+      }
+    }
+
+    const updatedMemory: RelationshipMemory = { ...memory, personId };
+    updateMemoryRow(db, updatedMemory);
+  }
+}
+
+function ensureSqliteCandidatePersonId(db: DatabaseSync, candidate: ContactCandidate, now: string): string {
+  if (candidate.personId) {
+    return candidate.personId;
+  }
+
+  const methodFingerprint = candidateMethodFingerprint(candidate);
+  const existingLink = readOptionalRow<AppleContactLink>(
+    db
+      .prepare("SELECT raw_json FROM apple_contact_links WHERE user_id = ? AND method_fingerprint = ?")
+      .get(candidate.userId, methodFingerprint)
+  );
+  if (existingLink) {
+    const existingPerson = readOptionalRow<PersonIdentity>(
+      db.prepare("SELECT raw_json FROM person_identities WHERE id = ? AND user_id = ?").get(existingLink.personId, candidate.userId)
+    );
+    if (existingPerson && !existingPerson.mergedIntoPersonId) {
+      return existingPerson.id;
+    }
+  }
+
+  const person: PersonIdentity = {
+    id: `person_${randomUUID()}`,
+    userId: candidate.userId,
+    canonicalDisplayName: candidate.displayName,
+    createdAt: now,
+    updatedAt: now
+  };
+  upsertPersonIdentity(db, person);
+  upsertAppleContactLink(db, {
+    id: `apple_contact_link_${randomUUID()}`,
+    personId: person.id,
+    userId: candidate.userId,
+    contactIdentifier: candidate.contactIdentifier,
+    unifiedContactIdentifier: candidate.unifiedContactIdentifier,
+    containerIdentifier: candidate.containerIdentifier,
+    methodFingerprint,
+    displayNameSnapshot: candidate.displayName,
+    sensorEventId: candidate.sensorEventId,
+    linkedAt: now
+  });
+  return person.id;
+}
+
+function upsertPersonIdentity(db: DatabaseSync, person: PersonIdentity): void {
+  db.prepare(
+    `
+      INSERT INTO person_identities (
+        id, user_id, canonical_display_name, created_at, updated_at, merged_into_person_id, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        user_id = excluded.user_id,
+        canonical_display_name = excluded.canonical_display_name,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        merged_into_person_id = excluded.merged_into_person_id,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    person.id,
+    person.userId,
+    person.canonicalDisplayName,
+    person.createdAt,
+    person.updatedAt,
+    person.mergedIntoPersonId ?? null,
+    stringify(person)
+  );
+}
+
+function upsertAppleContactLink(db: DatabaseSync, link: AppleContactLink): void {
+  db.prepare(
+    `
+      INSERT INTO apple_contact_links (
+        id, person_id, user_id, method_fingerprint, display_name_snapshot, linked_at, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        person_id = excluded.person_id,
+        user_id = excluded.user_id,
+        method_fingerprint = excluded.method_fingerprint,
+        display_name_snapshot = excluded.display_name_snapshot,
+        linked_at = excluded.linked_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    link.id,
+    link.personId,
+    link.userId,
+    link.methodFingerprint,
+    link.displayNameSnapshot,
+    link.linkedAt,
+    stringify(link)
+  );
 }
 
 function setupMemorySearchFts(db: DatabaseSync): void {
@@ -1006,6 +1330,12 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
     upsertMemorySearchDocument(db, memory);
     insertMemoryRevision(db, createCreatedMemoryRevision(memory));
   }
+  for (const person of seed.personIdentities ?? []) {
+    upsertPersonIdentity(db, person);
+  }
+  for (const link of seed.appleContactLinks ?? []) {
+    upsertAppleContactLink(db, link);
+  }
   for (const interaction of seed.interactions ?? []) {
     insertInteraction(db, interaction);
   }
@@ -1141,15 +1471,16 @@ function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
   db.prepare(
     `
       INSERT INTO memories (
-        id, insert_order, user_id, candidate_id, display_name, event_id, event_title, created_at, updated_at, raw_json
+        id, insert_order, user_id, candidate_id, person_id, display_name, event_id, event_title, created_at, updated_at, raw_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
   ).run(
     memory.id,
     nextInsertOrder(db, "memories"),
     memory.userId,
     memory.candidateId ?? null,
+    memory.personId ?? null,
     memory.displayName,
     memory.eventId ?? null,
     memory.eventTitle ?? null,
@@ -1163,10 +1494,11 @@ function updateMemoryRow(db: DatabaseSync, memory: RelationshipMemory): void {
   db.prepare(
     `
       UPDATE memories
-      SET display_name = ?, event_id = ?, event_title = ?, updated_at = ?, raw_json = ?
+      SET person_id = ?, display_name = ?, event_id = ?, event_title = ?, updated_at = ?, raw_json = ?
       WHERE id = ?
     `
   ).run(
+    memory.personId ?? null,
     memory.displayName,
     memory.eventId ?? null,
     memory.eventTitle ?? null,

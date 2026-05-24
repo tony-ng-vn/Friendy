@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
+import { computeMethodFingerprint } from "./personIdentity";
 import {
   createSqliteRelationshipRepository,
   SqliteRepositoryBusyError,
@@ -45,7 +46,8 @@ describe("sqlite relationship repository", () => {
     ).toEqual({ name: "schema_migrations" });
     expect(db.prepare("SELECT version, name FROM schema_migrations ORDER BY version").all()).toEqual([
       { version: 1, name: "1_initial_runtime_store" },
-      { version: 2, name: "2_memory_search_documents" }
+      { version: 2, name: "2_memory_search_documents" },
+      { version: 3, name: "3_person_identity_resolution" }
     ]);
   });
 
@@ -904,7 +906,12 @@ describe("sqlite relationship repository", () => {
     repositories.splice(repositories.indexOf(repo), 1);
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
-    expect(reopened.listMemories(userId)).toEqual([originalMemory]);
+    expect(reopened.listMemories(userId)).toEqual([
+      expect.objectContaining({
+        ...originalMemory,
+        personId: expect.stringMatching(/^person_/)
+      })
+    ]);
     expect(reopened.listInteractions(userId)).toEqual([originalInteraction]);
   });
 
@@ -1007,14 +1014,110 @@ describe("sqlite relationship repository", () => {
 
     const db = new DatabaseSync(dbPath);
     try {
-      expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(2);
+      expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(3);
       for (const table of ["calendar_events", "candidates", "memories", "interactions"]) {
         const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
         expect(columns.map((column) => column.name)).toContain("insert_order");
       }
+      expect(
+        (db.prepare("PRAGMA table_info(memories)").all() as Array<{ name: string }>).map((column) => column.name)
+      ).toContain("person_id");
     } finally {
       db.close();
     }
+  });
+
+  it("persists person identities and apple contact links across repository instances", () => {
+    const dbPath = tempDatabasePath();
+    const firstRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: ["+15550101020"] });
+    const person = firstRepo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+    firstRepo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      methodFingerprint: fingerprint,
+      displayNameSnapshot: "Testing 3",
+      linkedAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    const secondRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(secondRepo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)).toEqual(person);
+    expect(secondRepo.findPeopleByDisplayNameNormalized(fixtureUser.id, "testing 3")).toEqual([person]);
+  });
+
+  it("backfills personId on existing memories without person rows", () => {
+    const dbPath = tempDatabasePath();
+    const candidateId = "candidate_backfill_person";
+    trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        candidates: [
+          {
+            id: candidateId,
+            userId: fixtureUser.id,
+            displayName: "Legacy Person",
+            phoneNumbers: ["+15550101088"],
+            emails: [],
+            detectedAt: "2026-05-21T00:00:00.000Z",
+            source: "simulated",
+            status: "confirmed"
+          }
+        ],
+        memories: [
+          {
+            id: "memory_backfill_person",
+            userId: fixtureUser.id,
+            candidateId,
+            displayName: "Legacy Person",
+            primaryContactLabel: "+15550101088",
+            contextNote: "legacy memory before person identity",
+            tags: ["legacy"],
+            confidence: 0.7,
+            createdAt: "2026-05-21T01:00:00.000Z",
+            updatedAt: "2026-05-21T01:00:00.000Z"
+          }
+        ]
+      }
+    }));
+
+    const repo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const memory = repo.listMemories(fixtureUser.id)[0];
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: ["+15550101088"] });
+
+    expect(memory.personId).toMatch(/^person_/);
+    expect(repo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)?.id).toBe(memory.personId);
+    expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "Legacy Person")).toEqual([
+      expect.objectContaining({ id: memory.personId })
+    ]);
+  });
+
+  it("sets personId on confirmed memories and attached candidates in sqlite", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Maya Chen"
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.attachCandidateToPerson(candidate.id, person.id);
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+
+    expect(memory.personId).toBe(person.id);
+    expect(reopened.getCandidate(candidate.id)?.personId).toBe(person.id);
+    expect(reopened.listMemories(fixtureUser.id)[0].personId).toBe(person.id);
   });
 });
 

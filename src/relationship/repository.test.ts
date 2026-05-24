@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
+import { computeMethodFingerprint } from "./personIdentity";
 import { createRelationshipRepository } from "./repository";
 import type { CalendarEvent } from "./types";
 
@@ -395,6 +396,86 @@ describe("relationship repository", () => {
         modelUsed: "nvidia/nemotron-3-super-120b-a12b:free",
         confidence: 0.88,
         latencyMs: 42
+      })
+    ]);
+  });
+
+  it("creates and finds person identities by method fingerprint and normalized display name", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: ["+15550101020"] });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    repo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      methodFingerprint: fingerprint,
+      displayNameSnapshot: "Testing 3",
+      linkedAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    expect(repo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)).toEqual(person);
+    expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "  testing   3 ")).toEqual([person]);
+  });
+
+  it("attaches a candidate to an existing person", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3"
+    });
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101099"]
+    });
+
+    const attached = repo.attachCandidateToPerson(candidate.id, person.id);
+
+    expect(attached.personId).toBe(person.id);
+    expect(repo.getCandidate(candidate.id)?.personId).toBe(person.id);
+  });
+
+  it("sets personId on new memories during confirm, reusing attached person ids", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Maya Chen"
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.attachCandidateToPerson(candidate.id, person.id);
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(memory.personId).toBe(person.id);
+    expect(repo.getCandidate(candidate.id)?.personId).toBe(person.id);
+  });
+
+  it("creates a person identity and link when confirming a candidate without personId", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: candidate.phoneNumbers, emails: candidate.emails });
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(memory.personId).toMatch(/^person_/);
+    expect(repo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)?.id).toBe(memory.personId);
+    expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "Maya Chen")).toEqual([
+      expect.objectContaining({
+        id: memory.personId,
+        canonicalDisplayName: "Maya Chen"
       })
     ]);
   });

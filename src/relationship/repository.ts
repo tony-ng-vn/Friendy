@@ -10,8 +10,15 @@
  * - Pending/prompted candidates expire after {@link CANDIDATE_EXPIRATION_DAYS} so stale contact
  *   prompts do not linger indefinitely.
  */
+import { createHash, randomUUID } from "node:crypto";
 import { buildMemorySearchDocument, type MemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
+import {
+  computeMethodFingerprint,
+  normalizeDisplayNameForIdentity,
+  type AppleContactLink,
+  type PersonIdentity
+} from "./personIdentity";
 import type {
   CalendarEvent,
   CandidatePromptAttempt,
@@ -36,6 +43,26 @@ export type RepositorySeed = {
   memories?: RelationshipMemory[];
   memoryRevisions?: MemoryRevision[];
   interactions?: AgentInteraction[];
+  personIdentities?: PersonIdentity[];
+  appleContactLinks?: AppleContactLink[];
+};
+
+export type CreatePersonIdentityInput = {
+  userId: string;
+  canonicalDisplayName: string;
+  createdAt?: string;
+};
+
+export type LinkAppleContactInput = {
+  personId: string;
+  userId: string;
+  contactIdentifier?: string;
+  unifiedContactIdentifier?: string;
+  containerIdentifier?: string;
+  methodFingerprint: string;
+  displayNameSnapshot: string;
+  sensorEventId?: string;
+  linkedAt?: string;
 };
 
 /** Optional overrides when confirming a detected contact into a durable memory. */
@@ -110,6 +137,11 @@ export type RelationshipRepository = {
   listMemoryRevisions(memoryId: string): MemoryRevision[];
   addInteraction(interaction: AgentInteraction): AgentInteraction;
   listInteractions(userId?: string): AgentInteraction[];
+  createPersonIdentity(input: CreatePersonIdentityInput): PersonIdentity;
+  linkAppleContact(input: LinkAppleContactInput): AppleContactLink;
+  findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined;
+  findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[];
+  attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate;
 };
 
 /**
@@ -126,6 +158,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
   const memories = [...(seed.memories ?? [])];
   const memoryRevisions = [...(seed.memoryRevisions ?? seed.memories?.map(createCreatedMemoryRevision) ?? [])];
   const interactions = [...(seed.interactions ?? [])];
+  const personIdentities = [...(seed.personIdentities ?? [])];
+  const appleContactLinks = [...(seed.appleContactLinks ?? [])];
 
   return {
     listCalendarEvents(userId: string) {
@@ -213,11 +247,19 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
       candidate.status = "confirmed";
       const confirmedAt = options.confirmedAt ?? new Date().toISOString();
+      const personId = ensureCandidatePersonId({
+        candidate,
+        personIdentities,
+        appleContactLinks,
+        now: confirmedAt
+      });
+      candidate.personId = personId;
       const selectedMatch = options.eventTitle && !eventId ? undefined : selectEventMatch(eventMatches, candidateId, eventId);
       const memory: RelationshipMemory = {
         id: `memory_${candidate.id}`,
         userId: candidate.userId,
         candidateId: candidate.id,
+        personId,
         displayName: candidate.displayName,
         primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
         eventId: selectedMatch?.calendarEventId,
@@ -361,8 +403,143 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
 
     listInteractions(userId?: string): AgentInteraction[] {
       return userId ? interactions.filter((interaction) => interaction.userId === userId) : [...interactions];
+    },
+
+    createPersonIdentity(input: CreatePersonIdentityInput): PersonIdentity {
+      const timestamp = input.createdAt ?? new Date().toISOString();
+      const person: PersonIdentity = {
+        id: `person_${randomUUID()}`,
+        userId: input.userId,
+        canonicalDisplayName: input.canonicalDisplayName,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      personIdentities.push(person);
+      return person;
+    },
+
+    linkAppleContact(input: LinkAppleContactInput): AppleContactLink {
+      const person = personIdentities.find((item) => item.id === input.personId);
+      if (!person || person.userId !== input.userId) {
+        throw new Error(`Person not found: ${input.personId}`);
+      }
+
+      const linkedAt = input.linkedAt ?? new Date().toISOString();
+      const link: AppleContactLink = {
+        id: `apple_contact_link_${randomUUID()}`,
+        personId: input.personId,
+        userId: input.userId,
+        contactIdentifier: input.contactIdentifier,
+        unifiedContactIdentifier: input.unifiedContactIdentifier,
+        containerIdentifier: input.containerIdentifier,
+        methodFingerprint: input.methodFingerprint,
+        displayNameSnapshot: input.displayNameSnapshot,
+        sensorEventId: input.sensorEventId,
+        linkedAt
+      };
+      appleContactLinks.push(link);
+      return link;
+    },
+
+    findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined {
+      const link = appleContactLinks.find(
+        (item) => item.userId === userId && item.methodFingerprint === methodFingerprint
+      );
+      if (!link) {
+        return undefined;
+      }
+
+      return personIdentities.find((person) => person.id === link.personId && person.userId === userId && !person.mergedIntoPersonId);
+    },
+
+    findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[] {
+      const normalizedDisplayName = normalizeDisplayNameForIdentity(displayName);
+      if (!normalizedDisplayName) {
+        return [];
+      }
+
+      return personIdentities.filter(
+        (person) =>
+          person.userId === userId &&
+          !person.mergedIntoPersonId &&
+          normalizeDisplayNameForIdentity(person.canonicalDisplayName) === normalizedDisplayName
+      );
+    },
+
+    attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate {
+      const candidate = candidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+
+      const person = personIdentities.find((item) => item.id === personId);
+      if (!person || person.userId !== candidate.userId) {
+        throw new Error(`Person not found: ${personId}`);
+      }
+
+      candidate.personId = personId;
+      return candidate;
     }
   };
+}
+
+/** Temporary method fingerprint for legacy memories without contact metadata. */
+export function computeLegacyMemoryMethodFingerprint(displayName: string, memoryId: string): string {
+  return createHash("sha256").update(`${displayName}|${memoryId}`).digest("hex");
+}
+
+/** Computes a stable method fingerprint from a candidate's normalized contact methods. */
+export function candidateMethodFingerprint(candidate: Pick<ContactCandidate, "phoneNumbers" | "emails">): string {
+  return computeMethodFingerprint({
+    phoneNumbers: candidate.phoneNumbers,
+    emails: candidate.emails
+  });
+}
+
+type EnsureCandidatePersonIdInput = {
+  candidate: ContactCandidate;
+  personIdentities: PersonIdentity[];
+  appleContactLinks: AppleContactLink[];
+  now: string;
+};
+
+/** Ensures a confirmed candidate has a durable person id, creating identity rows when needed. */
+export function ensureCandidatePersonId(input: EnsureCandidatePersonIdInput): string {
+  if (input.candidate.personId) {
+    return input.candidate.personId;
+  }
+
+  const methodFingerprint = candidateMethodFingerprint(input.candidate);
+  const existingPerson = input.appleContactLinks
+    .filter((link) => link.userId === input.candidate.userId && link.methodFingerprint === methodFingerprint)
+    .map((link) => input.personIdentities.find((person) => person.id === link.personId))
+    .find((person) => person && person.userId === input.candidate.userId && !person.mergedIntoPersonId);
+
+  if (existingPerson) {
+    return existingPerson.id;
+  }
+
+  const person: PersonIdentity = {
+    id: `person_${randomUUID()}`,
+    userId: input.candidate.userId,
+    canonicalDisplayName: input.candidate.displayName,
+    createdAt: input.now,
+    updatedAt: input.now
+  };
+  input.personIdentities.push(person);
+  input.appleContactLinks.push({
+    id: `apple_contact_link_${randomUUID()}`,
+    personId: person.id,
+    userId: input.candidate.userId,
+    contactIdentifier: input.candidate.contactIdentifier,
+    unifiedContactIdentifier: input.candidate.unifiedContactIdentifier,
+    containerIdentifier: input.candidate.containerIdentifier,
+    methodFingerprint,
+    displayNameSnapshot: input.candidate.displayName,
+    sensorEventId: input.candidate.sensorEventId,
+    linkedAt: input.now
+  });
+  return person.id;
 }
 
 function eventMatchContact(contact: ContactCandidateDetected): ContactCandidateDetected {
