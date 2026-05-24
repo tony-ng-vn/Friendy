@@ -1,11 +1,20 @@
+/**
+ * Optional LLM polish for deterministic outbound replies.
+ *
+ * The expression layer rewrites tool-generated drafts into buddy-like iMessage copy while
+ * `expressionFacts` + `expressionValidator` constrain hallucination. Any API or validation
+ * failure returns the original draft unchanged.
+ */
 import { buildExpressionSystemPrompt, buildExpressionUserMessage } from "./expressionPrompt";
 import { readExpressionConfig, type ExpressionConfig } from "./expressionConfig";
 import type { ExpressionFactBundle } from "./expressionFacts";
 import { validateExpressionReply } from "./expressionValidator";
 
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
+/** Hard cap so expression polish cannot block the reply path indefinitely. */
 const EXPRESSION_FETCH_TIMEOUT_MS = 8_000;
 
+/** Outcome of an expression pass, including whether the draft or LLM text was returned. */
 export type ExpressionComposerResult = {
   text: string;
   expressionUsed: boolean;

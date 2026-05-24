@@ -1,3 +1,9 @@
+/**
+ * Grounding contract passed to the expression LLM alongside a deterministic draft.
+ *
+ * Each `kind` narrows which people, events, and snippets may appear in the rewrite.
+ * Validators in `expressionValidator.ts` enforce the same constraints post-generation.
+ */
 export type ExpressionReplyKind =
   | "save_confirmation"
   | "search_single_match"
@@ -8,6 +14,7 @@ export type ExpressionReplyKind =
   | "conversation_repair"
   | "explain_agent_state";
 
+/** Internal routing vocabulary the expression model must never surface to users. */
 export const GLOBAL_BANNED_EXPRESSION_TERMS = [
   "candidate",
   "route",
@@ -24,6 +31,7 @@ export const GLOBAL_BANNED_EXPRESSION_TERMS = [
   "matched"
 ] as const;
 
+/** Shared fields for every expression fact bundle variant. */
 export type ExpressionFactBundleBase = {
   kind: ExpressionReplyKind;
   deterministicDraft: string;
@@ -82,6 +90,7 @@ export type ExplainAgentStateBundle = ExpressionFactBundleBase & {
   workflowSummary: string;
 };
 
+/** Discriminated union consumed by `expressionPrompt` and `expressionValidator`. */
 export type ExpressionFactBundle =
   | SaveConfirmationBundle
   | SearchSingleMatchBundle

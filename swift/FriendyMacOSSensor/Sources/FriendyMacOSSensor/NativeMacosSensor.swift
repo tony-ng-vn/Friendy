@@ -781,6 +781,7 @@ final class NativeMacosSensor {
     }
 }
 
+/// Starts the long-lived Contacts/Calendar watcher for the given state directory.
 func runNativeMacosSensor(stateDir: String, identity: SensorIdentity) {
     NativeMacosSensor(stateDir: stateDir, identity: identity).start()
 }

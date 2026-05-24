@@ -1,3 +1,8 @@
+/**
+ * Golden good/bad examples for expression tone review and eval fixtures.
+ *
+ * Pairs with `expressionPrompt.ts` system examples; `hasCasualToneHeuristic` is a soft check only.
+ */
 import {
   buildClarificationBundle,
   buildConversationRepairBundle,
@@ -8,6 +13,7 @@ import {
   type ExpressionFactBundle
 } from "./expressionFacts";
 
+/** Fixture for manual or eval review of expression tone without calling the LLM. */
 export type ExpressionGoldenCase = {
   id: string;
   draft: string;
@@ -16,6 +22,7 @@ export type ExpressionGoldenCase = {
   badExamples: string[];
 };
 
+/** Canonical good/bad pairs aligned with `buildExpressionSystemPrompt` examples. */
 export const EXPRESSION_GOLDEN_CASES: ExpressionGoldenCase[] = [
   {
     id: "expression-save-confirmation-grounded",

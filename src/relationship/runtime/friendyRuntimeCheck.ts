@@ -12,6 +12,7 @@ import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore } fro
 import { createFakeMacosSensorEvents } from "./fakeMacosSensor";
 import { createFriendySensorRuntime, type RuntimePromptSender } from "./friendyRuntime";
 
+/** Pass/fail details from the SQLite-backed runtime smoke check. */
 export type FriendyRuntimeCheckReport = {
   ok: boolean;
   candidateCount: number;
@@ -22,6 +23,7 @@ export type FriendyRuntimeCheckReport = {
   lines: string[];
 };
 
+/** Optional cwd and clock override for deterministic CI runs. */
 export type FriendyRuntimeCheckInput = {
   cwd?: string;
   now?: () => string;
@@ -203,6 +205,7 @@ async function withRuntime(
   }
 }
 
+/** CLI entrypoint for `npm run check:friendy-runtime`. */
 export async function main(): Promise<void> {
   const report = await runFriendyRuntimeCheck();
   for (const line of report.lines) {

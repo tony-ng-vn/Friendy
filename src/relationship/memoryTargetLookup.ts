@@ -1,6 +1,13 @@
+/**
+ * Resolves a user-named memory target to one row, a short option list, or no match.
+ *
+ * Combines fuzzy display-name scoring with optional exact context-note matching when
+ * the user quotes saved text. Ambiguity uses a score gap, not search-result collapse.
+ */
 import { rankDisplayNameMatches } from "./personNameMatch";
 import type { RelationshipMemory } from "./types";
 
+/** Single target, ambiguous options, or no qualifying memory for the query. */
 export type MemoryTargetLookupResult =
   | { kind: "none"; query: string }
   | {

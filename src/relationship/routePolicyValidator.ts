@@ -1,8 +1,16 @@
+/**
+ * Post-interpretation policy gate before deterministic tools run.
+ *
+ * Validates interpreter intent against durable conversation state, unsupported routes,
+ * and required tool availability. Reminder suppression is projected here for traces;
+ * append/defer timing lives in `pendingReminderPolicy.ts`.
+ */
 import type { MessageInterpretation } from "./interpretation";
 import type { ConversationState } from "./conversationState";
 import type { AgentToolCall } from "./types";
 import { shouldSuppressPendingReminder, shouldSuppressPendingReminderForRoute } from "./pendingReminderPolicy";
 
+/** Outcome of route policy: proceed, ask, reject off-domain, or explain unsupported capability. */
 export type ValidatedRoutePolicy =
   | { decision: "allow"; reason: string; suppressPendingReminder: boolean }
   | { decision: "clarify"; reason: string; question: string; suppressPendingReminder: boolean }
@@ -68,6 +76,11 @@ export function validateRoutePolicy(
   };
 }
 
+/**
+ * Ensures the interpreted route has a registered tool implementation.
+ *
+ * @returns A reject/unsupported policy when the required tool is missing; otherwise `undefined`.
+ */
 export function validateRequiredToolAvailability(
   interpretation: MessageInterpretation,
   tools: Record<AgentToolCall, unknown>

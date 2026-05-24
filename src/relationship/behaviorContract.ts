@@ -1,3 +1,9 @@
+/**
+ * Product behavior rules encoded in the interpreter system prompt.
+ *
+ * Split from JSON-schema instructions in `buildStructuredOutputInstructions` so tone/rules
+ * can evolve without touching OpenAI strict schema wiring.
+ */
 export const BEHAVIOR_CONTRACT_RULES = [
   "save_only_after_confirmation",
   "never_save_from_contact_detection_alone",

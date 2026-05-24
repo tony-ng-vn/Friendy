@@ -1,5 +1,6 @@
 import { DEFAULT_OPENAI_MODEL, type ModelProvider } from "./openAIInterpreter";
 
+/** Runtime knobs for the optional expression LLM (`FRIENDY_EXPRESSION_LLM=1`). */
 export type ExpressionConfig = {
   enabled: boolean;
   provider: ModelProvider;

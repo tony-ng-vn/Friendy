@@ -1,3 +1,9 @@
+/**
+ * Ensures a single macOS sensor owns NDJSON stdout and on-disk state.
+ *
+ * Kills stray `friendy-macos-sensor` processes before the runtime spawns a new child,
+ * avoiding duplicate event streams and conflicting writes to the sensor state directory.
+ */
 import { spawnSync } from "node:child_process";
 import type { RuntimeLogger } from "./friendyRuntime";
 

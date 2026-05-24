@@ -1,5 +1,12 @@
+/**
+ * Strict routing mode: fail loudly instead of silent rule-based fallback.
+ *
+ * Controlled by `FRIENDY_STRICT_MODE` (default on). Errors carry a {@link FriendyTrace}
+ * for eval replay and production debugging.
+ */
 import type { FriendyTrace } from "./trace";
 
+/** Machine-readable failure reason when strict mode rejects a route or tool path. */
 export type FriendyStrictModeErrorCode =
   | "MODEL_INTERPRETATION_FAILED"
   | "INVALID_ROUTE_SCHEMA"
@@ -22,6 +29,7 @@ export function readFriendyStrictMode(env: EnvLike = process.env): boolean {
   return !FALSE_VALUES.has(raw);
 }
 
+/** Thrown when strict mode disallows fallback, unknown routes, or missing tools. */
 export class FriendyStrictModeError extends Error {
   readonly code: FriendyStrictModeErrorCode;
   readonly trace: FriendyTrace;
@@ -34,6 +42,7 @@ export class FriendyStrictModeError extends Error {
   }
 }
 
+/** Throws {@link FriendyStrictModeError} when `strictMode` is on and `condition` is false. */
 export function assertStrictModeAllowed(input: {
   strictMode: boolean;
   condition: boolean;

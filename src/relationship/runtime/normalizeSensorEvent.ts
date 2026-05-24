@@ -1,3 +1,4 @@
+/** Pre-Zod normalization for macOS sensor `contact_added` hint fields. */
 const UNKNOWN_LABEL = "unknown";
 
 type ContactMethodHint = {
@@ -6,6 +7,7 @@ type ContactMethodHint = {
   label?: string;
 };
 
+/** Payload after hint cleanup; `didNormalize` drives runtime audit logging. */
 export type NormalizeSensorEventResult = {
   payload: Record<string, unknown>;
   didNormalize: boolean;

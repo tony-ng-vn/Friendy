@@ -37,11 +37,13 @@ import {
 } from "./macosSensorBinaryPath";
 import type { SensorLaunchConfig } from "./sensorProcess";
 
+/** cwd/env overrides used by doctor, tests, and `startFriendyForegroundRuntime`. */
 export type FriendyRuntimeConfigInput = {
   cwd?: string;
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
+/** Either the TypeScript fake sensor (`tsx`) or a real binary/app-bundle launch. */
 export type FriendySensorLaunchConfig =
   | {
       mode: "mock";
@@ -61,6 +63,7 @@ export type FriendyRuntimeConfig = {
   sensor: FriendySensorLaunchConfig;
 };
 
+/** Injectable hooks for tests (custom sender, sensor spawn, inbound agent, ack writer). */
 export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
   sender?: RuntimePromptSender;
   logger?: RuntimeLogger;
@@ -74,6 +77,7 @@ export type RuntimePromptSenderWithKind = RuntimePromptSender & {
   kind: "console" | "spectrum";
 };
 
+/** Live handles returned by `startFriendyForegroundRuntime`; call `close()` on shutdown. */
 export type StartedFriendyForegroundRuntime = {
   config: FriendyRuntimeConfig;
   repo: SqliteRelationshipRepository;

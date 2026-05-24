@@ -1,5 +1,12 @@
+/**
+ * When to append a pending-contact reminder footer after an unrelated search reply.
+ *
+ * Pure policy — no I/O. Suppresses reminders during complaints, duplicate work, deletes,
+ * and list-people routes; defers repeats within TTL; appends only on eligible search interrupts.
+ */
 import type { MessageInterpretation } from "./interpretation";
 
+/** Outbound response shape used to decide whether a reminder footer is appropriate. */
 export type PendingReminderResponseKind =
   | "search_result"
   | "list_people"
@@ -17,6 +24,7 @@ export type SameOrDifferentResolution = {
   resolution: "same_person" | "different_person";
 };
 
+/** Per-session reminder timing and same/different duplicate-resolution memory. */
 export type PendingReminderState = {
   lastReminderAt?: string;
   lastRemindedCandidateId?: string;

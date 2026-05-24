@@ -1,3 +1,9 @@
+/**
+ * Fuzzy display-name ranking for delete/update target resolution.
+ *
+ * Scores exact match highest, then substring and token-level Levenshtein — used by
+ * `memoryTargetLookup` and interpreted-agent disambiguation, not for memory search ranking.
+ */
 export type DisplayNameMatch = {
   displayName: string;
   score: number;

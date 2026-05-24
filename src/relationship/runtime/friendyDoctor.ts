@@ -1,3 +1,10 @@
+/**
+ * Local preflight checks for `agent:friendy` without starting Spectrum or the sensor.
+ *
+ * Validates Node version, writable SQLite/sensor paths, strict-mode model config,
+ * prompt transport recipients, and macOS sensor binary presence. Native TCC is
+ * reported as informational only — this module does not call Contacts or Calendar.
+ */
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
@@ -6,6 +13,7 @@ import { readFriendyStrictMode } from "../strictMode";
 import { resolveFriendyRuntimeConfig } from "./friendyRuntimeCli";
 import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
+/** One named readiness check with optional remediation when `ok` is false. */
 export type FriendyDoctorCheck = {
   name: string;
   ok: boolean;
@@ -13,12 +21,14 @@ export type FriendyDoctorCheck = {
   remediation?: string;
 };
 
+/** Aggregated doctor output; `ok` is false when any required check fails. */
 export type FriendyDoctorReport = {
   ok: boolean;
   checks: FriendyDoctorCheck[];
   lines: string[];
 };
 
+/** Overrides for cwd, env, platform, and Node version in unit tests. */
 export type FriendyDoctorInput = {
   cwd?: string;
   env?: Partial<NodeJS.ProcessEnv>;
@@ -226,6 +236,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** CLI entrypoint for `npm run doctor:friendy`. */
 export function main(): void {
   loadFriendyEnv();
   const report = runFriendyDoctor();

@@ -25,11 +25,13 @@ export type ContactCandidateStatus =
 /** User resolution for a same-display-name duplicate candidate. */
 export type DuplicateResolutionStatus = "pending" | "same" | "different" | "ignored" | "not_sure";
 
+/** Origin of calendar rows synced before event-context matching. */
 export type CalendarSource = "apple_calendar" | "google_calendar" | "simulated";
 
 /** Calendar event kind controls match priority when event windows overlap. */
 export type CalendarEventKind = "short" | "long" | "all_day";
 
+/** Inbound channel that produced the message; drives transport-specific logging only. */
 export type AgentPlatform = "imessage" | "terminal" | "web";
 
 /** Normalized natural-language date context parsed from the user's message. */
@@ -124,6 +126,7 @@ export type EventContextMatch = {
   rank: number;
 };
 
+/** Delivery lifecycle for a proactive candidate review prompt over Spectrum/iMessage. */
 export type CandidatePromptAttemptStatus = "send_started" | "send_succeeded" | "send_failed";
 
 /** Durable prompt delivery audit used to recover candidate prompts after process restarts. */
@@ -158,6 +161,7 @@ export type RelationshipMemory = {
   deletedAt?: string;
 };
 
+/** Reason recorded on the memory revision audit trail. */
 export type MemoryRevisionReason = "created" | "user_correction" | "user_note_added" | "deleted";
 
 /** Append-only audit entry for each accepted version of a relationship memory. */

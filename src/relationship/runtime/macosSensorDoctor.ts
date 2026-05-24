@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
+/** Test overrides for cwd, env, platform, and subprocess execution. */
 export type MacosSensorDoctorInput = {
   cwd?: string;
   env?: Partial<NodeJS.ProcessEnv>;
@@ -17,6 +18,7 @@ export type MacosSensorDoctorInput = {
   execFileSync?: (command: string, args: string[]) => string | Buffer;
 };
 
+/** Build/packaging diagnostics for the native sensor binary. */
 export type MacosSensorDoctorReport = {
   ok: boolean;
   binaryPath: string;

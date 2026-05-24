@@ -1,3 +1,8 @@
+/**
+ * Bridges relationship agent outputs into `expressionFacts` bundles.
+ *
+ * Returns undefined when the draft is empty or the reply kind should not be polished.
+ */
 import type { MemorySearchResult } from "./tools";
 import type { RelationshipMemory } from "./types";
 import {
@@ -14,6 +19,7 @@ import {
   type ExpressionReplyKind
 } from "./expressionFacts";
 
+/** Maps agent/tool outcomes into an expression bundle; returns undefined when polish is unsafe or unsupported. */
 export type BuildExpressionFactBundleInput =
   | { kind: "save_confirmation"; draft: string; memories: RelationshipMemory[] }
   | { kind: "search_single_match"; draft: string; memory: RelationshipMemory; ambiguous?: boolean }
@@ -160,6 +166,7 @@ function summarizeMemoryNoteSnippet(memory: RelationshipMemory): string | undefi
   return parts.slice(0, 2).join("; ") || undefined;
 }
 
+/** Only redacted last-four labels may appear in expression output; full numbers stay banned. */
 function toAllowedContactHint(primaryContactLabel: string): string | undefined {
   const label = primaryContactLabel.trim();
   if (!label || label === "manual contact") {

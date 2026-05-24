@@ -1,5 +1,6 @@
 import type { ExpressionFactBundle } from "./expressionFacts";
 
+/** Pass/fail with machine-readable reason codes for logging and eval assertions. */
 export type ExpressionValidationResult = { ok: true } | { ok: false; reasons: string[] };
 
 const CERTAINTY_PHRASES = ["definitely", "that's them", "it was "];
@@ -77,6 +78,7 @@ export function validateExpressionReply(input: {
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons };
 }
 
+/** Relationship terms are allowed only when grounded in the draft, bundle snippets, or absent from output. */
 function includesAllowedSnippet(text: string, bundle: ExpressionFactBundle, term: string): boolean {
   return (
     bundle.deterministicDraft.toLowerCase().includes(term) ||

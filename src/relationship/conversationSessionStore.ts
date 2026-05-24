@@ -1,3 +1,8 @@
+/**
+ * Session persistence boundary for `ConversationSession` snapshots.
+ *
+ * Production uses SQLite; tests use the in-memory implementation below.
+ */
 import {
   emptySession,
   normalizeSessionKey,
@@ -6,6 +11,7 @@ import {
   type ConversationSessionKey
 } from "./conversationSession";
 
+/** Read/write API for versioned conversation sessions keyed by user and channel. */
 export type ConversationSessionStore = {
   getSession(key: ConversationSessionKey): ConversationSession | undefined;
   upsertSession(session: ConversationSession): ConversationSession;

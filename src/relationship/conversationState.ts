@@ -1,3 +1,9 @@
+/**
+ * Durable pending-contact conversation state for route policy and router envelopes.
+ *
+ * Derived from repository candidates — not stored separately. `activeFrame` is the
+ * single prompted or sole pending candidate the agent treats as awaiting context.
+ */
 import type { ContactCandidate } from "./types";
 
 export type ConversationRelation =
@@ -10,6 +16,7 @@ export type ConversationRelation =
   | "starts_new_out_of_scope_task"
   | "unclear";
 
+/** High-priority frame when the user should answer an open pending-contact prompt. */
 export type PendingContactContextFrame = {
   type: "pending_contact_context";
   frameId: string;
@@ -30,11 +37,18 @@ export type PendingContactQueueItem = {
   status: ContactCandidate["status"];
 };
 
+/** Snapshot of open pending-contact work for a user (and optional messaging space). */
 export type ConversationState = {
   activeFrame?: PendingContactContextFrame;
   pendingContactQueue: PendingContactQueueItem[];
 };
 
+/**
+ * Projects repository pending candidates into route-policy and router-envelope state.
+ *
+ * Active candidate selection prefers a prompted candidate in the current `spaceId`,
+ * then a single global prompted candidate, then a sole pending row.
+ */
 export function buildConversationState({
   userId,
   spaceId,

@@ -1,3 +1,10 @@
+/**
+ * Durable per-user conversation session for multi-turn agent state (PR 10+).
+ *
+ * Replaces process-local Maps in `interpretedAgent` with versioned snapshots:
+ * active workflows, search/list carryover, route history, and reminder timing.
+ * Persisted via `conversationSessionStore`; helpers here stay pure projections.
+ */
 import type { TemporalContext } from "./temporalContext";
 import type { AgentPlatform } from "./types";
 
@@ -5,6 +12,7 @@ export const MAX_ROUTE_HISTORY = 10;
 export const MAX_RECENT_ENTITY_REFS = 10;
 export const MAX_RECENT_PEOPLE = 10;
 
+/** Stable session identity: user, platform, and optional Spectrum space. */
 export type ConversationSessionKey = {
   userId: string;
   platform: AgentPlatform;
@@ -20,6 +28,7 @@ export type SearchContext = {
   lastQuestion: string;
 };
 
+/** Mutually exclusive in-flight confirmation or mutation workflow for one session. */
 export type ActiveWorkflow =
   | {
       kind: "pending_contact_confirm";

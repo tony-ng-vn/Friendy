@@ -70,6 +70,7 @@ export function createSpectrumPromptSender({
   };
 
   async function resolveSpace(): Promise<SpectrumPromptSpace> {
+    // Reuse one iMessage space for the process lifetime to avoid repeated Spectrum user lookups.
     if (!spacePromise) {
       spacePromise = Promise.resolve(imessageClient.user(toPhone)).then((user) => imessageClient.space(user));
     }
@@ -102,6 +103,7 @@ export async function createLiveSpectrumPromptSender({
   });
 }
 
+/** Strips ISO punctuation so interaction ids stay log-safe without embedded separators. */
 function sanitizeInteractionTime(value: string): string {
   return value.replace("T", "").replace(/[^0-9a-z]/gi, "");
 }

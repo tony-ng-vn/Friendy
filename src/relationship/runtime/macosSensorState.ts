@@ -1,3 +1,9 @@
+/**
+ * On-disk coordination files shared between the Node runtime and native sensor.
+ *
+ * The snapshot file records known Contacts identifiers; deleting it plus writing the
+ * reset signal forces the sensor to treat the next poll as a fresh baseline (used after `start`).
+ */
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -7,6 +13,7 @@ export const MACOS_SENSOR_CONTACT_IDENTIFIER_SNAPSHOT = "contacts-identifier-sna
 /** Tells a live sensor process to drop its in-memory snapshot baseline on the next poll. */
 export const MACOS_SENSOR_RESET_CONTACT_SNAPSHOT_SIGNAL = "reset-contact-snapshot.signal";
 
+/** Whether the snapshot file existed and was removed before the reset signal was written. */
 export type MacosSensorContactSnapshotResetResult = {
   removedSnapshot: boolean;
   wroteSignal: boolean;

@@ -28,6 +28,7 @@ export function isListPeopleRecall(text: string): boolean {
   ].some((pattern) => pattern.test(normalized));
 }
 
+/** True when the user asks who they met at/during a specific event (not a full roster). */
 export function isEventRecallQuestion(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/\bu\b/g, "you");
   return (

@@ -21,6 +21,7 @@ type ExecFileSync = (
   }
 ) => string | Buffer;
 
+/** Result of invoking the Swift `--emit-fixture` path on a macOS host. */
 export type MacosSensorFixtureCheckReport = {
   ok: boolean;
   skipped: boolean;
