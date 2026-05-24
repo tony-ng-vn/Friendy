@@ -41,6 +41,7 @@ src/
 | Root `AGENTS.md` | Global constraints: commits, destructive commands, comments, navigation habits | Product requirements or feature-specific behavior |
 | Scoped `AGENTS.md` | Local invariants, test commands, boundaries that only apply inside that folder | Repeating root rules or copying another folder's instructions |
 | `implementation-notes.html` | Decisions made during implementation, tradeoffs, verification history | Navigation maps or broad project docs |
+| `scaling.html` | Future scale parking lot; agent-appended deferrals (see root `AGENTS.md`) | Current MVP work, active goals, or shipped implementation history |
 | `docs/superpowers/*` | Approved specs and execution plans | Current status tracking during a goal loop |
 | `docs/goals/*` | Goal-mode prompts and measurable progress tracking | General product documentation |
 

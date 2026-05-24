@@ -46,6 +46,7 @@ Transport message
 - Current system audit: `docs/reviews/current-system-audit.md`
 - Superpowers specs and plans: `docs/superpowers/README.md`
 - Implementation decisions and verification history: `implementation-notes.html`
+- Future scaling parking lot (defer, do not prioritize by default): `scaling.html`
 - Relationship-agent source: `src/relationship/`
 - Legacy local web shell: `src/App.tsx`, `src/agent.ts`, `src/memoryStore.ts`, `src/mockData.ts`
 - Spectrum/iMessage adapter: `src/relationship/transports/spectrumTransport.ts`

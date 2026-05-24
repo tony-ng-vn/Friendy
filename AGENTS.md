@@ -28,6 +28,18 @@ When implementing a spec, keep a running `implementation-notes.html` file, or a 
 
 Use it to record decisions that were not in the spec, things that had to change, tradeoffs that had to be made, and anything else the user should know. Do not use it as the only handoff doc — pair it with `docs/agent-handoff.md`.
 
+## Future scaling (parking lot)
+
+`scaling.html` at the repo root holds **deferred scale work** — correct to track, **not** default implementation priority.
+
+When you find a problem that is a **future scaling** concern (not blocking current MVP, active goals in `docs/goals/`, or open blockers in `docs/agent-handoff.md`):
+
+1. **Do not** expand scope to build it now unless the user explicitly asks.
+2. **Append** a short entry to `scaling.html` under **Parking lot (agent additions)** using the template in that file (date, class A/B/C, observed issue, why not now, proposed later mitigation, trigger metrics).
+3. **Continue** prioritizing **now** work: identity (`personId`), routing, confirmation-gated mutations, duplicate-name disambiguation, append-vs-create, eval safety (`npm run eval:agent`), live regressions.
+
+Revisit parked items only when the user prioritizes scale work or the trigger metrics documented in `scaling.html` are met.
+
 ## Commits
 
 Commit implementation work incrementally with detailed messages.

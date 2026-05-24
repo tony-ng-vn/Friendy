@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Friendy Scaling — Future Parking Lot</title>
+  </head>
+  <body>
+    <h1>Friendy Scaling — Future Parking Lot</h1>
+    <p>
+      <strong>Purpose:</strong> Record scaling and architecture ideas that are
+      <em>correct to watch</em> but <em>not prioritized for MVP / current goals</em>.
+      Agents must not implement items here unless the user explicitly asks, or
+      documented trigger metrics are met.
+    </p>
+    <p>
+      <strong>Canonical storage model (now):</strong> moment-centric, not profile-centric —
+      <code>PersonIdentity</code> → many flat <code>RelationshipMemory</code> rows keyed by
+      <code>personId</code> and <code>memoryId</code>. Grouping is a computed view (e.g.
+      <code>list_people</code>, <code>groupMemoriesByPerson</code>), not a stored
+      <code>MemoryNode</code> hierarchy.
+    </p>
+    <p>
+      See also: <code>AGENTS.md</code> (future-scaling rule),
+      <code>implementation-notes.html</code> (decisions shipped now),
+      <code>docs/superpowers/specs/2026-05-23-identity-resolution-design.md</code>.
+    </p>
+
+    <h2>Why flat memories beat a middle MemoryNode (for LLM tools)</h2>
+    <ul>
+      <li>
+        <strong>Tool IDs:</strong> Models handle <code>personId</code> + <code>memoryId</code>
+        better than <code>personId</code> + <code>memoryNodeId</code> + leaf id — fewer
+        hierarchy hallucinations on mutate paths.
+      </li>
+      <li>
+        <strong>IR / search:</strong> Retrieval units should be episodic facts (high semantic
+        density per row), not opaque containers that hide which moment matched.
+      </li>
+      <li>
+        <strong>Delete boundaries:</strong> Users say “forget that Sarah line” (leaf) or “forget
+        Sarah” (person scope after disambiguation). A middle node duplicates
+        <code>personId</code> without clarifying tool targets.
+      </li>
+      <li>
+        <strong>Verdict:</strong> Friendy is moment-centric. Keep storage flat; add summaries or
+        joins only as background or computed layers — not as a structural tree the model manages.
+      </li>
+    </ul>
+
+    <h2>Now vs later (default agent priority)</h2>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <thead>
+        <tr>
+          <th>Priority</th>
+          <th>Work</th>
+          <th>Examples</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Now</strong></td>
+          <td>Identity, routing, scoped mutations, confirmations, eval safety</td>
+          <td>
+            <code>personId</code> on lookup/delete/update; duplicate-name disambiguation;
+            <code>mode: append</code> vs duplicate <code>create_manual_memory</code>; unsafe
+            mutation = 0 in <code>npm run eval:agent</code>
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Soon</strong> (signals, still small scope)</td>
+          <td>Observability and guardrails before big schema changes</td>
+          <td>
+            Per-person memory counts in doctor/logs; cap search hits in composer; stronger
+            “update existing” detection before create
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Later</strong> (this file)</td>
+          <td>Scale mitigations below — only when triggers fire or user requests</td>
+          <td><code>personSummary</code>, semantic dedup on add, multi-person memories</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Issue A — Context window stuffing (broad “tell me about Sarah”)</h2>
+    <p><strong>Problem:</strong> One person accumulates many flat rows (e.g. 50–500). Broad questions pull many fragments into context; synthesis gets expensive and noisy.</p>
+    <p><strong>Deferred solution:</strong> Optional <code>personSummary</code> on <code>PersonIdentity</code> — markdown rollup updated <em>asynchronously</em> (cron / event listener). Models do not edit the summary via tools; episodic rows remain source of truth for search.</p>
+    <p><strong>Trigger metrics (implement when any is true):</strong></p>
+    <ul>
+      <li>Typical power user has &gt;30–50 active memories per <code>personId</code></li>
+      <li>Broad person questions routinely exceed reply/token budget or quality drops in live logs</li>
+      <li>Product promises “everything you know about X” in one turn</li>
+    </ul>
+    <p><strong>Not the same as:</strong> duplicate display names / missing <code>personId</code> — that is identity (fix now).</p>
+
+    <h2>Issue B — Memory fragmentation (repeated same fact)</h2>
+    <p><strong>Problem:</strong> Many rows state the same preference (“almond milk”) and dilute search ranking.</p>
+    <p><strong>Partially now:</strong> Deterministic append paths (<code>update_memory</code> with <code>mode: append</code>); routing that avoids duplicate manual create for “is also …” phrasing.</p>
+    <p><strong>Deferred solution:</strong> On <code>add_memory</code> / confirm, internal semantic check: if new fact maps to existing <code>memoryId</code>, patch or append instead of inserting a new row.</p>
+    <p><strong>Trigger metrics:</strong></p>
+    <ul>
+      <li>Evals or logs show &gt;N near-duplicate rows per person for the same semantic fact</li>
+      <li>Search top-K dominated by redundant preference/event lines</li>
+    </ul>
+
+    <h2>Issue C — Cross-person / group episodic memories</h2>
+    <p><strong>Problem:</strong> One moment involves multiple people (“dinner with Sarah and Alex at Photon”). Strict single <code>personId</code> per row forces duplication or weak group recall.</p>
+    <p><strong>Deferred solution:</strong> <code>MemoryParticipants</code> join (or <code>personIds[]</code>) so one episodic row links multiple <code>PersonIdentity</code> records without copying text.</p>
+    <p><strong>Trigger metrics:</strong></p>
+    <ul>
+      <li>Product requires saving/recalling group moments as first-class (not “search finds both names”)</li>
+      <li>Frequent user phrasing for multi-person capture with one shared context note</li>
+    </ul>
+
+    <h2>Anti-patterns (do not prioritize without user ask)</h2>
+    <ul>
+      <li>Stored hierarchy: <code>displayName → MemoryNode → memories[]</code></li>
+      <li>Single giant profile blob per person as the only searchable document</li>
+      <li>Model-editable rolling summary without revision / grounding guardrails</li>
+      <li>Vector DB migration “because scale” before episodic + deterministic search limits bite</li>
+    </ul>
+
+    <h2>Parking lot (agent additions)</h2>
+    <p>
+      When you discover a <strong>future scaling</strong> issue during work, append an entry below.
+      Do not implement unless the user explicitly prioritizes it or triggers above are met.
+    </p>
+    <p><strong>Entry template (copy per item):</strong></p>
+    <pre>
+## [YYYY-MM-DD] Short title
+- **Class:** A | B | C | other
+- **Observed:** one sentence — what could break at scale
+- **Why not now:** MVP / handoff / current goal unaffected
+- **Proposed later:** one sentence — mitigation (no full spec)
+- **Triggers:** measurable conditions to revisit
+- **Found by:** agent session / user / eval name (optional)
+    </pre>
+
+    <h3>Entries</h3>
+    <ul>
+      <li>
+        <em>(none yet — agents append below or as new &lt;h3&gt; blocks)</em>
+      </li>
+    </ul>
+
+    <hr />
+    <p><small>Last doc seed: 2026-05-24 — personId memory model + LLM tool consumption rationale.</small></p>
+  </body>
+</html>
