@@ -22,6 +22,9 @@ export type ContactCandidateStatus =
   | "needs_clarification"
   | "send_failed";
 
+/** User resolution for a same-display-name duplicate candidate. */
+export type DuplicateResolutionStatus = "pending" | "same" | "different" | "ignored" | "not_sure";
+
 export type CalendarSource = "apple_calendar" | "google_calendar" | "simulated";
 
 /** Calendar event kind controls match priority when event windows overlap. */
@@ -87,6 +90,9 @@ export type ContactCandidateDetected = {
 export type ContactCandidate = ContactCandidateDetected & {
   id: string;
   status: ContactCandidateStatus;
+  personId?: string;
+  suspectedDuplicatePersonId?: string;
+  duplicateResolutionStatus?: DuplicateResolutionStatus;
   expiresAt?: string;
   promptInteractionId?: string;
   promptSpaceId?: string;
@@ -137,6 +143,7 @@ export type RelationshipMemory = {
   id: string;
   userId: string;
   candidateId?: string;
+  personId?: string;
   displayName: string;
   primaryContactLabel: string;
   eventId?: string;
