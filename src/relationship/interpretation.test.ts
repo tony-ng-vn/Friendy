@@ -142,6 +142,11 @@ describe("message interpretation contract", () => {
       required: [
         "intent",
         "confidence",
+        "domain",
+        "conversationRelation",
+        "target",
+        "extractedContext",
+        "search",
         "people",
         "event",
         "dateContext",

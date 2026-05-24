@@ -79,7 +79,8 @@ export const messageInterpretationJsonSchema = {
         candidateId: { type: "string" },
         memoryId: { type: "string" },
         displayName: { type: "string" }
-      }
+      },
+      required: ["frameId", "candidateId", "memoryId", "displayName"]
     },
     extractedContext: {
       type: "string"
@@ -104,11 +105,12 @@ export const messageInterpretationJsonSchema = {
             companyOrSchool: { type: "string" },
             dateText: { type: "string" },
             tags: { type: "array", items: { type: "string" } }
-          }
+          },
+          required: ["personName", "eventName", "topic", "companyOrSchool", "dateText", "tags"]
         },
         topK: { type: "number", minimum: 1, maximum: 20 }
       },
-      required: ["mode", "semanticQuery", "exactTerms"]
+      required: ["mode", "semanticQuery", "exactTerms", "filters", "topK"]
     },
     people: {
       type: "array",
@@ -174,6 +176,11 @@ export const messageInterpretationJsonSchema = {
   required: [
     "intent",
     "confidence",
+    "domain",
+    "conversationRelation",
+    "target",
+    "extractedContext",
+    "search",
     "people",
     "event",
     "dateContext",
