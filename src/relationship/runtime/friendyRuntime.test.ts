@@ -238,6 +238,45 @@ describe("Friendy macOS sensor runtime", () => {
     ]);
   });
 
+  it("asks same-or-different when a new contact shares a saved person's name", async () => {
+    const harness = createHarness();
+    const existingCandidate = harness.repo.createCandidateFromDetectedContact({
+      userId: "user_friendy",
+      displayName: "Maya",
+      phoneNumbers: ["ending in 9999"],
+      emails: [],
+      detectedAt: "2026-05-20T18:36:51.000Z",
+      source: "simulated",
+      contactIdentifier: "existing_maya_contact"
+    });
+    const existingMemory = harness.repo.confirmCandidate(existingCandidate.id, "met during Photon Residency Dinner", undefined, {
+      eventTitle: "Photon Residency Dinner",
+      confirmedAt: "2026-05-20T18:40:00.000Z"
+    });
+
+    await harness.runtime.processLine(JSON.stringify(contactAddedEvent()));
+
+    const pendingCandidate = harness.repo
+      .listPendingCandidates("user_friendy")
+      .find((candidate) => candidate.id !== existingCandidate.id);
+    expect(pendingCandidate).toBeDefined();
+    expect(pendingCandidate).toMatchObject({
+      displayName: "Maya",
+      status: "prompted",
+      suspectedDuplicatePersonId: existingMemory.personId,
+      duplicateResolutionStatus: "pending"
+    });
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.prompts[0].text).toContain("I already have Maya saved in Friendy memory");
+    expect(harness.prompts[0].text).toContain("Reply same, different, ignore, or not sure.");
+    expect(harness.repo.listCandidatePromptAttempts(pendingCandidate!.id)[0].rawJson).toMatchObject({
+      prompt: {
+        route: "duplicate_resolution",
+        suspectedDuplicatePersonId: existingMemory.personId
+      }
+    });
+  });
+
   it("ignores contact events before user start so history batches can still ack", async () => {
     const harness = createHarness(
       {},

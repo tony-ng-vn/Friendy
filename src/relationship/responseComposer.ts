@@ -432,9 +432,14 @@ type SameOrDifferentPendingReplyInput = {
   displayName: string;
 };
 
-/** Asks whether pending contact context refers to an already saved person. */
-export function composeSameOrDifferentPendingReply({ displayName }: SameOrDifferentPendingReplyInput): string {
-  return `I already have ${displayName} saved in Friendy memory, and I'm also waiting on context for a new ${displayName} contact. Is this the same person or a different one?`;
+/** Asks whether a new same-name contact is the same saved person or a different person. */
+export function composeDuplicateResolutionPrompt({ displayName }: SameOrDifferentPendingReplyInput): string {
+  return `I already have ${displayName} saved in Friendy memory, and I'm also waiting on context for a new ${displayName} contact. Is this the same person or a different one? Reply same, different, ignore, or not sure.`;
+}
+
+/** @deprecated Use composeDuplicateResolutionPrompt for same-name workflows. */
+export function composeSameOrDifferentPendingReply(input: SameOrDifferentPendingReplyInput): string {
+  return composeDuplicateResolutionPrompt(input);
 }
 
 /** Sent when `agent:friendy` comes online so the owner knows the Mac runtime is listening. */

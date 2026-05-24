@@ -6,6 +6,15 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Duplicate Identity Resolution PR 6 (2026-05-24)</h2>
+    <ul>
+      <li>Wired deterministic duplicate-person resolution for same-display-name pending contacts. Explicit replies <code>same</code>, <code>different</code>, <code>ignore</code>, and <code>not sure</code> route through <code>resolve_duplicate_person</code> before any pending-contact context can be saved.</li>
+      <li>Added <code>personId</code> support to <code>list_people</code> results so multiple memories attached to the same person are grouped as one person instead of reported as duplicate people.</li>
+      <li>Updated duplicate workflow tracing with <code>activeWorkflowKind: duplicate_resolution</code> on both the opening clarification turn and the later resolution turn.</li>
+      <li>Changed same-name proactive runtime prompts to ask whether the new contact is the same saved person or a different person before asking for relationship context. The candidate stores <code>suspectedDuplicatePersonId</code> and <code>duplicateResolutionStatus: pending</code> before prompt delivery is attempted.</li>
+      <li>Kept Apple Contacts mutation out of scope. This PR links Friendy memory identity and pending candidates only; PR 7 still owns robust lookup-confirm delete/update, and PR 10 still owns durable conversation sessions.</li>
+      <li>Focused verification passed: <code>npm test -- src/relationship/responseComposer.test.ts src/relationship/runtime/friendyRuntime.test.ts src/relationship/personIdentity.test.ts src/relationship/duplicateResolution.test.ts src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts src/relationship/tools.test.ts src/relationship/interpretedAgent.test.ts</code> passed with 8 files/186 tests, <code>npm run build</code> passed, <code>npm run eval:agent</code> passed 46/46, and <code>git diff --check</code> passed.</li>
+    </ul>
     <h2>State-Aware Router Envelope PR 4 (2026-05-24)</h2>
     <ul>
       <li>Rebased PR 4 cleanly onto <code>origin/main</code> at <code>3d7d727</code>, preserving the concurrent PR 8 sensor normalization/ack work, PR 5/6/7 prep modules, PR 9 wave 1 doctor/runtime strict checks, and review fixes.</li>

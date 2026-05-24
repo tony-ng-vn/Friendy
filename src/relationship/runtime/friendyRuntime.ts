@@ -16,8 +16,9 @@
 import type { RelationshipRepository } from "../repository";
 import { isContactAutomationActive, type OnboardingState } from "../onboardingState";
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
+import { composeDuplicateResolutionPrompt } from "../responseComposer";
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
-import { planCandidatePrompt } from "./promptPlanner";
+import { planCandidatePrompt, type CandidatePromptPlan } from "./promptPlanner";
 import { parseSensorEventLineWithMeta, type MacosSensorEvent } from "./sensorEvents";
 
 export type RuntimePromptSendResult = {
@@ -578,7 +579,9 @@ async function sendCandidatePrompt({
   scoredEvents: ScoredCalendarEvent[];
   promptedAt: string;
 }): Promise<void> {
-  const prompt = planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
+  const prompt =
+    planDuplicateResolutionPrompt({ userId, repo, candidate }) ??
+    planCandidatePrompt({ displayName: candidate.displayName, scoredEvents });
   repo.recordPromptAttempt({
     id: createPromptAttemptId(candidate.id, "send_started", promptedAt),
     candidateId: candidate.id,
@@ -621,6 +624,49 @@ async function sendCandidatePrompt({
     repo.markCandidatePromptFailed(candidate.id, "prompt_send_failed");
     logger.warn(`Failed to send candidate prompt for ${candidate.id}: ${errorMessage(error)}`);
   }
+}
+
+function planDuplicateResolutionPrompt({
+  userId,
+  repo,
+  candidate
+}: {
+  userId: string;
+  repo: RelationshipRepository;
+  candidate: ContactCandidate;
+}): CandidatePromptPlan | undefined {
+  if (
+    candidate.duplicateResolutionStatus &&
+    candidate.duplicateResolutionStatus !== "pending" &&
+    candidate.duplicateResolutionStatus !== "not_sure"
+  ) {
+    return undefined;
+  }
+
+  const sameNamePeople = repo.findPeopleByDisplayNameNormalized(userId, candidate.displayName);
+  if (sameNamePeople.length === 0) {
+    return undefined;
+  }
+
+  const sameNamePersonIds = new Set(sameNamePeople.map((person) => person.id));
+  const existingMemory = repo
+    .listMemories(userId)
+    .find((memory) => memory.personId && sameNamePersonIds.has(memory.personId));
+  const suspectedDuplicatePersonId = existingMemory?.personId ?? sameNamePeople[0]?.id;
+  if (!suspectedDuplicatePersonId || !existingMemory) {
+    return undefined;
+  }
+
+  repo.resolveDuplicateCandidate(candidate.id, {
+    resolution: "pending",
+    suspectedDuplicatePersonId
+  });
+
+  return {
+    route: "duplicate_resolution",
+    suspectedDuplicatePersonId,
+    text: composeDuplicateResolutionPrompt({ displayName: candidate.displayName })
+  };
 }
 
 function createPromptAttemptId(candidateId: string, status: string, createdAt: string): string {

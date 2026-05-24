@@ -14,7 +14,8 @@ export type CandidatePromptPlan =
   | { route: "none"; text: string }
   | { route: "single"; eventMatchRank: 1; text: string }
   | { route: "weak"; eventMatchRank: 1; text: string }
-  | { route: "disambiguate"; options: Array<{ rank: number; title: string }>; text: string };
+  | { route: "disambiguate"; options: Array<{ rank: number; title: string }>; text: string }
+  | { route: "duplicate_resolution"; suspectedDuplicatePersonId: string; text: string };
 
 export type PlanCandidatePromptInput = {
   displayName: string;

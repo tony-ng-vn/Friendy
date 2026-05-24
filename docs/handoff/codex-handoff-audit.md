@@ -110,10 +110,10 @@ Independent read-only review agents confirmed the same baseline and did not edit
 | T1 domain types | Partial | Person identity types exist, but `RelationshipMemory.personId` remains optional. |
 | T2 in-memory repo API | Done/prep | Repository person identity methods exist. |
 | T3 SQLite schema/backfill | Done/prep | SQLite person/link migration and backfill code exist. |
-| T4 duplicate parser | Done/prep | `duplicateResolution.ts` and tests exist. |
-| T5 tool/composer | Partial | No `resolve_duplicate_person` tool in `tools.ts`; existing same/different composer is older/partial. |
-| T6 agent workflow | Not started | No `duplicate_resolution` workflow handling in `interpretedAgent.ts`; generic pending confirmation can still preempt it. |
-| T7 eval/docs | Partial | Same-name eval exists, but agent workflow evidence is missing. |
+| T4 duplicate parser | Done | `duplicateResolution.ts` parses `same`, `different`, `ignore`, and `not sure` with tests. |
+| T5 tool/composer | Done | `resolve_duplicate_person` exists in `tools.ts`; duplicate prompt copy now advertises all deterministic replies. |
+| T6 agent workflow | Done | `interpretedAgent.ts` opens and resolves `duplicate_resolution` before context capture, with `activeWorkflowKind` trace. Runtime prompts also ask same/different for same-name saved people. |
+| T7 eval/docs | Done | Same-name eval, focused agent/runtime tests, handoff docs, and implementation notes updated. |
 
 ## PR 7 Task Matrix
 

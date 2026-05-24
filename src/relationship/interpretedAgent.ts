@@ -36,7 +36,7 @@ import {
   composePendingCandidateInquiryReply,
   composePendingContactsFooter,
   composeOnboardingControlReply,
-  composeSameOrDifferentPendingReply,
+  composeDuplicateResolutionPrompt,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
@@ -485,7 +485,7 @@ export function createInterpretedRelationshipAgent({
           savedMatches.length > 0 &&
           !hasSameOrDifferentResolution(turnContext.reminderState ?? {}, pendingState.activeFrame.candidateId, pendingState.activeFrame.openedAt)
         ) {
-          const outboundText = composeSameOrDifferentPendingReply({
+          const outboundText = composeDuplicateResolutionPrompt({
             displayName: pendingState.activeFrame.displayName
           });
           const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -500,7 +500,8 @@ export function createInterpretedRelationshipAgent({
               frame: pendingState.activeFrame,
               confidence: 1,
               traceReason: "Saved memory exists for the same display name; ask same-or-different before confirming.",
-              policyDecision: { decision: "clarify" }
+              policyDecision: { decision: "clarify" },
+              activeWorkflowKind: "duplicate_resolution"
             }),
             outboundText,
             toolCalls: [],

@@ -1066,6 +1066,47 @@ describe("interpreted relationship agent", () => {
     ]);
   });
 
+  it("opens duplicate-resolution workflow with trace when same-name context would otherwise confirm", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [{ ...memoryFixture("Sarah Fan", "community lead at Photon Residency I"), id: "memory_sarah_old" }]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101052"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah_duplicate", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run before duplicate clarification");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("She is a community lead at Photon Residency II"));
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("I already have Sarah Fan saved in Friendy memory");
+    expect(result.outbound.text).toContain("Reply same, different, ignore, or not sure.");
+    expect(result.trace.activeWorkflowKind).toBe("duplicate_resolution");
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      intent: "answer_pending_contact_prompt",
+      policyDecision: { decision: "clarify" },
+      activeWorkflowKind: "duplicate_resolution"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("attaches same-name pending contact to an existing person on same-person resolution", async () => {
     const person = {
       id: "person_sarah_existing",

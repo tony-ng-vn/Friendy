@@ -4,6 +4,7 @@ import {
   composeDeleteMemoryConfirmReply,
   composeDeleteMemoryDisambiguationReply,
   composeDeleteMemorySingleConfirmReply,
+  composeDuplicateResolutionPrompt,
   composeIgnoreCandidateReply,
   composeListPeopleReply,
   composeOnboardingControlReply,
@@ -151,6 +152,18 @@ describe("relationship response composer", () => {
       ].join("\n")
     );
     expect(reply).not.toContain("I still need context");
+    expectNoInternalLanguage(reply);
+  });
+
+  it("formats duplicate-resolution prompts with all deterministic reply options", () => {
+    const reply = composeDuplicateResolutionPrompt({ displayName: "Sarah Fan" });
+
+    expect(reply).toContain("I already have Sarah Fan saved in Friendy memory");
+    expect(reply).toContain("new Sarah Fan contact");
+    expect(reply.toLowerCase()).toContain("reply same");
+    expect(reply.toLowerCase()).toContain("different");
+    expect(reply.toLowerCase()).toContain("ignore");
+    expect(reply.toLowerCase()).toContain("not sure");
     expectNoInternalLanguage(reply);
   });
 

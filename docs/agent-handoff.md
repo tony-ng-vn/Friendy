@@ -35,19 +35,20 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ### Fix Stack Integration Status
 
-- Branch: `main`, ahead of `origin/main` with the Codex PR 5 integration commits.
+- Branch: `main`, ahead of `origin/main` with the Codex PR 5 and PR 6 integration commits.
 - PR 4 pass-state-into-LLM-router is implemented on `main`. `routerInputEnvelope.ts` owns the compact router envelope and `interpretedAgent.ts` builds it before `interpreter.interpret({ message, routerContext })`.
 - PR 5 pending reminder policy is now wired into `interpretedAgent.ts`. The old search happy-path inline `composePendingContactReminder` append has been replaced with deterministic `decidePendingReminder(...)` plus `composePendingContactsFooter(...)`.
 - Reminder decisions are traced as `pendingReminderDecision` / `pendingReminderReason`, while `suppressedPendingReminder` remains as a compatibility projection for current traces.
 - `routePolicyValidator.ts` still exposes `suppressPendingReminder`, but only as compatibility metadata. Append/defer decisions live in `pendingReminderPolicy.ts`.
 - Same-name pending candidates are suppressed until the same/different flow is resolved; repeated search reminders for the same candidate are deferred by TTL; `list_people` does not append pending reminder footers.
-- `npm run friendy:stack-status` can still overstate PR 6/7/10 integration status. Use source and eval evidence over stack-status labels.
+- PR 6 duplicate identity resolution is wired. Same-name pending contacts now open a deterministic duplicate-resolution workflow with `same`, `different`, `ignore`, and `not sure` replies before context capture; proactive runtime prompts also ask same/different when a new contact shares a saved person's name.
+- `npm run friendy:stack-status` can still overstate PR 7/10 integration status. Use source and eval evidence over stack-status labels.
 - The requested `.agents/skills/friendy-fix-stack/references/parallel-tracks.md` file was not present in this checkout; repo search found no `parallel-tracks.md`.
 
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | PR 5 pending reminder policy integration on `main` |
+| **Latest fix** | PR 6 duplicate identity resolution integration on `main` |
 | **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
 | **Active goal** | Concrete fix stack PR 4–10 (see merge order below) |
 | **Branch** | `main` |
@@ -61,13 +62,13 @@ Run `npm run friendy:stack-status` for live PR 1–10 state.
 | 1–3 | Regression freeze, `list_people`, structured router | **Done** |
 | 4 | Pass state into LLM router (envelope) | **Done** |
 | 5 | Pending reminder policy | **Done** — deterministic footer policy wired into interpreted agent |
-| 6 | Identity resolution | **Prep** — `identityResolution` + `lookupMemoryTarget` modules landed |
+| 6 | Identity resolution | **Done** — same-name duplicate resolution tool, trace, agent workflow, and proactive runtime prompt wired |
 | 7 | Robust delete/update | **Prep** modules on main (full PR not merged as stack unit) |
 | 8 | Sensor normalization ack | **Done** on `main` |
 | 9 | Strict-mode dogfooding trace | **Partial** — wave 1 doctor/CLI warning at `32b3456`; Task 1 trace delta fields in flight |
 | 10 | Durable conversation session | Plan ready |
 
-**Recommended remaining merge order:** PR 6 → PR 7 → PR 9 wave 2 → PR 10
+**Recommended remaining merge order:** PR 7 → PR 9 wave 2 → PR 10
 
 **PR 9 wave 1 (merged):** strict-off runtime warning, doctor strict + OpenRouter key hints (`32b3456`).
 
