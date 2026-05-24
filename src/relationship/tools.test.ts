@@ -201,9 +201,27 @@ describe("relationship tools", () => {
 
     const results = tools.search_memories(fixtureUser.id, "debugging week");
 
-    expect(searchMemoryDocuments).toHaveBeenCalledWith(fixtureUser.id, "debugging week", ["debugg", "week"]);
+    expect(searchMemoryDocuments).toHaveBeenCalledWith(fixtureUser.id, "debugging week", ["debugg", "week"], undefined);
     expect(results.map((result) => result.memory.displayName)).toEqual(["Maya"]);
     expect(results[0].reason).toContain("fts");
+  });
+
+
+  it("filters memory search by contact id when provided", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        { ...memory("Maya", "Demo Prep", "debugging week"), candidateId: "contact-maya" },
+        { ...memory("Nina", "Demo Prep", "debugging week"), id: "memory_nina", candidateId: "contact-nina" }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+
+    const contactScoped = tools.search_memories(fixtureUser.id, "debugging week", "contact-nina");
+    const global = tools.search_memories(fixtureUser.id, "debugging week");
+
+    expect(contactScoped.map((result) => result.memory.displayName)).toEqual(["Nina"]);
+    expect(global.map((result) => result.memory.displayName)).toEqual(["Maya", "Nina"]);
   });
 
   it("lists Friendy memory as structured people without using search results", () => {

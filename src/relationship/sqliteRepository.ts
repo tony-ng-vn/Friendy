@@ -351,8 +351,8 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       );
     },
 
-    searchMemoryDocuments(userId: string, query: string, terms: string[]): RetrievalCandidate[] {
-      return searchSqliteMemoryDocuments(db, userId, query, terms);
+    searchMemoryDocuments(userId: string, query: string, terms: string[], contactId?: string): RetrievalCandidate[] {
+      return searchSqliteMemoryDocuments(db, userId, query, terms, contactId);
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -1336,7 +1336,8 @@ function searchSqliteMemoryDocuments(
   db: DatabaseSync,
   userId: string,
   query: string,
-  terms: string[]
+  terms: string[],
+  contactId?: string
 ): RetrievalCandidate[] {
   if (!memorySearchFtsAvailable(db)) {
     return [];
@@ -1355,11 +1356,12 @@ function searchSqliteMemoryDocuments(
         JOIN memory_search_documents d ON d.memory_id = memory_search_fts.memory_id
         WHERE memory_search_fts MATCH ?
           AND memory_search_fts.user_id = ?
+          AND (? IS NULL OR json_extract(d.raw_json, '$.candidateId') = ? OR json_extract(d.raw_json, '$.personId') = ?)
         ORDER BY rank, d.updated_at DESC, d.memory_id
         LIMIT 20
       `
     )
-    .all(ftsQuery, userId) as Array<RawJsonRow & { rank: number }>;
+    .all(ftsQuery, userId, contactId ?? null, contactId ?? null, contactId ?? null) as Array<RawJsonRow & { rank: number }>;
 
   return rows.map((row) => {
     const document = parseJson<MemorySearchDocument>(row.raw_json);

@@ -137,7 +137,7 @@ export type RelationshipRepository = {
   ignoreCandidate(candidateId: string): void;
   listMemories(userId?: string): RelationshipMemory[];
   listMemorySearchDocuments(userId?: string): MemorySearchDocument[];
-  searchMemoryDocuments?(userId: string, query: string, terms: string[]): RetrievalCandidate[];
+  searchMemoryDocuments?(userId: string, query: string, terms: string[], contactId?: string): RetrievalCandidate[];
   addMemory(memory: RelationshipMemory): RelationshipMemory;
   updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory;
   deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory;
