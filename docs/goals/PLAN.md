@@ -17,7 +17,7 @@
 - [x] Persist pending Apple Contact workflows through the conversation session store.
 - [x] Update docs and handoff artifacts for the new actuator, adapter, tools, workflows, and verification evidence.
 - [x] Run required verification: `npm test`, `npm run build`, `npm run eval:agent`, relevant Swift/source checks, and `git diff --check`.
-- [ ] Commit incrementally with `<scope>:<message>` and push `main` after the goal is complete.
+- [x] Commit incrementally with `<scope>:<message>` and push `main` after the goal is complete.
 
 # Previous Active Goal Plan: Strict Mode and Trace Envelope
 
