@@ -97,11 +97,11 @@ Independent read-only review agents confirmed the same baseline and did not edit
 | T1 policy tests | Done | `pendingReminderPolicy.test.ts` exists. |
 | T2 policy implementation | Done | `decidePendingReminder` handles TTL/cooldown/same-name/list suppression. |
 | T3 footer composer | Done | `composePendingContactsFooter` exists. |
-| T4 trace fields | Not started | `FriendyTrace` lacks `pendingReminderDecision` / `pendingReminderReason`; runtime trace lacks them too. |
-| T5 agent wiring | Not started | No `decidePendingReminder` or `reminderState` in `interpretedAgent.ts`; legacy append still active. |
-| T6 PR 5 evals | Not started | No `pending-reminder-*` eval ids found. |
-| T7 route policy migration | Partial | `routePolicyValidator` delegates suppression compatibility, but append/defer still lives in the agent legacy path. |
-| T8 docs/final verification | Not started | No PR 5 integration evidence yet. |
+| T4 trace fields | Done | `FriendyTrace` / runtime trace include allowlisted `pendingReminderDecision` and `pendingReminderReason`. |
+| T5 agent wiring | Done | `interpretedAgent.ts` calls `decidePendingReminder`, updates process-local `reminderState`, and appends `composePendingContactsFooter` only on policy append. |
+| T6 PR 5 evals | Done | `pending-reminder-*` eval ids exist and consume the supplied eval interpreter instead of local stubs. |
+| T7 route policy migration | Done | `routePolicyValidator` keeps `suppressPendingReminder` as compatibility metadata only; append/defer lives in `pendingReminderPolicy.ts`. |
+| T8 docs/final verification | Done | Docs updated after integration. Final verification: targeted PR 5 suite 6 files/93 tests, `npm run build`, `npm run eval:agent` 46/46, and `git diff --check` all passed. |
 
 ## PR 6 Task Matrix
 
@@ -159,17 +159,7 @@ Independent read-only review agents confirmed the same baseline and did not edit
 
 ## Phase 1 Start Here
 
-Start with PR 5 plan Tasks 4-8:
-
-1. Add `pendingReminderDecision` / `pendingReminderReason` to `FriendyTrace` and redacted runtime trace.
-2. Replace inline `composePendingContactReminder` append in `interpretedAgent.ts` with `decidePendingReminder`.
-3. Add process-local reminder state needed by PR 5, while leaving durable session work to PR 10.
-4. Append `composePendingContactsFooter` with a blank-line separator only when policy returns append.
-5. Preserve `suppressedPendingReminder` as a compatibility projection.
-6. Add PR 5 evals for footer append, same-name suppression, TTL defer, and list no-footer.
-7. Update docs after integration.
-
-Do not start PR 6/7/9/10 before PR 5 is integrated and verified.
+PR 5 is integrated. Start next with PR 6 identity resolution after final PR 5 verification is green and committed.
 
 ## Integration Risks To Keep Visible
 

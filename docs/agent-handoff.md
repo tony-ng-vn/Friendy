@@ -33,28 +33,21 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ## Current Status (2026-05-24)
 
-### PR 4 Branch Status
+### Fix Stack Integration Status
 
-- Branch: `pr4-state-into-llm-router`, rebased cleanly onto `origin/main` at `3d7d727`.
-- PR 4 pass-state-into-LLM-router is implemented on this branch.
-- `routerInputEnvelope.ts` owns the compact router envelope: `userText`, active workflow, bounded recent context placeholders, pending-candidate summaries, same-name saved/pending summaries, available deterministic tools, and route capabilities.
-- `interpretedAgent.ts` builds the envelope after pending state is reconstructed and before `interpreter.interpret({ message, routerContext })`.
-- `openRouterInterpreter.ts` serializes the envelope into the OpenRouter user message when present; raw text remains the no-context compatibility path.
-- No PR 5/6/7 prep modules are wired here. Pending reminder policy, identity resolution, duplicate resolution, and robust target lookup remain separate integration PRs.
-- `npm run friendy:stack-status` reports PR 4 as `done`, PR 5-7 as `prep`, PR 8 as `done`, PR 9 as `partial`, and PR 10 as `plan ready`.
+- Branch: `main`, ahead of `origin/main` with the Codex PR 5 integration commits.
+- PR 4 pass-state-into-LLM-router is implemented on `main`. `routerInputEnvelope.ts` owns the compact router envelope and `interpretedAgent.ts` builds it before `interpreter.interpret({ message, routerContext })`.
+- PR 5 pending reminder policy is now wired into `interpretedAgent.ts`. The old search happy-path inline `composePendingContactReminder` append has been replaced with deterministic `decidePendingReminder(...)` plus `composePendingContactsFooter(...)`.
+- Reminder decisions are traced as `pendingReminderDecision` / `pendingReminderReason`, while `suppressedPendingReminder` remains as a compatibility projection for current traces.
+- `routePolicyValidator.ts` still exposes `suppressPendingReminder`, but only as compatibility metadata. Append/defer decisions live in `pendingReminderPolicy.ts`.
+- Same-name pending candidates are suppressed until the same/different flow is resolved; repeated search reminders for the same candidate are deferred by TTL; `list_people` does not append pending reminder footers.
+- `npm run friendy:stack-status` can still overstate PR 6/7/10 integration status. Use source and eval evidence over stack-status labels.
 - The requested `.agents/skills/friendy-fix-stack/references/parallel-tracks.md` file was not present in this checkout; repo search found no `parallel-tracks.md`.
-
-### PR 4 Handoff For PR 5
-
-- PR 5 should hook pending-reminder decisions after the existing route policy decision in `interpretedAgent.ts`, where `pendingState.activeFrame`, `interpretation.intent`, `allowedPolicy.suppressPendingReminder`, and the final `outboundText` are all available.
-- Do not put reminder decisions into the router envelope. The envelope is routing context for the LLM; reminder/footer presentation should remain deterministic.
-- The current inline reminder append remains in place for PR 5 to replace:
-  `if (pendingState.activeFrame && interpretation.intent === "search_memory" && !allowedPolicy.suppressPendingReminder) ...`.
 
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | Review fixes at `3d7d727` (real memory timestamps, redact local contact checks) |
+| **Latest fix** | PR 5 pending reminder policy integration on `main` |
 | **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
 | **Active goal** | Concrete fix stack PR 4–10 (see merge order below) |
 | **Branch** | `main` |
@@ -66,15 +59,15 @@ Run `npm run friendy:stack-status` for live PR 1–10 state.
 | PR | Topic | Status on `main` |
 |----|--------|------------------|
 | 1–3 | Regression freeze, `list_people`, structured router | **Done** |
-| 4 | Pass state into LLM router (envelope) | **In progress elsewhere** — plan ready |
-| 5 | Pending reminder policy | **Prep** — `pendingReminderPolicy` module landed |
+| 4 | Pass state into LLM router (envelope) | **Done** |
+| 5 | Pending reminder policy | **Done** — deterministic footer policy wired into interpreted agent |
 | 6 | Identity resolution | **Prep** — `identityResolution` + `lookupMemoryTarget` modules landed |
 | 7 | Robust delete/update | **Prep** modules on main (full PR not merged as stack unit) |
 | 8 | Sensor normalization ack | **Done** on `main` |
 | 9 | Strict-mode dogfooding trace | **Partial** — wave 1 doctor/CLI warning at `32b3456`; Task 1 trace delta fields in flight |
 | 10 | Durable conversation session | Plan ready |
 
-**Recommended merge order:** PR 4 → 5 → 6 → 7 → PR 9 wave 2 → 10
+**Recommended remaining merge order:** PR 6 → PR 7 → PR 9 wave 2 → PR 10
 
 **PR 9 wave 1 (merged):** strict-off runtime warning, doctor strict + OpenRouter key hints (`32b3456`).
 
