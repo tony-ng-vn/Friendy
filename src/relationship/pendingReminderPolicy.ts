@@ -53,7 +53,8 @@ export type PendingReminderDecision =
 export const REMINDER_TTL_MS = 15 * 60 * 1000;
 export const COMPLAINT_COOLDOWN_MS = 10 * 60 * 1000;
 
-const NEVER_REMIND_INTENTS = new Set<MessageInterpretation["intent"]>([
+/** Intents that must never trigger a pending-contact reminder append. Shared with route policy during migration. */
+export const NEVER_REMIND_INTENTS = new Set<MessageInterpretation["intent"]>([
   "list_people",
   "duplicate_audit",
   "delete_memory_request",
@@ -67,6 +68,19 @@ const NEVER_REMIND_INTENTS = new Set<MessageInterpretation["intent"]>([
   "unknown",
   "ignore_candidate"
 ]);
+
+/** True when this intent should not append a pending-contact reminder (route-policy compatibility). */
+export function shouldSuppressPendingReminder(intent: MessageInterpretation["intent"]): boolean {
+  return NEVER_REMIND_INTENTS.has(intent);
+}
+
+/** Route-policy helper: intent suppression plus list_people search mode. */
+export function shouldSuppressPendingReminderForRoute(
+  intent: MessageInterpretation["intent"],
+  searchMode?: NonNullable<MessageInterpretation["search"]>["mode"]
+): boolean {
+  return shouldSuppressPendingReminder(intent) || (intent === "search_memory" && searchMode === "list_people");
+}
 
 const NEVER_REMIND_RESPONSE_KINDS = new Set<PendingReminderResponseKind>([
   "explain",
@@ -82,27 +96,27 @@ const NEVER_REMIND_RESPONSE_KINDS = new Set<PendingReminderResponseKind>([
  */
 export function decidePendingReminder(context: PendingReminderContext): PendingReminderDecision {
   if (!context.activeWorkflow) {
-    return { action: "suppress", reason: "no_active_workflow" };
+    return suppress("no_active_workflow");
   }
 
   if (NEVER_REMIND_INTENTS.has(context.userIntent)) {
-    return { action: "suppress", reason: "intent_suppressed" };
+    return suppress("intent_suppressed");
   }
 
   if (context.userIntent === "search_memory" && context.searchMode === "list_people") {
-    return { action: "suppress", reason: "list_people_search_mode" };
+    return suppress("list_people_search_mode");
   }
 
   if (NEVER_REMIND_RESPONSE_KINDS.has(context.responseKind)) {
-    return { action: "suppress", reason: "response_kind_suppressed" };
+    return suppress("response_kind_suppressed");
   }
 
   if (context.sameNameDisambiguationPending) {
-    return { action: "suppress", reason: "same_name_disambiguation_pending" };
+    return suppress("same_name_disambiguation_pending");
   }
 
   if (withinMs(context.reminderState.lastUserComplaintAt, context.now, COMPLAINT_COOLDOWN_MS)) {
-    return { action: "suppress", reason: "complaint_cooldown" };
+    return suppress("complaint_cooldown");
   }
 
   if (
@@ -113,7 +127,7 @@ export function decidePendingReminder(context: PendingReminderContext): PendingR
   }
 
   if (context.userIntent !== "search_memory") {
-    return { action: "suppress", reason: "not_search_interrupt" };
+    return suppress("not_search_interrupt");
   }
 
   const candidates = context.pendingCandidates
@@ -122,10 +136,14 @@ export function decidePendingReminder(context: PendingReminderContext): PendingR
     .map((candidate) => ({ candidateId: candidate.candidateId, displayName: candidate.displayName }));
 
   if (candidates.length === 0) {
-    return { action: "suppress", reason: "no_footer_candidates" };
+    return suppress("no_footer_candidates");
   }
 
   return { action: "append", reason: "eligible_search_interrupt", candidates };
+}
+
+function suppress(reason: string): Extract<PendingReminderDecision, { action: "suppress" }> {
+  return { action: "suppress", reason };
 }
 
 function withinMs(value: string | undefined, now: string, windowMs: number): boolean {

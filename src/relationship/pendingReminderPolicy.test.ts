@@ -62,7 +62,7 @@ describe("pending reminder policy", () => {
         baseContext({
           savedMemoriesForActiveName: [{ memoryId: "memory_testing_3", displayName: "Testing 3" }],
           activeWorkflow: {
-            kind: "pending_contact_confirmation",
+            ...baseContext().activeWorkflow!,
             frameId: "frame_pending_contact_testing_3",
             candidateId: "candidate_testing_3",
             displayName: "Testing 3",
