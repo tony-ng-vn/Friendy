@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
 import { fixtureUser } from "./fixtures";
 import {
   DEFAULT_OPENROUTER_MODEL,
@@ -43,6 +44,19 @@ const routerContext: RouterInputEnvelope = {
 };
 
 describe("openrouter message interpreter", () => {
+  it("instructs the model to use state-aware route intents", () => {
+    const prompt = buildInterpreterSystemPrompt();
+    const instructions = buildStructuredOutputInstructions();
+
+    expect(prompt).toContain("state envelope");
+    expect(prompt).toContain("explain_agent_state");
+    expect(prompt).toContain("conversation_repair");
+    expect(prompt).toContain("duplicate_audit");
+    expect(prompt).toContain("Do not assume every message is an answer to the pending contact prompt");
+    expect(instructions).toContain("answer_pending_contact_prompt");
+    expect(instructions).toContain("delete_memory_request");
+  });
+
   it("sends OpenRouter a strict structured-output request with the configured model", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
