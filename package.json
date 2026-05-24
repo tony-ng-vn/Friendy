@@ -16,6 +16,7 @@
     "build:macos-sensor": "node scripts/build-macos-sensor.mjs",
     "doctor:macos-sensor": "tsx src/relationship/runtime/macosSensorDoctor.ts",
     "doctor:friendy": "tsx src/relationship/runtime/friendyDoctor.ts",
+    "friendy:stack-status": "bash scripts/friendy-stack-status.sh",
     "check:macos-sensor-fixture": "tsx src/relationship/runtime/macosSensorFixtureCheck.ts",
     "eval:agent": "tsx src/relationship/evals/agentEvalCli.ts",
     "check:mac-mvp-demo": "tsx src/relationship/evals/macMvpDemoCheck.ts",

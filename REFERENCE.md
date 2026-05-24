@@ -29,6 +29,8 @@ Transport message
 
 - Product understanding: `docs/product-spec.md`, `docs/product-flow-plan.md`, `docs/handoff.md`
 - **Agent session handoff (read first on new session):** `docs/agent-handoff.md`
+- **Developer workflow preferences:** `docs/friendy-dev-preferences.md`
+- **Project agent skills:** `.agents/skills/README.md`
 - Agent repo graph index: `.understand-anything/knowledge-graph.json` (`project`, `layers`, and `tour` are the fastest entry points; use targeted searches rather than loading the full file)
 - AI system architecture: `docs/ai-system-architecture.md`
 - Agent navigation structure: `docs/agent-navigation.md`
@@ -88,6 +90,7 @@ npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
 npm run doctor:friendy
+npm run friendy:stack-status
 npm run agent:friendy
 npm run agent:spectrum
 ```
