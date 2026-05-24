@@ -4,6 +4,7 @@ import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
+import type { MessageInterpreterInput } from "./routerInputEnvelope";
 import { FriendyStrictModeError } from "./strictMode";
 import { createRelationshipTools } from "./tools";
 import type { InboundAgentMessage, RelationshipMemory } from "./types";
@@ -495,6 +496,76 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).not.toContain("outside Friendy's relationship-memory scope");
     expect(result.outbound.text).not.toContain("I still need context for Testing 3");
     expect(result.trace.suppressedPendingReminder).toBe(true);
+  });
+
+  it("passes active pending workflow and duplicate state into the router envelope", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memoryFixture("Testing 3", "already saved context"),
+          id: "memory_testing_3"
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101033"],
+      emails: []
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_testing_3", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-23T12:00:00.000Z"
+    });
+    let capturedInput: MessageInterpreterInput | undefined;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret(input) {
+          capturedInput = input;
+          return {
+            modelUsed: "test-model",
+            error: "",
+            routeSource: "llm" as const,
+            fallbackUsed: false,
+            interpretation: fullInterpretation({
+              intent: "explain_agent_state",
+              domain: "relationship_memory",
+              conversationRelation: "asks_about_open_workflow",
+              target: { displayName: "Testing 3" },
+              confidence: 0.94
+            })
+          };
+        }
+      },
+      now: () => "2026-05-23T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(
+      inboundInSpace("Why are you still asking for Testing 3 context when you already have it?")
+    );
+
+    expect(capturedInput?.message.text).toBe(
+      "Why are you still asking for Testing 3 context when you already have it?"
+    );
+    expect(capturedInput?.routerContext?.conversationState.activeWorkflow).toMatchObject({
+      candidateId: candidate.id,
+      displayName: "Testing 3"
+    });
+    expect(capturedInput?.routerContext?.domainStateSummary.possibleDuplicates).toEqual([
+      {
+        displayName: "Testing 3",
+        memoryIds: ["memory_testing_3"],
+        candidateIds: [candidate.id],
+        reason: "same_display_name"
+      }
+    ]);
+    expect(capturedInput?.routerContext?.availableRouteCapabilities).toContain("capture_memory");
+    expect(result.toolCalls).not.toContain("confirm_candidate");
   });
 
   it("normalizes search_memory list_people mode to the list_people tool", async () => {
@@ -1477,6 +1548,7 @@ function fullInterpretation(overrides: Partial<{
     | "search_memory"
     | "list_people"
     | "duplicate_audit"
+    | "explain_agent_state"
     | "ignore_candidate"
     | "clarify"
     | "unknown"

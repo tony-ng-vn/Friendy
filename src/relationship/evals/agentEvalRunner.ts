@@ -269,6 +269,11 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "same-name pending context respects active candidate",
     "same-name pending context asks same or different",
     "same-name pending context does not confirm before identity is resolved"
+  ]),
+  evalCase("state-envelope-stale-prompt-complaint", "interpreted", [
+    "state envelope routes stale prompt complaint to explain or repair",
+    "state envelope includes same-name pending and saved memory",
+    "stale prompt complaint does not confirm candidate"
   ])
 ];
 
@@ -1317,6 +1322,34 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[41],
+    async run({ now }) {
+      const { agent, pendingTesting3 } = createTestingFriendyRegressionHarness({
+        interpreter: createStateEnvelopeStalePromptInterpreter(),
+        now
+      });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Why u still asking for testing 3 context when u already have it?"),
+        spaceId: "imessage_testing_regression"
+      });
+      const sawDuplicateSummary = result.trace.route?.target?.candidateId === pendingTesting3.id;
+
+      return [
+        assertion(
+          "state envelope routes stale prompt complaint to explain or repair",
+          "intent",
+          ["explain_agent_state", "conversation_repair"].includes(String(result.trace.route?.intent))
+        ),
+        assertion("state envelope includes same-name pending and saved memory", "intent", sawDuplicateSummary),
+        assertion(
+          "stale prompt complaint does not confirm candidate",
+          "unsafeMutation",
+          !result.toolCalls.includes("confirm_candidate")
+        )
+      ];
+    }
   }
 ];
 
@@ -1420,8 +1453,8 @@ function trackInterpreterFallbackUsage(
   fallbackUsage: { count: number }
 ): MessageInterpreter {
   return {
-    async interpret(message) {
-      const result = await interpreter.interpret(message);
+    async interpret(input) {
+      const result = await interpreter.interpret(input);
       if (result.fallbackUsed) {
         fallbackUsage.count += 1;
       }
@@ -1432,9 +1465,10 @@ function trackInterpreterFallbackUsage(
 
 function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter): MessageInterpreter {
   return {
-    async interpret(message) {
-      const result = await interpreter.interpret(message);
-      if (message.text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
+    async interpret(input) {
+      const result = await interpreter.interpret(input);
+      const text = input.message.text;
+      if (text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
         return result;
       }
 
@@ -1444,10 +1478,10 @@ function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter):
           ...result.interpretation,
           intent: "list_people",
           domain: "relationship_memory",
-          query: message.text,
+          query: text,
           search: {
             mode: "list_people",
-            semanticQuery: message.text,
+            semanticQuery: text,
             exactTerms: ["testing", "friendy"],
             filters: { tags: ["testing", "friendy"] },
             topK: 20
@@ -1455,6 +1489,42 @@ function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter):
           tags: ["testing", "friendy"],
           needsClarification: false,
           clarificationQuestion: ""
+        }
+      };
+    }
+  };
+}
+
+function createStateEnvelopeStalePromptInterpreter(): MessageInterpreter {
+  return {
+    async interpret(input) {
+      const duplicate = input.routerContext?.domainStateSummary.possibleDuplicates.find(
+        (group) => group.displayName === "Testing 3"
+      );
+
+      return {
+        modelUsed: "state-envelope-test",
+        error: "",
+        routeSource: "llm",
+        fallbackUsed: false,
+        interpretation: {
+          intent: duplicate ? "explain_agent_state" : "clarify",
+          confidence: duplicate ? 0.94 : 0.6,
+          domain: "relationship_memory",
+          conversationRelation: "asks_about_open_workflow",
+          target: {
+            displayName: duplicate?.displayName,
+            candidateId: duplicate?.candidateIds[0],
+            memoryId: duplicate?.memoryIds[0]
+          },
+          people: [],
+          event: { name: "", dateText: "", location: "" },
+          dateContext: undefined,
+          contextNote: "",
+          query: "",
+          tags: [],
+          needsClarification: !duplicate,
+          clarificationQuestion: duplicate ? "" : "Which pending contact do you mean?"
         }
       };
     }
