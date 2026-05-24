@@ -12,11 +12,10 @@ import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { resolveConfiguredUserId } from "../identity";
-import { createRuntimeRelationshipRepository } from "../runtimeRepository";
-import type { CalendarEvent, User } from "../types";
+import type { CalendarEvent } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEventProvider } from "./ingestionPipeline";
-import { createMockLocalCheckScenario, type LocalPromptSender, runLocalContactCalendarCheck } from "./localCheck";
+import { createMockLocalCheckScenario, createLocalCheckRepository, type LocalPromptSender, runLocalContactCalendarCheck } from "./localCheck";
 import { readMacCalendarEvents, readMacContactsSnapshot } from "./localMacAdapters";
 
 type LocalCheckArgs = {
@@ -47,10 +46,7 @@ async function runMockLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
   const scenario = createMockLocalCheckScenario(args.userId);
   const repo =
     process.env.FRIENDY_RUNTIME_STORE === "sqlite"
-      ? createRuntimeRelationshipRepository({
-          env: process.env,
-          seed: { users: [localUser(scenario.after)] }
-        })
+      ? createLocalCheckRepository(scenario.after, process.env)
       : undefined;
 
   return runLocalContactCalendarCheck({ ...scenario, repo, sender, env: process.env });
@@ -74,7 +70,7 @@ async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
 
   const before = readSnapshot(args.stateFile);
   const calendarProvider = createAppleCalendarProvider(args.userId, capturedAt);
-  const repo = createRuntimeRelationshipRepository({ seed: { users: [localUser(after)] } });
+  const repo = createLocalCheckRepository(after, process.env);
   const result = await runLocalContactCalendarCheck({ before, after, calendarProvider, repo, sender, env: process.env });
   writeSnapshot(args.stateFile, after);
   return result;
@@ -135,15 +131,6 @@ function readSnapshot(path: string): ContactSnapshot {
 function writeSnapshot(path: string, snapshot: ContactSnapshot): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(snapshot, null, 2)}\n`);
-}
-
-function localUser(snapshot: ContactSnapshot): User {
-  return {
-    id: snapshot.userId,
-    phoneNumber: "",
-    displayName: "Local Friendy User",
-    createdAt: snapshot.capturedAt
-  };
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {

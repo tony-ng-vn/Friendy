@@ -270,6 +270,7 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         const confirmedCandidate: ContactCandidate = { ...currentCandidate, status: "confirmed" };
         upsertCandidate(db, confirmedCandidate);
 
+        const confirmedAt = options.confirmedAt ?? new Date().toISOString();
         const selectedMatch =
           options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
         const memory: RelationshipMemory = {
@@ -285,8 +286,8 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           relationshipContext: options.relationshipContext,
           tags: extractTags(contextNote),
           confidence: selectedMatch?.confidence ?? 0.5,
-          createdAt: "2026-05-20T12:00:00.000Z",
-          updatedAt: "2026-05-20T12:00:00.000Z"
+          createdAt: confirmedAt,
+          updatedAt: confirmedAt
         };
 
         insertMemory(db, memory);

@@ -5,9 +5,10 @@ import {
   readMacCalendarEvents,
   readMacContactsSnapshot
 } from "./localMacAdapters";
+import { hashNormalizedContactMethod } from "./contactMethodRedaction";
 
 describe("local macOS adapters", () => {
-  it("parses Contacts output into a contact snapshot", () => {
+  it("parses Contacts output into a redacted contact snapshot", () => {
     const output = [
       "contact-1\tFriendy-101\t+1 (555) 010-0101\tfriendy101@example.com\t2026-05-20T19:30:00.000Z",
       "contact-2\tAlex Lee\t+15550100000|\t\t2026-05-20T18:00:00.000Z"
@@ -19,26 +20,25 @@ describe("local macOS adapters", () => {
       output
     });
 
-    expect(snapshot).toEqual({
-      userId: "user_local",
-      capturedAt: "2026-05-20T20:00:00.000Z",
-      contacts: [
-        {
-          stableId: "contact-1",
-          displayName: "Friendy-101",
-          phoneNumbers: ["+1 (555) 010-0101"],
-          emails: ["friendy101@example.com"],
-          updatedAt: "2026-05-20T19:30:00.000Z"
-        },
-        {
-          stableId: "contact-2",
-          displayName: "Alex Lee",
-          phoneNumbers: ["+15550100000"],
-          emails: [],
-          updatedAt: "2026-05-20T18:00:00.000Z"
-        }
-      ]
+    expect(snapshot.userId).toBe("user_local");
+    expect(snapshot.contacts[0]).toMatchObject({
+      stableId: "contact-1",
+      displayName: "Friendy-101",
+      phoneNumbers: ["ending in 0101"],
+      emails: ["email at example.com"],
+      phoneNumberHashes: [hashNormalizedContactMethod("phone", "+15550100101")],
+      emailHashes: [hashNormalizedContactMethod("email", "friendy101@example.com")],
+      updatedAt: "2026-05-20T19:30:00.000Z"
     });
+    expect(snapshot.contacts[1]).toMatchObject({
+      stableId: "contact-2",
+      displayName: "Alex Lee",
+      phoneNumbers: ["ending in 0000"],
+      emails: [],
+      updatedAt: "2026-05-20T18:00:00.000Z"
+    });
+    expect(JSON.stringify(snapshot)).not.toContain("+15550100101");
+    expect(JSON.stringify(snapshot)).not.toContain("friendy101@example.com");
   });
 
   it("parses Calendar output into apple calendar events", () => {

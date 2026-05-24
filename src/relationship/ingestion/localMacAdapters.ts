@@ -7,7 +7,8 @@
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import os from "node:os";
 import type { CalendarEvent } from "../types";
-import type { ContactSnapshot } from "./contactSnapshot";
+import type { ContactSnapshot, ContactSnapshotContact } from "./contactSnapshot";
+import { redactEmailMethod, redactPhoneMethod } from "./contactMethodRedaction";
 
 type ExecFileSync = typeof defaultExecFileSync;
 
@@ -50,13 +51,32 @@ export function parseMacContactsSnapshotOutput({
   return {
     userId,
     capturedAt,
-    contacts: parseRows(output).map(([stableId, displayName, phoneNumbers, emails, updatedAt]) => ({
-      stableId,
-      displayName,
-      phoneNumbers: splitList(phoneNumbers),
-      emails: splitList(emails),
-      updatedAt: updatedAt || capturedAt
-    }))
+    contacts: parseRows(output).map(([stableId, displayName, phoneNumbers, emails, updatedAt]) =>
+      redactParsedContact({
+        stableId,
+        displayName,
+        phoneNumbers: splitList(phoneNumbers),
+        emails: splitList(emails),
+        updatedAt: updatedAt || capturedAt
+      })
+    )
+  };
+}
+
+function redactParsedContact(contact: ContactSnapshotContact): ContactSnapshotContact {
+  const phoneMethods = contact.phoneNumbers.map(redactPhoneMethod);
+  const emailMethods = contact.emails.map(redactEmailMethod);
+
+  return {
+    stableId: contact.stableId,
+    displayName: contact.displayName,
+    phoneNumbers: phoneMethods.map((method) => method.label),
+    emails: emailMethods.map((method) => method.label),
+    phoneNumberHashes: phoneMethods.map((method) => method.hash),
+    emailHashes: emailMethods.map((method) => method.hash),
+    phoneNumberHints: phoneMethods.map((method) => method.hint),
+    emailHints: emailMethods.map((method) => method.hint),
+    updatedAt: contact.updatedAt
   };
 }
 

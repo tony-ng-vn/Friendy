@@ -43,6 +43,8 @@ export type ConfirmCandidateOptions = {
   eventTitle?: string;
   relationshipContext?: string;
   dateContext?: RelationshipDateContext;
+  /** Wall-clock confirmation time; defaults to now when omitted. */
+  confirmedAt?: string;
 };
 
 /** Links a proactive review prompt to the Spectrum space that received it. */
@@ -210,6 +212,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       }
 
       candidate.status = "confirmed";
+      const confirmedAt = options.confirmedAt ?? new Date().toISOString();
       const selectedMatch = options.eventTitle && !eventId ? undefined : selectEventMatch(eventMatches, candidateId, eventId);
       const memory: RelationshipMemory = {
         id: `memory_${candidate.id}`,
@@ -224,8 +227,8 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
         relationshipContext: options.relationshipContext,
         tags: extractTags(contextNote),
         confidence: selectedMatch?.confidence ?? 0.5,
-        createdAt: "2026-05-20T12:00:00.000Z",
-        updatedAt: "2026-05-20T12:00:00.000Z"
+        createdAt: confirmedAt,
+        updatedAt: confirmedAt
       };
 
       memories.push(memory);

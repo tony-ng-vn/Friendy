@@ -196,7 +196,9 @@ describe("sqlite relationship repository", () => {
       }
     }));
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id, {
+      confirmedAt: "2026-05-21T12:00:00.000Z"
+    });
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
     const updated = reopened.updateMemory(memory.id, {
@@ -245,7 +247,9 @@ describe("sqlite relationship repository", () => {
       }
     }));
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureShortEvent.id, {
+      confirmedAt: "2026-05-21T12:00:00.000Z"
+    });
 
     const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
     reopened.deleteMemory(memory.id, {

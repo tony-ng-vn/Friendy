@@ -9,6 +9,7 @@
 import { buildCandidateReviewPrompt } from "../agentCore";
 import { fixtureUser } from "../fixtures";
 import { createRelationshipRepository, type RelationshipRepository } from "../repository";
+import { createRuntimeRelationshipRepository } from "../runtimeRepository";
 import { createRelationshipTools } from "../tools";
 import type { CalendarEvent, ContactCandidate, EventContextMatch, User } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
@@ -50,6 +51,17 @@ export type MockLocalCheckScenario = {
   after: ContactSnapshot;
   calendarProvider: CalendarEventProvider;
 };
+
+/** Resolves the relationship repository for explicit local-check CLI runs. */
+export function createLocalCheckRepository(
+  snapshot: ContactSnapshot,
+  env: Partial<NodeJS.ProcessEnv> = process.env
+): RelationshipRepository {
+  return createRuntimeRelationshipRepository({
+    env,
+    seed: { users: [localUser(snapshot)] }
+  });
+}
 
 /**
  * Runs one explicit local check from contact snapshots into Friendy's existing candidate queue.

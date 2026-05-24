@@ -11,9 +11,14 @@ import type { ContactCandidateDetected } from "../types";
 export type ContactSnapshotContact = {
   stableId: string;
   displayName: string;
+  /** Redacted labels for macOS adapter snapshots; normalized methods for fixture snapshots. */
   phoneNumbers: string[];
   emails: string[];
   updatedAt: string;
+  phoneNumberHashes?: string[];
+  emailHashes?: string[];
+  phoneNumberHints?: Array<{ last4?: string; label?: string }>;
+  emailHints?: Array<{ domain?: string; label?: string }>;
 };
 
 /** Point-in-time Contacts export for a single Friendy user. */
@@ -95,6 +100,42 @@ export function detectNewContactMethods(
 
   return after.contacts
     .map((contact) => {
+      const newMethodKeys = methodKeysForContact(contact).filter((method) => !knownMethods.has(method));
+      if (newMethodKeys.length === 0) {
+        return undefined;
+      }
+
+      if (usesHashMethodKeys(contact)) {
+        const newPhoneHashes =
+          contact.phoneNumberHashes?.filter((hash) => newMethodKeys.includes(hashMethodKey("phone", hash))) ?? [];
+        const newEmailHashes =
+          contact.emailHashes?.filter((hash) => newMethodKeys.includes(hashMethodKey("email", hash))) ?? [];
+        const phoneNumbers = newPhoneHashes.map((hash) =>
+          redactedLabelForHash(contact.phoneNumberHashes, contact.phoneNumbers, hash)
+        );
+        const emails = newEmailHashes.map((hash) => redactedLabelForHash(contact.emailHashes, contact.emails, hash));
+
+        const detectedContact: ContactCandidateDetected = {
+          userId: after.userId,
+          displayName: contact.displayName,
+          phoneNumbers,
+          emails,
+          detectedAt: contact.updatedAt || after.capturedAt,
+          source: "contacts_delta",
+          contactIdentifier: contact.stableId,
+          contactMethodHashes: {
+            phoneNumberHashes: newPhoneHashes,
+            emailHashes: newEmailHashes
+          },
+          contactMethodHints: {
+            phoneNumberHints: pickHintsForHashes(contact.phoneNumberHashes, contact.phoneNumberHints, newPhoneHashes),
+            emailHints: pickHintsForHashes(contact.emailHashes, contact.emailHints, newEmailHashes)
+          }
+        };
+
+        return detectedContact;
+      }
+
       const newMethods = uniqueMethods(contact).filter((method) => !knownMethods.has(methodKey(method)));
       if (newMethods.length === 0) {
         return undefined;
@@ -114,6 +155,36 @@ export function detectNewContactMethods(
     .filter((item): item is ContactCandidateDetected => Boolean(item));
 }
 
+function usesHashMethodKeys(contact: ContactSnapshotContact): boolean {
+  return Boolean(contact.phoneNumberHashes?.length || contact.emailHashes?.length);
+}
+
+function hashMethodKey(kind: ContactMethodKind, hash: string): string {
+  return `${kind}_hash:${hash}`;
+}
+
+function redactedLabelForHash(hashes: string[] | undefined, labels: string[], hash: string): string {
+  const index = hashes?.indexOf(hash) ?? -1;
+  return index >= 0 ? labels[index] ?? "contact method" : "contact method";
+}
+
+function pickHintsForHashes<T extends { last4?: string; domain?: string; label?: string }>(
+  hashes: string[] | undefined,
+  hints: T[] | undefined,
+  selectedHashes: string[]
+): T[] {
+  if (!hashes || !hints) {
+    return [];
+  }
+
+  return selectedHashes
+    .map((hash) => {
+      const index = hashes.indexOf(hash);
+      return index >= 0 ? hints[index] : undefined;
+    })
+    .filter((hint): hint is T => hint !== undefined);
+}
+
 /** Normalizes a phone or email so method-centric diffing can compare stable keys. */
 export function normalizeContactMethod(kind: ContactMethodKind, value: string): string {
   if (kind === "email") {
@@ -129,6 +200,13 @@ export function normalizeContactMethod(kind: ContactMethodKind, value: string): 
 }
 
 function methodKeysForContact(contact: ContactSnapshotContact): string[] {
+  if (usesHashMethodKeys(contact)) {
+    return [
+      ...(contact.phoneNumberHashes ?? []).map((hash) => hashMethodKey("phone", hash)),
+      ...(contact.emailHashes ?? []).map((hash) => hashMethodKey("email", hash))
+    ];
+  }
+
   return uniqueMethods(contact).map(methodKey);
 }
 
