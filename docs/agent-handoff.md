@@ -33,6 +33,20 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ## Current Status (2026-05-24)
 
+### Local Onboarding API Backend Slice
+
+- Added a local-first onboarding backend for the deployed Friendy UI at `https://friedy-ui.vercel.app`.
+- New command: `npm run agent:friendy:local-api`, defaulting to `http://127.0.0.1:8788`.
+- The server exposes `POST /api/onboarding/connect` and `GET /api/onboarding/status?phoneNumber=...` without starting the Mac sensor runtime.
+- Phone input is normalized for `+1` and digit-only US input. Invalid phone input returns `invalid_phone`.
+- Allowed phones are read from `FRIENDY_BETA_ALLOWED_PHONES` plus `FRIENDY_OWNER_PHONE` by default.
+- Non-allowed phones are upserted into a local SQLite waitlist table and return the private-beta 202 response without creating a Friendy user or Photon user.
+- Allowed phones create/reuse a local Friendy UUID user, create/reuse a Photon shared user mapping, and return the Spectrum redirect URL. Repeated Connect reuses the stored Photon mapping and does not call Photon again.
+- The production Photon client uses `POST https://spectrum.photon.codes/projects/{SPECTRUM_PROJECT_ID}/users` with `{ type: "shared", phoneNumber }`, HTTP Basic auth from `SPECTRUM_PROJECT_ID:SPECTRUM_PROJECT_SECRET`, and nested `data` response parsing; tests inject a fake client.
+- CORS preflight is allowed for `https://friedy-ui.vercel.app`, exact origins listed in `FRIENDY_LOCAL_API_ALLOWED_ORIGINS`, and localhost development origins.
+- SQLite onboarding tables are colocated in the existing `FRIENDY_SQLITE_PATH` database. The SQLite setup now preserves higher `PRAGMA user_version` values so later repository opens do not downgrade the onboarding migration marker.
+- Verification on 2026-05-24: RED test run failed for missing `./onboardingLocalApi`; Photon auth RED test failed against the old Bearer/top-level-response client; focused onboarding/SQLite tests passed 2 files/41 tests after review fixes; focused onboarding API tests passed 11/11 after the Photon Basic-auth fix; `npm run build` passed; full `npm test` passed 75 files/599 tests before the final review fixes; `npm run eval:agent` passed 51/51 with 0 unsafe mutations and 0 hallucinations before the final review fixes; `git diff --check` passed.
+
 ### Live Sarah Fan Memory Append Follow-up
 
 - Fixed a live iMessage regression from 2026-05-24 where `For Sarah Fan beside I met her during photon residency ii, she is also a community lead there` could produce an OpenAI invalid-output diagnostic for `search.filters: null`, then fall through to an unhelpful `I don't have enough...` reply instead of editing the existing Sarah Fan memory.
@@ -174,7 +188,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | Live schema-error recovery, broad list shortcut, pre-start queued contact, and cleaner save-confirmation copy in current worktree |
+| **Latest fix** | Local onboarding API backend slice for deployed UI connect/status beta gate |
 | **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
 | **Active goal** | Core relationship-agent behavior verification |
 | **Branch** | `pr11-expression-llm-layer` |

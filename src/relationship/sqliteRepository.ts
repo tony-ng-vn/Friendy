@@ -995,9 +995,8 @@ function setupSchema(db: DatabaseSync): void {
 
     INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
     VALUES (2, '2_memory_search_documents', '2026-05-22T00:00:00.000Z');
-
-    PRAGMA user_version = 2;
   `);
+  setSqliteUserVersionAtLeast(db, 2);
   setupMemorySearchFts(db);
   backfillMemorySearchDocuments(db);
   runPersonIdentityMigration(db);
@@ -1008,7 +1007,7 @@ function setupSchema(db: DatabaseSync): void {
 }
 
 function runPersonIdentityMigration(db: DatabaseSync): void {
-  const currentVersion = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  const currentVersion = getSqliteUserVersion(db);
   if (currentVersion >= 3) {
     return;
   }
@@ -1054,7 +1053,17 @@ function runPersonIdentityMigration(db: DatabaseSync): void {
       VALUES (3, '3_person_identity_resolution', ?)
     `
   ).run(new Date().toISOString());
-  db.exec("PRAGMA user_version = 3");
+  setSqliteUserVersionAtLeast(db, 3);
+}
+
+function getSqliteUserVersion(db: DatabaseSync): number {
+  return (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+}
+
+function setSqliteUserVersionAtLeast(db: DatabaseSync, version: number): void {
+  if (getSqliteUserVersion(db) < version) {
+    db.exec(`PRAGMA user_version = ${version}`);
+  }
 }
 
 function sqliteTableHasColumn(db: DatabaseSync, table: string, column: string): boolean {

@@ -91,6 +91,7 @@ npm run ingest:check
 npm run ingest:local:check -- --mock
 npm run doctor:friendy
 npm run friendy:stack-status
+npm run agent:friendy:local-api
 npm run agent:friendy
 npm run agent:spectrum
 ```
@@ -168,9 +169,19 @@ FRIENDY_LOCAL_USER_ID=
 FRIENDY_LOCAL_CHECK_SEND=1
 FRIENDY_LOCAL_CHECK_TO_PHONE=
 FRIENDY_OWNER_PHONE=
+FRIENDY_BETA_ALLOWED_PHONES=
+FRIENDY_LOCAL_API_PORT=8788
 ```
 
 `FRIENDY_LOCAL_CHECK_SEND=1` is required before the local checker sends a live Spectrum/iMessage prompt. Without it, the command stays in dry-run mode.
+
+Local onboarding API:
+
+```bash
+npm run agent:friendy:local-api
+```
+
+The local API defaults to `http://127.0.0.1:8788` and exposes `POST /api/onboarding/connect` plus `GET /api/onboarding/status?phoneNumber=...`. It uses the SQLite runtime path from `FRIENDY_SQLITE_PATH`, beta-gates phones through `FRIENDY_OWNER_PHONE` plus `FRIENDY_BETA_ALLOWED_PHONES`, and creates allowed Photon shared users with `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`.
 
 Never commit secrets.
 
