@@ -24,6 +24,22 @@ export type PendingReminderState = {
   sameOrDifferentResolutions?: SameOrDifferentResolution[];
 };
 
+export const PENDING_REMINDER_REASON_CODES = [
+  "no_active_workflow",
+  "intent_suppressed",
+  "list_people_search_mode",
+  "response_kind_suppressed",
+  "same_name_disambiguation_pending",
+  "complaint_turn",
+  "complaint_cooldown",
+  "reminder_ttl",
+  "not_search_interrupt",
+  "no_footer_candidates",
+  "eligible_search_interrupt"
+] as const;
+
+export type PendingReminderReason = (typeof PENDING_REMINDER_REASON_CODES)[number];
+
 export type PendingReminderContext = {
   userText: string;
   userIntent: MessageInterpretation["intent"];
@@ -46,9 +62,9 @@ export type PendingReminderContext = {
 };
 
 export type PendingReminderDecision =
-  | { action: "suppress"; reason: string }
-  | { action: "defer"; reason: string }
-  | { action: "append"; reason: string; candidates: Array<{ candidateId: string; displayName: string }> };
+  | { action: "suppress"; reason: PendingReminderReason }
+  | { action: "defer"; reason: PendingReminderReason }
+  | { action: "append"; reason: PendingReminderReason; candidates: Array<{ candidateId: string; displayName: string }> };
 
 export const REMINDER_TTL_MS = 15 * 60 * 1000;
 export const COMPLAINT_COOLDOWN_MS = 10 * 60 * 1000;
@@ -142,7 +158,7 @@ export function decidePendingReminder(context: PendingReminderContext): PendingR
   return { action: "append", reason: "eligible_search_interrupt", candidates };
 }
 
-function suppress(reason: string): Extract<PendingReminderDecision, { action: "suppress" }> {
+function suppress(reason: PendingReminderReason): Extract<PendingReminderDecision, { action: "suppress" }> {
   return { action: "suppress", reason };
 }
 

@@ -173,4 +173,29 @@ describe("redacted runtime trace", () => {
     expect(serialized).not.toContain("Photon Dinner");
     expect(serialized).not.toContain("I still need context");
   });
+
+  it("drops invalid pending reminder reason values instead of logging private text", () => {
+    const trace = buildRedactedInteractionTrace({
+      inboundText: "Who did I meet at Photon?",
+      interpretedIntentJson: { intent: "search_memory", confidence: 0.94 },
+      toolCalls: ["search_memories"],
+      outboundText: "I found Maya.",
+      friendyTrace: {
+        strictMode: true,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        policyDecision: "allow",
+        suppressedPendingReminder: true,
+        pendingReminderDecision: "suppressed",
+        pendingReminderReason: "Sarah Fan asked about Photon Dinner" as never,
+        toolCalls: ["search_memories"]
+      },
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    const serialized = JSON.stringify(trace);
+    expect(trace.pendingReminderReason).toBeUndefined();
+    expect(serialized).not.toContain("Sarah Fan");
+    expect(serialized).not.toContain("Photon Dinner");
+  });
 });

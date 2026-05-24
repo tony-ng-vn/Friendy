@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PENDING_REMINDER_REASON_CODES, type PendingReminderReason } from "../pendingReminderPolicy";
 import type { FriendyTrace } from "../trace";
 import type { AgentToolCall } from "../types";
 
@@ -11,7 +12,7 @@ export type AgentTrace = {
   fallbackReason?: string;
   policyDecision?: FriendyTrace["policyDecision"];
   pendingReminderDecision?: FriendyTrace["pendingReminderDecision"];
-  pendingReminderReason?: string;
+  pendingReminderReason?: PendingReminderReason;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -76,7 +77,7 @@ export function buildRedactedInteractionTrace(input: TraceInput): AgentTrace {
     fallbackReason: input.friendyTrace?.fallbackReason,
     policyDecision: input.friendyTrace?.policyDecision,
     pendingReminderDecision: input.friendyTrace?.pendingReminderDecision,
-    pendingReminderReason: input.friendyTrace?.pendingReminderReason,
+    pendingReminderReason: safePendingReminderReason(input.friendyTrace?.pendingReminderReason),
     activeFrameId: input.friendyTrace?.activeFrameId,
     activeCandidateId: input.friendyTrace?.activeCandidateId,
     activeMemoryId: input.friendyTrace?.activeMemoryId,
@@ -112,6 +113,12 @@ function redactSearch(search: TraceSearchInput | undefined): AgentTrace["search"
     })),
     outcome: search.outcome
   };
+}
+
+function safePendingReminderReason(value: unknown): PendingReminderReason | undefined {
+  return typeof value === "string" && (PENDING_REMINDER_REASON_CODES as readonly string[]).includes(value)
+    ? (value as PendingReminderReason)
+    : undefined;
 }
 
 function hardBlockFromInterpretation(value: unknown): AgentTrace["hardBlock"] {

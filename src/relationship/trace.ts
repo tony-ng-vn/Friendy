@@ -1,4 +1,5 @@
 import type { MessageInterpretation } from "./interpretation";
+import type { PendingReminderReason } from "./pendingReminderPolicy";
 import type { AgentToolCall } from "./types";
 
 export type FriendyRouteSource = "llm" | "deterministic" | "fallback" | "scope_boundary";
@@ -35,7 +36,7 @@ export type FriendyTrace = {
   policyDecision?: FriendyPolicyDecision;
   suppressedPendingReminder?: boolean;
   pendingReminderDecision?: "suppressed" | "deferred" | "appended_footer";
-  pendingReminderReason?: string;
+  pendingReminderReason?: PendingReminderReason;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -57,7 +58,7 @@ export function createFriendyTrace(input: {
   policyDecision?: FriendyPolicyDecision;
   suppressedPendingReminder?: boolean;
   pendingReminderDecision?: "suppressed" | "deferred" | "appended_footer";
-  pendingReminderReason?: string;
+  pendingReminderReason?: PendingReminderReason;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
