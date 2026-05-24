@@ -564,6 +564,7 @@ describe("interpreted relationship agent", () => {
         reason: "same_display_name"
       }
     ]);
+    expect(capturedInput?.routerContext?.availableRouteCapabilities).toContain("capture_memory");
     expect(result.toolCalls).not.toContain("confirm_candidate");
   });
 

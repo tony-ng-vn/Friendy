@@ -146,6 +146,7 @@ const ROUTER_AVAILABLE_TOOLS = [
   "delete_memory"
 ] satisfies AgentToolCall[];
 const ROUTER_AVAILABLE_ROUTE_CAPABILITIES = [
+  "capture_memory",
   "answer_pending_contact_prompt",
   "capture_pending_contact_context",
   "ignore_candidate",
