@@ -596,7 +596,7 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      const interpreted = await interpreter.interpret(message);
+      const interpreted = await interpreter.interpret({ message });
       if (strictMode && interpreted.fallbackUsed) {
         throw new FriendyStrictModeError(
           "FALLBACK_USED",

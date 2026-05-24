@@ -1420,8 +1420,8 @@ function trackInterpreterFallbackUsage(
   fallbackUsage: { count: number }
 ): MessageInterpreter {
   return {
-    async interpret(message) {
-      const result = await interpreter.interpret(message);
+    async interpret(input) {
+      const result = await interpreter.interpret(input);
       if (result.fallbackUsed) {
         fallbackUsage.count += 1;
       }
@@ -1432,9 +1432,10 @@ function trackInterpreterFallbackUsage(
 
 function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter): MessageInterpreter {
   return {
-    async interpret(message) {
-      const result = await interpreter.interpret(message);
-      if (message.text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
+    async interpret(input) {
+      const result = await interpreter.interpret(input);
+      const text = input.message.text;
+      if (text.trim().toLowerCase() !== "list me in bullet of all people i met testing friendy") {
         return result;
       }
 
@@ -1444,10 +1445,10 @@ function createListPeopleRegressionInterpreter(interpreter: MessageInterpreter):
           ...result.interpretation,
           intent: "list_people",
           domain: "relationship_memory",
-          query: message.text,
+          query: text,
           search: {
             mode: "list_people",
-            semanticQuery: message.text,
+            semanticQuery: text,
             exactTerms: ["testing", "friendy"],
             filters: { tags: ["testing", "friendy"] },
             topK: 20
