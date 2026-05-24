@@ -216,6 +216,33 @@ export function composePendingContactReminder(displayName: string): string {
   return `I still need context for ${displayName} — what should I remember about them?`;
 }
 
+type PendingContactsFooterInput = {
+  items: Array<{ displayName: string; promptHint?: string }>;
+};
+
+/** Formats a capped pending-contact footer for eligible search interrupts. */
+export function composePendingContactsFooter({ items }: PendingContactsFooterInput): string {
+  if (items.length === 0) {
+    return "";
+  }
+
+  const visible = items.slice(0, 3);
+  const hiddenCount = Math.max(0, items.length - visible.length);
+  const header =
+    items.length === 1
+      ? "Also, I still have 1 unsaved contact waiting for context:"
+      : `Also, I still have ${items.length} unsaved contacts waiting for context:`;
+  const lines = visible.map(
+    (item) => `- ${item.displayName} - ${item.promptHint || "what should I remember about them?"}`
+  );
+
+  if (hiddenCount > 0) {
+    lines.push(`and ${hiddenCount} more`);
+  }
+
+  return [header, ...lines].join("\n");
+}
+
 /** Keeps model-provided or deterministic clarification questions short and chat-native. */
 export function composeClarificationReply(question?: string): string {
   return question?.trim() || "What do you remember about them?";
@@ -327,10 +354,78 @@ type DeleteMemoryConfirmReplyInput = {
 /** Asks for explicit confirmation before deleting a resolved memory target. */
 export function composeDeleteMemoryConfirmReply({ matches }: DeleteMemoryConfirmReplyInput): string {
   if (matches.length === 1) {
-    return `Do you want me to delete ${matches[0].displayName} from Friendy memory? Reply yes to confirm.`;
+    return composeDeleteMemorySingleConfirmReply({ displayName: matches[0].displayName });
   }
 
   return `Which one should I delete - ${matches.map((match) => match.displayName).join(" or ")}?`;
+}
+
+type DeleteMemorySingleConfirmReplyInput = {
+  displayName: string;
+};
+
+/** Confirmation copy for a single high-confidence delete target. */
+export function composeDeleteMemorySingleConfirmReply({ displayName }: DeleteMemorySingleConfirmReplyInput): string {
+  return `I found ${displayName}. Delete this from Friendy memory?\nReply yes to confirm or no to cancel.`;
+}
+
+type DeleteMemoryDisambiguationReplyInput = {
+  query: string;
+  options: Array<{ displayName: string; detail?: string }>;
+};
+
+/** Numbered disambiguation prompt when delete lookup returns multiple plausible targets. */
+export function composeDeleteMemoryDisambiguationReply({
+  query,
+  options
+}: DeleteMemoryDisambiguationReplyInput): string {
+  const countLabel = options.length === 2 ? "two" : String(options.length);
+  const optionLines = options.map((option, index) => {
+    const detail = option.detail ? ` — ${option.detail}` : "";
+    return `${index + 1}. ${option.displayName}${detail}`;
+  });
+  const pickHint =
+    options.length === 2
+      ? "Reply 1 or 2, or say cancel."
+      : `Reply ${options.map((_, index) => String(index + 1)).join(" or ")}, or say cancel.`;
+
+  return [`I found ${countLabel} possible matches for "${query}":`, ...optionLines, pickHint].join("\n");
+}
+
+type UpdateMemoryConfirmReplyInput = {
+  displayName: string;
+  proposedContextNote: string;
+};
+
+/** Confirmation copy before applying a user-requested memory note update. */
+export function composeUpdateMemoryConfirmReply({
+  displayName,
+  proposedContextNote
+}: UpdateMemoryConfirmReplyInput): string {
+  return `I found ${displayName}. Update the note to "${proposedContextNote}"?\nReply yes to confirm or no to cancel.`;
+}
+
+type UpdateMemoryDisambiguationReplyInput = {
+  query: string;
+  options: Array<{ displayName: string; detail?: string }>;
+};
+
+/** Numbered disambiguation prompt when update lookup returns multiple plausible targets. */
+export function composeUpdateMemoryDisambiguationReply({
+  query,
+  options
+}: UpdateMemoryDisambiguationReplyInput): string {
+  const countLabel = options.length === 2 ? "two" : String(options.length);
+  const optionLines = options.map((option, index) => {
+    const detail = option.detail ? ` — ${option.detail}` : "";
+    return `${index + 1}. ${option.displayName}${detail}`;
+  });
+  const pickHint =
+    options.length === 2
+      ? "Reply 1 or 2, or say cancel."
+      : `Reply ${options.map((_, index) => String(index + 1)).join(" or ")}, or say cancel.`;
+
+  return [`I found ${countLabel} possible matches for "${query}":`, ...optionLines, pickHint].join("\n");
 }
 
 type SameOrDifferentPendingReplyInput = {

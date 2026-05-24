@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   composeClarificationReply,
+  composeDeleteMemoryConfirmReply,
+  composeDeleteMemoryDisambiguationReply,
+  composeDeleteMemorySingleConfirmReply,
   composeIgnoreCandidateReply,
   composeListPeopleReply,
   composeOnboardingControlReply,
+  composePendingContactsFooter,
   composeRuntimeStartupReply,
   composeNoMatchReply,
   composeSaveConfirmation,
-  composeSearchReply
+  composeSearchReply,
+  composeUpdateMemoryConfirmReply,
+  composeUpdateMemoryDisambiguationReply
 } from "./responseComposer";
 import type { ListPeopleResult, MemorySearchResult } from "./tools";
 import type { RelationshipMemory } from "./types";
@@ -202,6 +208,86 @@ describe("relationship response composer", () => {
     expect(composeOnboardingControlReply("resumed")).toBe(
       "Friendy is back on. I'll ask before saving any new contact memories."
     );
+  });
+
+  it("formats a pending contacts footer with singular copy", () => {
+    expect(
+      composePendingContactsFooter({
+        items: [{ displayName: "Sarah Fan" }]
+      })
+    ).toBe("Also, I still have 1 unsaved contact waiting for context:\n- Sarah Fan - what should I remember about them?");
+  });
+
+  it("formats a pending contacts footer with max three items and overflow", () => {
+    expect(
+      composePendingContactsFooter({
+        items: [
+          { displayName: "Testing 1" },
+          { displayName: "Testing 2" },
+          { displayName: "Testing 3" },
+          { displayName: "Testing 4" }
+        ]
+      })
+    ).toBe(
+      [
+        "Also, I still have 4 unsaved contacts waiting for context:",
+        "- Testing 1 - what should I remember about them?",
+        "- Testing 2 - what should I remember about them?",
+        "- Testing 3 - what should I remember about them?",
+        "and 1 more"
+      ].join("\n")
+    );
+  });
+
+  it("formats single-match delete confirmation without exposing memory ids", () => {
+    const reply = composeDeleteMemorySingleConfirmReply({ displayName: "Unnamed Contact" });
+
+    expect(reply).toBe(
+      "I found Unnamed Contact. Delete this from Friendy memory?\nReply yes to confirm or no to cancel."
+    );
+    expect(composeDeleteMemoryConfirmReply({ matches: [{ displayName: "Unnamed Contact" }] })).toBe(reply);
+    expectNoInternalLanguage(reply);
+  });
+
+  it("formats multi-match delete disambiguation with numbered options", () => {
+    const reply = composeDeleteMemoryDisambiguationReply({
+      query: "Srah",
+      options: [
+        { displayName: "Sarah", detail: "met at Photon dinner" },
+        { displayName: "Sara Kim", detail: "met at recruiting meetup" }
+      ]
+    });
+
+    expect(reply).toBe(
+      [
+        'I found two possible matches for "Srah":',
+        "1. Sarah — met at Photon dinner",
+        "2. Sara Kim — met at recruiting meetup",
+        "Reply 1 or 2, or say cancel."
+      ].join("\n")
+    );
+    expectNoInternalLanguage(reply);
+  });
+
+  it("formats update confirmation and disambiguation copy", () => {
+    const confirm = composeUpdateMemoryConfirmReply({
+      displayName: "Sarah",
+      proposedContextNote: "community lead at Photon"
+    });
+    const disambiguation = composeUpdateMemoryDisambiguationReply({
+      query: "Srah",
+      options: [
+        { displayName: "Sarah", detail: "met at Photon dinner" },
+        { displayName: "Sara Kim", detail: "met at recruiting meetup" }
+      ]
+    });
+
+    expect(confirm).toBe(
+      'I found Sarah. Update the note to "community lead at Photon"?\nReply yes to confirm or no to cancel.'
+    );
+    expect(disambiguation).toContain('I found two possible matches for "Srah":');
+    expect(disambiguation).toContain("Reply 1 or 2, or say cancel.");
+    [confirm, disambiguation].forEach(expectNoInternalLanguage);
   });
 });
 
