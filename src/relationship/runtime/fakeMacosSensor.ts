@@ -82,7 +82,7 @@ function contactAddedEvent(emittedAt: string): FakeSensorEvent {
       containerId: "fixture-container",
       displayName: "Maya",
       phoneNumberHashes: ["sha256:fixture-phone"],
-      phoneNumberHints: [{ last4: "4567", label: "mobile" }],
+      phoneNumberHints: [{ last4: "4567", label: "" }],
       emailHashes: ["sha256:fixture-email"],
       emailHints: [{ domain: "example.com", label: "work" }]
     },

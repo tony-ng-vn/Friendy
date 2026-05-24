@@ -132,6 +132,34 @@ describe("macOS sensor event contract", () => {
     expect(() => parseSensorEventLine(JSON.stringify(payload))).toThrow(/raw contact method/i);
   });
 
+  it("parses contact_added when phone label is an empty string", () => {
+    const payload = contactAddedPayload();
+    payload.contact.phoneNumberHints = [{ last4: "4567", label: "" }];
+
+    const event = parseSensorEventLine(JSON.stringify(payload));
+
+    expect(event.type).toBe("contact_added");
+    if (event.type !== "contact_added") {
+      throw new Error(`Expected contact_added, received ${event.type}`);
+    }
+
+    expect(event.contact.phoneNumberHints[0]).toEqual({ last4: "4567", label: "unknown" });
+  });
+
+  it("parses contact_added when email label is whitespace-only", () => {
+    const payload = contactAddedPayload();
+    payload.contact.emailHints = [{ domain: "example.com", label: "   " }];
+
+    const event = parseSensorEventLine(JSON.stringify(payload));
+
+    expect(event.type).toBe("contact_added");
+    if (event.type !== "contact_added") {
+      throw new Error(`Expected contact_added, received ${event.type}`);
+    }
+
+    expect(event.contact.emailHints[0]).toEqual({ domain: "example.com", label: "unknown" });
+  });
+
   it("rejects unsupported sensor names and schema versions", () => {
     expect(() =>
       parseSensorEventLine(

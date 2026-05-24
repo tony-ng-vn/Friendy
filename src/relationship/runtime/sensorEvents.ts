@@ -9,6 +9,7 @@
  * phone numbers and email addresses are rejected before Zod parsing.
  */
 import { z } from "zod";
+import { normalizeSensorEventPayload } from "./normalizeSensorEvent";
 
 /** Stable sensor identifier shared with the Swift emitter. */
 export const MACOS_SENSOR_NAME = "macos_contacts_calendar";
@@ -38,9 +39,9 @@ const commonEventSchema = z.object({
 });
 
 const contactMethodHintSchema = z.object({
-  last4: z.string().min(1).optional(),
-  domain: z.string().min(1).optional(),
-  label: z.string().min(1).optional()
+  last4: z.string().trim().min(1).optional(),
+  domain: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional().default("unknown")
 });
 
 const contactSchema = z.object({
@@ -178,17 +179,28 @@ export type MacosContactAddedEvent = Extract<MacosSensorEvent, { type: "contact_
  * Validates common contract fields, rejects forbidden raw contact method keys,
  * then runs the full Zod schema for the event `type`.
  */
-export function parseSensorEventLine(line: string): MacosSensorEvent {
+export type ParsedSensorEventLine = {
+  event: MacosSensorEvent;
+  didNormalize: boolean;
+};
+
+/** Parses one NDJSON line and reports whether contact hint normalization ran. */
+export function parseSensorEventLineWithMeta(line: string): ParsedSensorEventLine {
   const parsed = parseJsonObject(line);
   assertCommonContract(parsed);
   assertNoRawContactMethods(parsed);
+  const { payload, didNormalize } = normalizeSensorEventPayload(parsed);
 
-  const result = sensorEventSchema.safeParse(parsed);
+  const result = sensorEventSchema.safeParse(payload);
   if (!result.success) {
     throw new Error(`Invalid macOS sensor event: ${z.prettifyError(result.error)}`);
   }
 
-  return result.data;
+  return { event: result.data, didNormalize };
+}
+
+export function parseSensorEventLine(line: string): MacosSensorEvent {
+  return parseSensorEventLineWithMeta(line).event;
 }
 
 function parseJsonObject(line: string): Record<string, unknown> {

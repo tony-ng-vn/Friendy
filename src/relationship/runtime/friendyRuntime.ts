@@ -18,7 +18,7 @@ import { isContactAutomationActive, type OnboardingState } from "../onboardingSt
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
 import { planCandidatePrompt } from "./promptPlanner";
-import { parseSensorEventLine, type MacosSensorEvent } from "./sensorEvents";
+import { parseSensorEventLineWithMeta, type MacosSensorEvent } from "./sensorEvents";
 
 export type RuntimePromptSendResult = {
   interactionId?: string;
@@ -50,6 +50,8 @@ export type ProcessedSensorEvent = {
   status: "candidate_created" | "duplicate" | "ignored" | "baselined" | "warning" | "failed";
   candidateId?: string;
   warningCode?: string;
+  validationStatus?: "ok" | "normalized" | "failed";
+  errorCode?: string;
   processedAt: string;
 };
 
@@ -83,6 +85,7 @@ export type RuntimeStateStore = {
   getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined;
   getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined;
   recordProcessedEvent(event: ProcessedSensorEvent): void;
+  runTransaction?<T>(callback: () => T): T;
   getSensorState(userId: string, sensorName: string, deviceId: string): RuntimeSensorState | undefined;
   upsertSensorState(input: {
     userId: string;
@@ -139,15 +142,35 @@ export function createFriendySensorRuntime({
 
   return {
     async processLine(line: string): Promise<void> {
+      const eventNow = now();
       let event: MacosSensorEvent;
+      let didNormalize = false;
       try {
-        event = parseSensorEventLine(line);
+        const parsed = parseSensorEventLineWithMeta(line);
+        event = parsed.event;
+        didNormalize = parsed.didNormalize;
       } catch (error) {
-        logger.warn(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        const partial = readPartialSensorPayload(line);
+        const eventId = partial?.eventId;
+        const errorCode = validationErrorCode(message);
+        recordValidationFailure({
+          state,
+          partial,
+          errorCode,
+          processedAt: eventNow
+        });
+        logger.warn(
+          `sensor_event_validation_failed code=${errorCode}${eventId ? ` eventId=${eventId}` : ""}: ${message}`
+        );
         return;
       }
 
-      await processEvent({ event, ...context });
+      if (didNormalize && event.type === "contact_added") {
+        logger.info(`sensor_event_normalized label=unknown eventId=${event.eventId}`);
+      }
+
+      await processEvent({ event, ...context, eventNow, validationStatus: didNormalize ? "normalized" : "ok" });
     }
   };
 }
@@ -171,6 +194,9 @@ export function createInMemoryRuntimeStateStore(): RuntimeStateStore {
       if (event.sensorEventId) {
         processedBySensorEventId.set(event.sensorEventId, event);
       }
+    },
+    runTransaction(callback) {
+      return callback();
     },
     getSensorState(userId, sensorName, deviceId) {
       return sensorStates.get(sensorStateKey(userId, sensorName, deviceId));
@@ -233,8 +259,15 @@ async function processEvent({
   ackWriter,
   logger,
   getOnboardingState,
-  now
-}: FriendySensorRuntimeContext & { event: MacosSensorEvent }): Promise<void> {
+  now,
+  eventNow,
+  validationStatus = "ok"
+}: FriendySensorRuntimeContext & {
+  event: MacosSensorEvent;
+  eventNow?: string;
+  validationStatus?: ProcessedSensorEvent["validationStatus"];
+}): Promise<void> {
+  const processedAt = eventNow ?? now();
   const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
   if (processed) {
     if (event.type === "contact_added" && processed.candidateId) {
@@ -302,11 +335,18 @@ async function processEvent({
   }
 
   if (event.type === "history_batch_complete") {
-    if (event.contactEventIds.every((eventId) => state.getProcessedEventBySensorEventId(eventId))) {
+    const missingEventIds = event.contactEventIds.filter((eventId) => {
+      const processedEvent = state.getProcessedEventBySensorEventId(eventId);
+      return !processedEvent || processedEvent.status === "failed";
+    });
+
+    if (missingEventIds.length === 0) {
       await ackWriter.writeAck(event.ackPath);
-      logger.info(`Acked macOS sensor history batch: ${event.historyBatchId}`);
+      logger.info(`history_batch_ack_written batchId=${event.historyBatchId}`);
     } else {
-      logger.info(`History batch not ready for ack: ${event.historyBatchId}`);
+      logger.info(
+        `history_batch_ack_deferred batchId=${event.historyBatchId} missing=[${missingEventIds.join(",")}]`
+      );
     }
     return;
   }
@@ -327,17 +367,25 @@ async function processEvent({
       return;
     }
 
-    const eventNow = now();
     const scoredEvents = scoreCalendarContext({
       detectedAt: event.detectedAt,
       calendarMatches: event.calendarMatches
     });
-    repo.addCalendarEvents(scoredEvents.map((scoredEvent) => toCalendarEvent(userId, scoredEvent)));
-    const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
-    recordContactAddedSensorState({ userId, state, event, now: eventNow });
-    recordProcessed(state, event, "candidate_created", eventNow, { candidateId: candidate.id });
 
-    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: eventNow });
+    const persistContactAdded = (): ContactCandidate => {
+      repo.addCalendarEvents(scoredEvents.map((scoredEvent) => toCalendarEvent(userId, scoredEvent)));
+      const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
+      recordContactAddedSensorState({ userId, state, event, now: processedAt });
+      recordProcessed(state, event, "candidate_created", processedAt, {
+        candidateId: candidate.id,
+        validationStatus
+      });
+      return candidate;
+    };
+
+    const candidate = state.runTransaction?.(() => persistContactAdded()) ?? persistContactAdded();
+
+    await sendCandidatePrompt({ userId, repo, sender, logger, candidate, scoredEvents, promptedAt: processedAt });
     return;
   }
 }
@@ -618,7 +666,7 @@ function recordProcessed(
   event: Extract<MacosSensorEvent, { idempotencyKey: string }>,
   status: ProcessedSensorEvent["status"],
   processedAt: string,
-  extra: Pick<ProcessedSensorEvent, "candidateId" | "warningCode"> = {}
+  extra: Pick<ProcessedSensorEvent, "candidateId" | "warningCode" | "validationStatus" | "errorCode"> = {}
 ): void {
   state.recordProcessedEvent({
     idempotencyKey: event.idempotencyKey,
@@ -629,6 +677,76 @@ function recordProcessed(
     processedAt,
     ...extra
   });
+}
+
+type PartialSensorPayload = {
+  eventId?: string;
+  idempotencyKey?: string;
+  sensorName?: string;
+  eventType?: string;
+};
+
+function readPartialSensorPayload(line: string): PartialSensorPayload | undefined {
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    const payload = parsed as Record<string, unknown>;
+    return {
+      eventId: typeof payload.eventId === "string" ? payload.eventId : undefined,
+      idempotencyKey: typeof payload.idempotencyKey === "string" ? payload.idempotencyKey : undefined,
+      sensorName: typeof payload.sensorName === "string" ? payload.sensorName : undefined,
+      eventType: typeof payload.type === "string" ? payload.type : undefined
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function recordValidationFailure({
+  state,
+  partial,
+  errorCode,
+  processedAt
+}: {
+  state: RuntimeStateStore;
+  partial: PartialSensorPayload | undefined;
+  errorCode: string;
+  processedAt: string;
+}): void {
+  if (!partial?.eventId) {
+    return;
+  }
+
+  const idempotencyKey = partial.idempotencyKey ?? `failed:${partial.eventId}`;
+  state.recordProcessedEvent({
+    idempotencyKey,
+    sensorEventId: partial.eventId,
+    sensorName: partial.sensorName ?? "macos_contacts_calendar",
+    eventType: partial.eventType ?? "unknown",
+    status: "failed",
+    validationStatus: "failed",
+    errorCode,
+    processedAt
+  });
+}
+
+function validationErrorCode(message: string): string {
+  if (message.includes("Malformed sensor JSON")) {
+    return "malformed_json";
+  }
+  if (message.includes("raw contact method")) {
+    return "raw_contact_method";
+  }
+  if (message.includes("schemaVersion")) {
+    return "schema_version";
+  }
+  if (message.includes("sensorName")) {
+    return "sensor_name";
+  }
+  return "schema_validation";
 }
 
 function toDetectedContact(userId: string, event: Extract<MacosSensorEvent, { type: "contact_added" }>): ContactCandidateDetected {

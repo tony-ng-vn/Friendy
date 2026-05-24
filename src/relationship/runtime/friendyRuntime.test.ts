@@ -10,6 +10,7 @@ describe("Friendy macOS sensor runtime", () => {
     await expect(harness.runtime.processLine("{bad json")).resolves.toBeUndefined();
 
     expect(harness.prompts).toEqual([]);
+    expect(harness.logs[0]).toContain("sensor_event_validation_failed");
     expect(harness.logs[0]).toContain("Malformed sensor JSON");
   });
 
@@ -382,6 +383,7 @@ describe("Friendy macOS sensor runtime", () => {
       })
     );
     expect(harness.acks).toEqual([]);
+    expect(harness.logs.join("\n")).toContain("history_batch_ack_deferred batchId=history_batch_1");
 
     await harness.runtime.processLine(JSON.stringify(contactAddedEvent()));
     await harness.runtime.processLine(
@@ -394,6 +396,43 @@ describe("Friendy macOS sensor runtime", () => {
     );
 
     expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_1.ack"]);
+    expect(harness.logs.join("\n")).toContain("history_batch_ack_written batchId=history_batch_1");
+  });
+
+  it("records failed validation without acking the history batch", async () => {
+    const harness = createHarness();
+    const invalidContact = contactAddedEvent();
+    delete (invalidContact as Record<string, unknown>).idempotencyKey;
+    const batchLine = JSON.stringify({
+      ...baseEvent("history_batch_complete"),
+      historyBatchId: "history_batch_1",
+      contactEventIds: ["sensor_evt_contact_1"],
+      ackPath: ".friendy/macos-sensor-state/acks/history_batch_1.ack"
+    });
+
+    await harness.runtime.processLine(JSON.stringify(invalidContact));
+    await harness.runtime.processLine(batchLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(harness.acks).toEqual([]);
+    expect(harness.state.getProcessedEventBySensorEventId("sensor_evt_contact_1")).toMatchObject({
+      status: "failed",
+      validationStatus: "failed",
+      errorCode: "schema_validation"
+    });
+    expect(harness.logs.join("\n")).toContain("sensor_event_validation_failed code=schema_validation eventId=sensor_evt_contact_1");
+    expect(harness.logs.join("\n")).toContain("history_batch_ack_deferred batchId=history_batch_1 missing=[sensor_evt_contact_1]");
+  });
+
+  it("accepts contact_added events with empty phone labels after normalization", async () => {
+    const harness = createHarness();
+    const contact = contactAddedEvent();
+    contact.contact.phoneNumberHints = [{ last4: "4567", label: "" }];
+
+    await harness.runtime.processLine(JSON.stringify(contact));
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.logs.join("\n")).toContain("sensor_event_normalized label=unknown eventId=sensor_evt_contact_1");
   });
 });
 
