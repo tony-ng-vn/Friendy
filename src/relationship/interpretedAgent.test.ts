@@ -5,6 +5,7 @@ import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
 import { composePendingContactsFooter } from "./responseComposer";
+import type { ExpressionFactBundle } from "./expressionFacts";
 import type { MessageInterpreterInput } from "./routerInputEnvelope";
 import { FriendyStrictModeError } from "./strictMode";
 import { createRelationshipTools } from "./tools";
@@ -110,6 +111,43 @@ describe("interpreted relationship agent", () => {
     });
   });
 
+  it("does not route messages before start into pending-contact memory writes", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 4",
+      phoneNumbers: ["+15550101004"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_testing_4", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const onboarding = createOnboardingStateController("ready_pending_user_start");
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      onboarding,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run before start");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("Hi"));
+
+    expect(result.outbound.text).toBe("If you want to start please send me 'start'");
+    expect(result.toolCalls).toEqual([]);
+    expect(interpreterCalls).toBe(0);
+    expect(repo.getCandidate(candidate.id)?.status).toBe("prompted");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
   it("captures Amaya from a natural Photon Residency message and logs the turn", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -155,6 +193,87 @@ describe("interpreted relationship agent", () => {
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Amaya");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("Photon Residency II");
     expect(JSON.stringify(logs[0].redactedTraceJson)).not.toContain("sleep on the same bed");
+  });
+
+  it("polishes eligible save-confirmation replies through an injected expression composer", async () => {
+    const repo = createRelationshipRepository();
+    const tools = createRelationshipTools(repo);
+    const expressionCalls: ExpressionFactBundle[] = [];
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles",
+      expression: {
+        async polishOutboundText({ draft, bundle }) {
+          expect(draft).toContain("Got it, saved Amaya");
+          expect(bundle?.kind).toBe("save_confirmation");
+          if (bundle) {
+            expressionCalls.push(bundle);
+          }
+          return {
+            text: "Got it - I'll remember Amaya from Photon Residency II, bed context.",
+            expressionUsed: true,
+            validationPassed: true,
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(
+      inbound("I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(")
+    );
+
+    expect(result.outbound.text).toBe("Got it - I'll remember Amaya from Photon Residency II, bed context.");
+    expect(result.toolCalls).toEqual(["create_manual_memory"]);
+    expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({ displayName: "Amaya" });
+    expect(expressionCalls).toHaveLength(1);
+    expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
+      expressionUsed: true,
+      expressionValidationPassed: true,
+      expressionModel: "test-expression-model"
+    });
+  });
+
+  it("falls back to the deterministic draft when expression validation fails", async () => {
+    const repo = createRelationshipRepository();
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles",
+      expression: {
+        async polishOutboundText({ draft }) {
+          return {
+            text: draft,
+            expressionUsed: true,
+            validationPassed: false,
+            fallbackReason: "validation_failed",
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(
+      inbound("I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(")
+    );
+
+    expect(result.outbound.text).toContain("Got it, saved Amaya");
+    expect(result.toolCalls).toEqual(["create_manual_memory"]);
+    expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({ displayName: "Amaya" });
+    expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
+      expressionUsed: true,
+      expressionValidationPassed: false,
+      expressionFallbackReason: "validation_failed",
+      expressionModel: "test-expression-model"
+    });
   });
 
   it("throws when strict mode would otherwise use the fallback interpreter", async () => {
@@ -1022,6 +1141,44 @@ describe("interpreted relationship agent", () => {
     expect(result.trace.suppressedPendingReminder).toBe(true);
   });
 
+  it("asks for pending-contact context instead of saving greeting replies", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101050"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for weak pending-contact replies");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("Hi"));
+
+    expect(result.outbound.text).toBe("I'm asking about Sarah Fan — what should I remember about them?");
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(interpreterCalls).toBe(0);
+    expect(repo.getCandidate(candidate.id)?.status).toBe("prompted");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
   it("records same-name resolution before allowing pending contact context", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
@@ -1304,6 +1461,141 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).not.toContain("Which one");
     expect(repo.getCandidate(sarah.id)?.status).toBe("prompted");
     expect(repo.getCandidate(testing2.id)?.status).toBe("pending");
+  });
+
+  it("polishes pending-contact inquiry replies with a grounded expression bundle", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const testing2 = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 2",
+      phoneNumbers: ["+15550101032"]
+    });
+    const sarah = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101033"]
+    });
+    repo.markCandidatePrompted(sarah.id, "interaction_prompt_sarah_first", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T12:01:00.000Z"
+    });
+    const expressionCalls: ExpressionFactBundle[] = [];
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for pending-contact inquiry");
+        }
+      },
+      expression: {
+        async polishOutboundText({ draft, bundle }) {
+          expect(draft).toContain("I'm asking about Sarah Fan");
+          expect(bundle?.kind).toBe("pending_contact_explanation");
+          if (bundle) {
+            expressionCalls.push(bundle);
+          }
+          return {
+            text: "I'm asking about Sarah Fan. Testing 2 is next.",
+            expressionUsed: true,
+            validationPassed: true,
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("Who are you asking about?"));
+
+    expect(result.outbound.text).toBe("I'm asking about Sarah Fan. Testing 2 is next.");
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(expressionCalls).toHaveLength(1);
+    expect(expressionCalls[0]).toMatchObject({
+      kind: "pending_contact_explanation",
+      activeDisplayName: "Sarah Fan",
+      queueNames: ["Testing 2"]
+    });
+    expect(repo.getCandidate(sarah.id)?.status).toBe("prompted");
+    expect(repo.getCandidate(testing2.id)?.status).toBe("pending");
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      expressionUsed: true,
+      expressionValidationPassed: true,
+      expressionModel: "test-expression-model"
+    });
+  });
+
+  it("polishes direct pending-contact context confirmations without changing memory writes", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101050"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const expressionCalls: ExpressionFactBundle[] = [];
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for active pending-contact context");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles",
+      expression: {
+        async polishOutboundText({ draft, bundle }) {
+          expect(draft).toContain("Got it, saved Sarah Fan");
+          expect(bundle?.kind).toBe("save_confirmation");
+          if (bundle) {
+            expressionCalls.push(bundle);
+          }
+          return {
+            text: "Saved Sarah Fan as a community lead at Photon Residency II.",
+            expressionUsed: true,
+            validationPassed: true,
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("She is a community lead at Photon Residency II"));
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(result.outbound.text).toBe("Saved Sarah Fan as a community lead at Photon Residency II.");
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(memory).toMatchObject({
+      displayName: "Sarah Fan",
+      contextNote: "community lead at Photon Residency II"
+    });
+    expect(expressionCalls).toHaveLength(1);
+    expect(expressionCalls[0]).toMatchObject({
+      kind: "save_confirmation",
+      savedPeople: [
+        expect.objectContaining({
+          displayName: "Sarah Fan",
+          noteSnippet: "community lead at Photon Residency II"
+        })
+      ]
+    });
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      expressionUsed: true,
+      expressionValidationPassed: true,
+      expressionModel: "test-expression-model"
+    });
   });
 
   it("explains multiple pending contacts when the user asks which prompt is being referenced", async () => {

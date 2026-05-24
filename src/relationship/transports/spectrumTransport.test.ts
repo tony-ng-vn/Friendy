@@ -63,6 +63,39 @@ describe("spectrum transport", () => {
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
   });
 
+  it("passes expression polishing through the Spectrum runtime without changing tool calls", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" },
+      expression: {
+        async polishOutboundText({ bundle }) {
+          expect(bundle?.kind).toBe("save_confirmation");
+          return {
+            text: "Got it - I'll remember Amaya from Photon Residency II.",
+            expressionUsed: true,
+            validationPassed: true,
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await runtime.handleInboundText({
+      userId: fixtureUser.id,
+      text: "I met Amaya at Photon Residency II, recruiting agents founder",
+      spaceId: "space_expression",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.replyText).toBe("Got it - I'll remember Amaya from Photon Residency II.");
+    expect(result.log).toMatchObject({
+      intent: "capture_memory",
+      toolCalls: ["create_manual_memory"]
+    });
+    expect(runtime.repo.listMemories(fixtureUser.id)[0]).toMatchObject({ displayName: "Amaya" });
+  });
+
   it("passes FRIENDY_STRICT_MODE through to the interpreted agent", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),

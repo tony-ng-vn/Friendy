@@ -84,6 +84,27 @@ The LLM composer must:
 - never invent contact methods,
 - be covered by tests with fake model calls.
 
+## PR 11 Expression Live Wiring Status
+
+2026-05-24: The optional expression composer is wired into the live interpreted-agent and Spectrum runtime paths.
+
+- Deterministic composers still create the authoritative draft and deterministic tools still own all state changes.
+- Eligible replies build an expression fact bundle, then call the optional expression composer.
+- If expression is disabled, unsupported, rejected, or fails, Friendy returns the deterministic draft.
+- Interaction JSON records expression metadata for debugging: `expressionUsed`, `expressionValidationPassed`, `expressionFallbackReason`, and `expressionModel`.
+- Fake-composer tests cover live save-confirmation polishing, fallback behavior, and Spectrum runtime pass-through without changing tool calls.
+- Direct pending-contact iMessage replies now also use grounded expression bundles: pending-contact inquiries use `pending_contact_explanation`, and direct context confirmations use `save_confirmation` after deterministic candidate confirmation has written the memory.
+- Verification on 2026-05-24: focused expression tests passed 5 files/96 tests, full `npm test` passed 72 files/515 tests, `npm run eval:agent` passed 46/46, `npm run build` passed, and `git diff --check` passed.
+
+## Pending-Contact Safety Follow-Up
+
+2026-05-24: Live transcript testing showed low-signal replies could still confirm stale pending contacts.
+
+- Before the user sends `start`, inbound chat now stays read-only and replies `If you want to start please send me 'start'`.
+- Active pending-contact prompts now treat greetings and acknowledgements such as `Hi`, `ok`, and `thanks` as unclear, asking for the needed context instead of saving them as memory notes.
+- This keeps the expression layer on top of deterministic state changes while tightening the deterministic consent boundary.
+- Verification on 2026-05-24: focused regressions passed, `npm test -- src/relationship/interpretedAgent.test.ts` passed 67/67, full `npm test` passed 72 files/517 tests, `npm run eval:agent` passed 46/46, and `npm run build` passed.
+
 ## Verification Commands
 
 Run before completion:
@@ -103,4 +124,3 @@ git diff --check
 - `README.md`, `REFERENCE.md`, and `implementation-notes.html` are updated if architecture or commands change.
 - Changes are committed incrementally.
 - `main` is pushed when complete.
-

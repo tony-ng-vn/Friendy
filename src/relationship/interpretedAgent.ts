@@ -18,6 +18,9 @@ import {
 import { parseDuplicateResolutionReply } from "./duplicateResolution";
 import { buildConversationState, type ConversationState, type PendingContactContextFrame } from "./conversationState";
 import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
+import { buildExpressionFactBundle } from "./expressionBundleFactory";
+import type { ExpressionComposerResult } from "./expressionComposer";
+import type { ExpressionFactBundle } from "./expressionFacts";
 import type { MessageInterpreter } from "./openRouterInterpreter";
 import type { RelationshipRepository } from "./repository";
 import {
@@ -34,6 +37,7 @@ import {
   composeListPeopleReply,
   composeNoMatchReply,
   composeNoPendingCandidateReply,
+  composeOnboardingStartRequiredReply,
   composePendingCandidateInquiryReply,
   composePendingContactsFooter,
   composeOnboardingControlReply,
@@ -103,12 +107,29 @@ type MemorySearchRequest = {
   filters?: NonNullable<MessageInterpretation["search"]>["filters"];
   topK: number;
 };
+type AgentReplyDraft = {
+  text: string;
+  expressionBundle?: ExpressionFactBundle;
+};
+export type AgentExpressionComposer = {
+  polishOutboundText(input: {
+    draft: string;
+    bundle?: ExpressionFactBundle;
+  }): Promise<ExpressionComposerResult> | ExpressionComposerResult;
+};
+type ExpressionMetadata = {
+  expressionUsed?: boolean;
+  expressionValidationPassed?: boolean;
+  expressionFallbackReason?: ExpressionComposerResult["fallbackReason"];
+  expressionModel?: string;
+};
 
 /** Injectable dependencies for the interpreted agent, including optional clock and timezone. */
 type InterpretedRelationshipAgentOptions = {
   repo: RelationshipRepository;
   tools: RelationshipTools;
   interpreter: MessageInterpreter;
+  expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
   strictMode?: boolean;
   now?: () => string;
@@ -200,6 +221,7 @@ export function createInterpretedRelationshipAgent({
   repo,
   tools,
   interpreter,
+  expression,
   onboarding,
   strictMode = true,
   now = () => new Date().toISOString(),
@@ -227,6 +249,41 @@ export function createInterpretedRelationshipAgent({
             intent: "onboarding_control",
             action: onboardingControl,
             confidence: 1
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
+      if (onboarding?.getState() === "ready_pending_user_start") {
+        const outboundText = composeOnboardingStartRequiredReply();
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "onboarding_control",
+            action: "start_required",
+            confidence: 1,
+            policyDecision: { decision: "clarify", reason: "awaiting_user_start" }
           },
           outboundText,
           toolCalls: [],
@@ -575,30 +632,35 @@ export function createInterpretedRelationshipAgent({
 
       if (pendingState.pendingContactQueue.length > 0 && isPendingCandidateInquiry(message.text)) {
         const toolCalls: AgentToolCall[] = [];
-        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const reply = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const expressionResult = await polishAgentReply(reply, expression);
+        const outboundText = expressionResult.text;
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-          interpretedIntentJson: pendingState.activeFrame
-            ? routeLog({
-                intent: "explain_pending_workflow",
-                conversationRelation: "asks_about_open_workflow",
-                frame: pendingState.activeFrame,
-                confidence: 1,
-                traceReason: "User asked which pending contact Friendy is asking about.",
-                policyDecision: { decision: "allow" }
-              })
-            : {
-                domain: "relationship_memory",
-                intent: "explain_pending_workflow",
-                conversationRelation: "asks_about_open_workflow",
-                confidence: 1,
-                traceReason: "User asked which pending contact Friendy is asking about.",
-                policyDecision: { decision: "allow" }
-              },
+          interpretedIntentJson: {
+            ...(pendingState.activeFrame
+              ? routeLog({
+                  intent: "explain_pending_workflow",
+                  conversationRelation: "asks_about_open_workflow",
+                  frame: pendingState.activeFrame,
+                  confidence: 1,
+                  traceReason: "User asked which pending contact Friendy is asking about.",
+                  policyDecision: { decision: "allow" }
+                })
+              : {
+                  domain: "relationship_memory",
+                  intent: "explain_pending_workflow",
+                  conversationRelation: "asks_about_open_workflow",
+                  confidence: 1,
+                  traceReason: "User asked which pending contact Friendy is asking about.",
+                  policyDecision: { decision: "allow" }
+                }),
+            ...expressionResult.metadata
+          },
           outboundText,
           toolCalls,
           modelUsed: "deterministic-scope",
@@ -764,7 +826,9 @@ export function createInterpretedRelationshipAgent({
         const extractedContext = candidate
           ? cleanCandidateContextReply(message.text, candidate)
           : message.text.trim().replace(/\s+/g, " ");
-        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const reply = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const expressionResult = await polishAgentReply(reply, expression);
+        const outboundText = expressionResult.text;
         conversationContexts.set(message.userId, clearLastReminder(turnContext));
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -784,7 +848,54 @@ export function createInterpretedRelationshipAgent({
             }),
             pendingReminderDecision: "suppressed",
             pendingReminderReason: "not_search_interrupt",
-            suppressedPendingReminder: true
+            suppressedPendingReminder: true,
+            ...expressionResult.metadata
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
+      if (pendingState.activeFrame && isWeakPendingContactReply(message.text)) {
+        const toolCalls: AgentToolCall[] = [];
+        const reply = pendingContactContextClarification(message, tools, toolCalls, pendingState);
+        const expressionResult = await polishAgentReply(reply, expression);
+        const outboundText = expressionResult.text;
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...routeLog({
+              intent: "explain_pending_workflow",
+              conversationRelation: "asks_about_open_workflow",
+              frame: pendingState.activeFrame,
+              confidence: 1,
+              traceReason: "User sent a low-signal reply while a pending contact prompt is open.",
+              policyDecision: { decision: "clarify", reason: "weak_pending_contact_reply" }
+            }),
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true,
+            ...expressionResult.metadata
           },
           outboundText,
           toolCalls,
@@ -944,7 +1055,9 @@ export function createInterpretedRelationshipAgent({
         !isRelationshipMetaRouteMessage(message.text)
       ) {
         const toolCalls: AgentToolCall[] = [];
-        const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const reply = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        const expressionResult = await polishAgentReply(reply, expression);
+        const outboundText = expressionResult.text;
         conversationContexts.set(message.userId, clearLastReminder(turnContext));
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -952,14 +1065,15 @@ export function createInterpretedRelationshipAgent({
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-            interpretedIntentJson: {
-              intent: "candidate_confirmation",
-              confidence: 1,
-              policyDecision: { decision: "allow" },
-              pendingReminderDecision: "suppressed",
-              pendingReminderReason: "not_search_interrupt",
-              suppressedPendingReminder: true
-            },
+          interpretedIntentJson: {
+            intent: "candidate_confirmation",
+            confidence: 1,
+            policyDecision: { decision: "allow" },
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true,
+            ...expressionResult.metadata
+          },
           outboundText,
           toolCalls,
           modelUsed: "deterministic-scope",
@@ -1161,7 +1275,7 @@ export function createInterpretedRelationshipAgent({
       const toolCalls: AgentToolCall[] = [];
       const searchRequestForTrace =
         interpretation.intent === "search_memory" ? buildMemorySearchRequest(message, interpretation) : undefined;
-      let outboundText = executeInterpretation(
+      const replyDraft = executeInterpretation(
         message,
         interpretation,
         repo,
@@ -1170,6 +1284,8 @@ export function createInterpretedRelationshipAgent({
         toolCalls,
         pendingState
       );
+      const expressionResult = await polishAgentReply(replyDraft, expression);
+      let outboundText = expressionResult.text;
       const pendingReminderNow = now();
       const pendingReminder = decidePendingReminder(
         buildPendingReminderContext({
@@ -1235,7 +1351,8 @@ export function createInterpretedRelationshipAgent({
             pendingReminderDecision: tracePendingReminderDecision(pendingReminder),
             pendingReminderReason: pendingReminder.reason,
             suppressedPendingReminder: pendingReminder.action !== "append",
-            normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined
+            normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined,
+            ...expressionResult.metadata
           },
           outboundText,
         toolCalls,
@@ -1882,6 +1999,10 @@ function isMemoryMutationCancelReply(value: string): boolean {
   return /^(?:no|nope|cancel|cancel it|never mind|nevermind|stop|don't|do not)$/iu.test(value.trim());
 }
 
+function isWeakPendingContactReply(value: string): boolean {
+  return /^(?:hi|hello|hey|yo|ok|okay|k|cool|nice|great|thanks|thank you|ty|lol|haha|👍)$/iu.test(value.trim());
+}
+
 function looksLikeDirectPendingContactContext(text: string, frame: PendingContactContextFrame): boolean {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase().replace(/\bu\b/g, "you");
@@ -2427,18 +2548,34 @@ function executeInterpretation(
   candidateIntake: CandidateIntake,
   toolCalls: AgentToolCall[],
   pendingState?: ConversationState
-): string {
+): AgentReplyDraft {
   if (isConfirmationReply(message.text)) {
     return confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
   }
 
   if (interpretation.needsClarification || interpretation.intent === "clarify") {
-    return composeClarificationReply(interpretation.clarificationQuestion);
+    const text = composeClarificationReply(interpretation.clarificationQuestion);
+    return replyDraft(
+      text,
+      buildExpressionFactBundle({
+        kind: "clarification",
+        draft: text,
+        questionIntent: "route_clarification"
+      })
+    );
   }
 
   if (interpretation.intent === "capture_memory") {
     if (interpretation.confidence < MIN_CAPTURE_CONFIDENCE) {
-      return composeClarificationReply(interpretation.clarificationQuestion || "What should I remember about them?");
+      const text = composeClarificationReply(interpretation.clarificationQuestion || "What should I remember about them?");
+      return replyDraft(
+        text,
+        buildExpressionFactBundle({
+          kind: "clarification",
+          draft: text,
+          questionIntent: "low_confidence_capture"
+        })
+      );
     }
     return captureMemories(message, interpretation, tools, toolCalls);
   }
@@ -2458,7 +2595,7 @@ function executeInterpretation(
   if (interpretation.intent === "duplicate_audit") {
     toolCalls.push("find_duplicate_people");
     const result = tools.find_duplicate_people(message.userId, { includePending: true });
-    return composeDuplicateAuditReply({ duplicateGroups: result.duplicateGroups });
+    return replyDraft(composeDuplicateAuditReply({ duplicateGroups: result.duplicateGroups }));
   }
 
   if (interpretation.intent === "explain_agent_state" || interpretation.intent === "explain_pending_workflow") {
@@ -2466,11 +2603,21 @@ function executeInterpretation(
     const savedMemories = displayName
       ? listSavedMemoriesForDisplayName(repo, message.userId, displayName)
       : repo.listMemories(message.userId);
-    return composeExplainAgentStateReply({
+    const text = composeExplainAgentStateReply({
       displayName,
       savedMemories,
       pendingFrame: pendingState?.activeFrame
     });
+    return replyDraft(
+      text,
+      buildExpressionFactBundle({
+        kind: "explain_agent_state",
+        draft: text,
+        workflowSummary: displayName
+          ? `saved and pending relationship-memory state for ${displayName}`
+          : "current relationship-memory state"
+      })
+    );
   }
 
   if (interpretation.intent === "conversation_repair") {
@@ -2478,11 +2625,19 @@ function executeInterpretation(
     const savedMemories = displayName
       ? listSavedMemoriesForDisplayName(repo, message.userId, displayName)
       : repo.listMemories(message.userId);
-    return composeConversationRepairReply({
+    const text = composeConversationRepairReply({
       displayName,
       savedMemories,
       pendingFrame: pendingState?.activeFrame
     });
+    return replyDraft(
+      text,
+      buildExpressionFactBundle({
+        kind: "conversation_repair",
+        draft: text,
+        repairTopic: pendingState?.activeFrame ? "stale_prompt" : "other"
+      })
+    );
   }
 
   if (interpretation.intent === "delete_memory_request") {
@@ -2492,19 +2647,33 @@ function executeInterpretation(
       repo.listMemories(message.userId).map((memory) => memory.displayName)
     );
     if (matches.length === 0) {
-      return composeNoMatchReply();
+      const text = composeNoMatchReply();
+      return replyDraft(
+        text,
+        buildExpressionFactBundle({
+          kind: "search_no_match",
+          draft: text
+        })
+      );
     }
 
-    return composeDeleteMemoryConfirmReply({
+    return replyDraft(composeDeleteMemoryConfirmReply({
       matches: matches.slice(0, 3).map((match) => ({ displayName: match.displayName }))
-    });
+    }));
   }
 
   if (interpretation.intent === "ignore_candidate") {
-    return ignorePendingCandidate(message, interpretation, candidateIntake, toolCalls);
+    return replyDraft(ignorePendingCandidate(message, interpretation, candidateIntake, toolCalls));
   }
 
-  return composeNoMatchReply();
+  const text = composeNoMatchReply();
+  return replyDraft(
+    text,
+    buildExpressionFactBundle({
+      kind: "search_no_match",
+      draft: text
+    })
+  );
 }
 
 function captureMemories(
@@ -2512,7 +2681,7 @@ function captureMemories(
   interpretation: MessageInterpretation,
   tools: RelationshipTools,
   toolCalls: AgentToolCall[]
-): string {
+): AgentReplyDraft {
   const memories = interpretation.people.map((person, index) => {
     const note = buildMemoryNote(interpretation, person);
     const idempotencyKey = manualMemoryIdempotencyKey(message, person.name, index);
@@ -2525,11 +2694,15 @@ function captureMemories(
     });
   });
 
-  if (memories.length === 1) {
-    return composeSaveConfirmation({ memories });
-  }
-
-  return composeSaveConfirmation({ memories });
+  const text = composeSaveConfirmation({ memories });
+  return replyDraft(
+    text,
+    buildExpressionFactBundle({
+      kind: "save_confirmation",
+      draft: text,
+      memories
+    })
+  );
 }
 
 function manualMemoryIdempotencyKey(message: InboundAgentMessage, personName: string, index: number): string {
@@ -2549,7 +2722,7 @@ function searchMemories(
   interpretation: MessageInterpretation,
   tools: RelationshipTools,
   toolCalls: AgentToolCall[]
-): string {
+): AgentReplyDraft {
   toolCalls.push("search_memories");
   const request = buildMemorySearchRequest(message, interpretation);
   const query = effectiveMemorySearchQuery(request);
@@ -2557,17 +2730,27 @@ function searchMemories(
 
   if (request.mode === "list_people") {
     if (matches.length === 0) {
-      return "I don't have any saved people in Friendy memory yet.";
+      return replyDraft("I don't have any saved people in Friendy memory yet.");
     }
 
-    return composeSearchReply({ matches });
+    const text = composeSearchReply({ matches });
+    return replyDraft(text, searchExpressionBundle(text, matches, false));
   }
 
   if (matches.length === 0) {
-    return composeNoMatchReply();
+    const text = composeNoMatchReply();
+    return replyDraft(
+      text,
+      buildExpressionFactBundle({
+        kind: "search_no_match",
+        draft: text
+      })
+    );
   }
 
-  return composeSearchReply({ matches, ambiguous: !isEventWideRecallQuery(message.text) && isAmbiguous(matches) });
+  const ambiguous = !isEventWideRecallQuery(message.text) && isAmbiguous(matches);
+  const text = composeSearchReply({ matches, ambiguous });
+  return replyDraft(text, searchExpressionBundle(text, matches, ambiguous));
 }
 
 function listPeople(
@@ -2575,7 +2758,7 @@ function listPeople(
   interpretation: MessageInterpretation,
   tools: RelationshipTools,
   toolCalls: AgentToolCall[]
-): string {
+): AgentReplyDraft {
   toolCalls.push("list_people");
   const result = tools.list_people(message.userId, {
     source: "friendy_memory",
@@ -2590,10 +2773,77 @@ function listPeople(
       tags: interpretation.search?.filters?.tags ?? interpretation.tags
     }
   });
-  return composeListPeopleReply({
+  return replyDraft(composeListPeopleReply({
     result,
     preferBullets: /\b(?:bullet|bullets|list)\b/i.test(message.text)
-  });
+  }));
+}
+
+function replyDraft(text: string, expressionBundle?: ExpressionFactBundle): AgentReplyDraft {
+  return expressionBundle ? { text, expressionBundle } : { text };
+}
+
+function searchExpressionBundle(
+  text: string,
+  matches: MemorySearchResult[],
+  ambiguous: boolean
+): ExpressionFactBundle | undefined {
+  if (matches.length === 1) {
+    return buildExpressionFactBundle({
+      kind: "search_single_match",
+      draft: text,
+      memory: matches[0].memory,
+      ambiguous
+    });
+  }
+
+  if (matches.length > 1) {
+    return buildExpressionFactBundle({
+      kind: "search_ambiguous_matches",
+      draft: text,
+      matches
+    });
+  }
+
+  return undefined;
+}
+
+async function polishAgentReply(
+  draft: AgentReplyDraft,
+  expression: AgentExpressionComposer | undefined
+): Promise<{ text: string; metadata?: ExpressionMetadata }> {
+  if (!expression || !draft.expressionBundle) {
+    return { text: draft.text };
+  }
+
+  try {
+    const result = await expression.polishOutboundText({
+      draft: draft.text,
+      bundle: draft.expressionBundle
+    });
+    return {
+      text: result.text,
+      metadata: expressionMetadata(result)
+    };
+  } catch {
+    return {
+      text: draft.text,
+      metadata: {
+        expressionUsed: true,
+        expressionValidationPassed: false,
+        expressionFallbackReason: "api_error"
+      }
+    };
+  }
+}
+
+function expressionMetadata(result: ExpressionComposerResult): ExpressionMetadata {
+  return {
+    expressionUsed: result.expressionUsed,
+    expressionValidationPassed: result.validationPassed,
+    expressionFallbackReason: result.fallbackReason,
+    expressionModel: result.expressionModel
+  };
 }
 
 function listSavedMemoriesForDisplayName(
@@ -2640,14 +2890,30 @@ function confirmPendingCandidate(
   tools: RelationshipTools,
   toolCalls: AgentToolCall[],
   pendingState?: ConversationState
-): string {
+): AgentReplyDraft {
   toolCalls.push("list_pending_candidates");
   const pending = tools.list_pending_candidates(message.userId);
   if (isPendingCandidateInquiry(message.text)) {
-    return composePendingCandidateInquiryReply({
+    const text = composePendingCandidateInquiryReply({
       candidates: pending.map((candidate) => ({ displayName: candidate.displayName })),
       activeDisplayName: pendingState?.activeFrame?.displayName
     });
+    const activeDisplayName =
+      pendingState?.activeFrame?.displayName ?? (pending.length === 1 ? pending[0]?.displayName : undefined);
+    const queueNames = activeDisplayName
+      ? pending.map((candidate) => candidate.displayName).filter((displayName) => displayName !== activeDisplayName)
+      : undefined;
+    return replyDraft(
+      text,
+      activeDisplayName
+        ? buildExpressionFactBundle({
+            kind: "pending_contact_explanation",
+            draft: text,
+            activeDisplayName,
+            queueNames
+          })
+        : undefined
+    );
   }
 
   const result = candidateIntake.resolveCandidateReply({
@@ -2656,7 +2922,35 @@ function confirmPendingCandidate(
   });
   recordCandidateReplyToolCalls(result, toolCalls);
 
-  return composeCandidateReply(result);
+  return candidateReplyDraft(result);
+}
+
+function pendingContactContextClarification(
+  message: InboundAgentMessage,
+  tools: RelationshipTools,
+  toolCalls: AgentToolCall[],
+  pendingState: ConversationState
+): AgentReplyDraft {
+  toolCalls.push("list_pending_candidates");
+  const pending = tools.list_pending_candidates(message.userId);
+  const text = composePendingCandidateInquiryReply({
+    candidates: pending.map((candidate) => ({ displayName: candidate.displayName })),
+    activeDisplayName: pendingState.activeFrame?.displayName
+  });
+  const activeDisplayName =
+    pendingState.activeFrame?.displayName ?? (pending.length === 1 ? pending[0]?.displayName : undefined);
+
+  return replyDraft(
+    text,
+    activeDisplayName
+      ? buildExpressionFactBundle({
+          kind: "pending_contact_explanation",
+          draft: text,
+          activeDisplayName,
+          queueNames: pending.map((candidate) => candidate.displayName).filter((name) => name !== activeDisplayName)
+        })
+      : undefined
+  );
 }
 
 function ignorePendingCandidate(
@@ -2697,6 +2991,22 @@ function composeCandidateReply(result: CandidateReplyResult): string {
   }
 
   return composeNoPendingCandidateReply();
+}
+
+function candidateReplyDraft(result: CandidateReplyResult): AgentReplyDraft {
+  const text = composeCandidateReply(result);
+  if (result.kind !== "confirmed") {
+    return replyDraft(text);
+  }
+
+  return replyDraft(
+    text,
+    buildExpressionFactBundle({
+      kind: "save_confirmation",
+      draft: text,
+      memories: [result.memory]
+    })
+  );
 }
 
 function composeCandidateIgnoreReply(result: CandidateIgnoreResult): string {

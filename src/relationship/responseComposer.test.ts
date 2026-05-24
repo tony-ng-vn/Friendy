@@ -65,6 +65,21 @@ describe("relationship response composer", () => {
     expectNoInternalLanguage(reply);
   });
 
+  it("formats non-ambiguous multi-person recall as names only", () => {
+    const reply = composeSearchReply({
+      matches: [
+        searchResult(memory({ displayName: "Testing 12", eventTitle: "AI Dinner", contextNote: "met at AI Dinner" }), "matched: ai dinner"),
+        searchResult(memory({ displayName: "Sarah Fan", eventTitle: "AI Dinner", contextNote: "community lead" }), "matched: ai dinner")
+      ],
+      ambiguous: false
+    });
+
+    expect(reply).toBe("I found 2 people: Testing 12, Sarah Fan.");
+    expect(reply).not.toContain("AI Dinner");
+    expect(reply).not.toContain("community lead");
+    expectNoInternalLanguage(reply);
+  });
+
   it("formats save, no-match, clarification, and ignore replies conversationally", () => {
     const saved = composeSaveConfirmation({
       memories: [
@@ -93,7 +108,7 @@ describe("relationship response composer", () => {
     [saved, noMatch, clarification, ignored, noPendingIgnore].forEach(expectNoInternalLanguage);
   });
 
-  it("formats filtered people lists with bullets and duplicate groups", () => {
+  it("formats filtered people lists with name-only bullets and duplicate groups", () => {
     const reply = composeListPeopleReply({
       result: listPeopleResult({
         appliedFilterLabel: "testing friendy",
@@ -122,8 +137,8 @@ describe("relationship response composer", () => {
       [
         "I remember these people from testing friendy:",
         "",
-        "- Testing 12 - Met them during testing Friendy",
-        "- Testing 1 - Testing Friendy",
+        "- Testing 12",
+        "- Testing 1",
         "",
         "I also see possible duplicates:",
         "",
@@ -302,6 +317,7 @@ describe("relationship response composer", () => {
     expect(disambiguation).toContain("Reply 1 or 2, or say cancel.");
     [confirm, disambiguation].forEach(expectNoInternalLanguage);
   });
+
 });
 
 function memory(overrides: Partial<RelationshipMemory>): RelationshipMemory {

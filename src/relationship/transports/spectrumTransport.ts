@@ -7,7 +7,9 @@
  */
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { createInterpretedRelationshipAgent } from "../interpretedAgent";
+import { createInterpretedRelationshipAgent, type AgentExpressionComposer } from "../interpretedAgent";
+import { polishOutboundText } from "../expressionComposer";
+import { readExpressionConfig } from "../expressionConfig";
 import {
   createOpenRouterInterpreter,
   type MessageInterpreter,
@@ -40,6 +42,7 @@ export type SpectrumRuntimeOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
@@ -50,6 +53,7 @@ export type StartSpectrumFriendyAgentOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
@@ -118,6 +122,7 @@ export function createSpectrumFriendyRuntime({
   now,
   repo: providedRepo,
   tools: providedTools,
+  expression: providedExpression,
   onboarding,
   env = process.env
 }: SpectrumRuntimeOptions) {
@@ -130,7 +135,8 @@ export function createSpectrumFriendyRuntime({
   });
   const tools = providedTools ?? createRelationshipTools(repo);
   const strictMode = readFriendyStrictMode(env);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, onboarding, interpreter, strictMode, now });
+  const expression = providedExpression ?? createEnvExpressionComposer(env);
+  const agent = createInterpretedRelationshipAgent({ repo, tools, expression, onboarding, interpreter, strictMode, now });
 
   return {
     repo,
@@ -158,6 +164,7 @@ export async function startSpectrumFriendyAgent({
   now,
   repo,
   tools,
+  expression,
   onboarding,
   env = process.env
 }: StartSpectrumFriendyAgentOptions = {}) {
@@ -170,6 +177,7 @@ export async function startSpectrumFriendyAgent({
     now,
     repo,
     tools,
+    expression,
     onboarding,
     env
   });
@@ -193,6 +201,17 @@ export async function startSpectrumFriendyAgent({
       await message.reply(result.replyText);
     });
   }
+}
+
+function createEnvExpressionComposer(env: Partial<NodeJS.ProcessEnv>): AgentExpressionComposer {
+  return {
+    polishOutboundText(input) {
+      return polishOutboundText({
+        ...input,
+        config: readExpressionConfig(env)
+      });
+    }
+  };
 }
 
 function toAgentTurnLog(inbound: InboundAgentMessage, agentReply: string, createdAt: string): AgentTurnLog {

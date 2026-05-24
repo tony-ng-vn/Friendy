@@ -447,6 +447,11 @@ export function composeRuntimeStartupReply(): string {
   return "Friendy is running on your Mac. Reply start when you want me to watch for new contacts and ask before saving anything.";
 }
 
+/** Tells the user the runtime is waiting for explicit start before doing agent work. */
+export function composeOnboardingStartRequiredReply(): string {
+  return "If you want to start please send me 'start'";
+}
+
 /** Formats start/pause/resume setup controls without exposing internal runtime state. */
 export function composeOnboardingControlReply(kind: OnboardingControlReplyKind): string {
   if (kind === "started") {
