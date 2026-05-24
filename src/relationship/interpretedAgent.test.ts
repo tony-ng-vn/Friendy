@@ -4,6 +4,7 @@ import { createInterpretedRelationshipAgent } from "./interpretedAgent";
 import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openRouterInterpreter";
 import { createRelationshipRepository } from "./repository";
+import { composePendingContactsFooter } from "./responseComposer";
 import type { MessageInterpreterInput } from "./routerInputEnvelope";
 import { FriendyStrictModeError } from "./strictMode";
 import { createRelationshipTools } from "./tools";
@@ -450,6 +451,50 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("I still need context for Testing 3");
+  });
+
+  it("appends a separate pending-contact footer after eligible search_memory replies", async () => {
+    const { agent } = createPendingReminderSearchAgent();
+
+    const result = await agent.handleMessage(inbound("Who did I meet at Photon?"));
+    const footer = composePendingContactsFooter({ items: [{ displayName: "Sarah Fan" }] });
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.outbound.text).toContain("Maya");
+    expect(result.outbound.text).toContain(`\n\n${footer}`);
+    expect(result.outbound.text).not.toContain(". I still need context for Sarah Fan");
+    expect(result.trace.pendingReminderDecision).toBe("appended_footer");
+    expect(result.trace.suppressedPendingReminder).toBe(false);
+  });
+
+  it("suppresses pending-contact footer on list_people routes", async () => {
+    const { agent } = createPendingReminderSearchAgent({
+      intent: "list_people",
+      search: {
+        mode: "list_people",
+        semanticQuery: "people I know",
+        exactTerms: [],
+        topK: 20
+      }
+    });
+
+    const result = await agent.handleMessage(inbound("List everyone I know"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.outbound.text).not.toContain("Also, I still have");
+    expect(result.trace.pendingReminderDecision).toBe("suppressed");
+  });
+
+  it("defers repeat eligible search_memory reminders within ttl", async () => {
+    const { agent } = createPendingReminderSearchAgent();
+
+    const first = await agent.handleMessage(inbound("Who did I meet at Photon?"));
+    const second = await agent.handleMessage(inbound("Who did I meet at Friendy?"));
+
+    expect(first.trace.pendingReminderDecision).toBe("appended_footer");
+    expect(first.outbound.text).toContain("Also, I still have");
+    expect(second.trace.pendingReminderDecision).toBe("deferred");
+    expect(second.outbound.text).not.toContain("Also, I still have");
   });
 
   it("routes duplicate audit through interpreter without stale pending reminder", async () => {
@@ -1526,6 +1571,47 @@ function createTestAgent(options: { strictMode?: boolean } = {}) {
   });
 
   return { agent, repo };
+}
+
+function createPendingReminderSearchAgent(overrides: Partial<Parameters<typeof fullInterpretation>[0]> = {}) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    memories: [memoryFixture("Maya", "Met at Photon Residency Dinner")]
+  });
+  const tools = createRelationshipTools(repo);
+  const pendingCandidate = tools.create_contact_candidate({
+    ...fixtureDetectedContact,
+    displayName: "Sarah Fan",
+    phoneNumbers: ["+15550101044"],
+    emails: []
+  });
+  repo.markCandidatePrompted(pendingCandidate.id, "interaction_prompt_sarah_fan", {
+    promptedAt: "2026-05-20T11:59:00.000Z"
+  });
+  const agent = createInterpretedRelationshipAgent({
+    repo,
+    tools,
+    interpreter: modelInterpreter({
+      intent: "search_memory",
+      domain: "relationship_memory",
+      conversationRelation: "starts_new_relationship_task",
+      confidence: 0.92,
+      query: "Photon",
+      search: {
+        mode: "event_recall",
+        semanticQuery: "people met at Photon",
+        exactTerms: ["photon"],
+        filters: { eventName: "Photon" },
+        topK: 10
+      },
+      ...overrides
+    }),
+    strictMode: false,
+    now: () => "2026-05-20T12:00:00.000Z",
+    timezone: "America/Los_Angeles"
+  });
+
+  return { agent, repo, tools };
 }
 
 function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretation>[0]>) {

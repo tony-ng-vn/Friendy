@@ -33,12 +33,21 @@ import {
   composeNoMatchReply,
   composeNoPendingCandidateReply,
   composePendingCandidateInquiryReply,
-  composePendingContactReminder,
+  composePendingContactsFooter,
   composeOnboardingControlReply,
   composeSameOrDifferentPendingReply,
   composeSaveConfirmation,
   composeSearchReply
 } from "./responseComposer";
+import {
+  PENDING_REMINDER_REASON_CODES,
+  decidePendingReminder,
+  type PendingReminderContext,
+  type PendingReminderDecision,
+  type PendingReminderReason,
+  type PendingReminderResponseKind,
+  type PendingReminderState
+} from "./pendingReminderPolicy";
 import { decideHardSafety } from "./hardSafetyBlock";
 import {
   isPendingCandidateInquiry,
@@ -122,6 +131,7 @@ type ConversationContext = {
     memoryId: string;
     displayName: string;
   };
+  reminderState?: PendingReminderState;
   recentPeople: string[];
 };
 
@@ -424,6 +434,7 @@ export function createInterpretedRelationshipAgent({
           ? cleanCandidateContextReply(message.text, candidate)
           : message.text.trim().replace(/\s+/g, " ");
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        conversationContexts.set(message.userId, clearLastReminder(turnContext));
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -595,6 +606,7 @@ export function createInterpretedRelationshipAgent({
       ) {
         const toolCalls: AgentToolCall[] = [];
         const outboundText = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
+        conversationContexts.set(message.userId, clearLastReminder(turnContext));
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -744,12 +756,26 @@ export function createInterpretedRelationshipAgent({
         toolCalls,
         pendingState
       );
-      if (
-        pendingState.activeFrame &&
-        interpretation.intent === "search_memory" &&
-        !allowedPolicy.suppressPendingReminder
-      ) {
-        outboundText = `${outboundText} ${composePendingContactReminder(pendingState.activeFrame.displayName)}`;
+      const pendingReminderNow = now();
+      const pendingReminder = decidePendingReminder(
+        buildPendingReminderContext({
+          message,
+          interpretation,
+          pendingState,
+          repo,
+          reminderState: turnContext.reminderState ?? {},
+          now: pendingReminderNow
+        })
+      );
+      if (pendingReminder.action === "append") {
+        const footer = composePendingContactsFooter({
+          items: pendingReminder.candidates.map((candidate) => ({
+            displayName: candidate.displayName
+          }))
+        });
+        if (footer.length > 0) {
+          outboundText = `${outboundText}\n\n${footer}`;
+        }
       }
       let nextContext = updateSearchContext(
         message,
@@ -757,6 +783,16 @@ export function createInterpretedRelationshipAgent({
         updateConversationContext(turnContext, interpretation),
         interpretation
       );
+      nextContext = {
+        ...nextContext,
+        reminderState: updateReminderState(
+          turnContext.reminderState ?? {},
+          pendingReminder,
+          pendingState,
+          interpretation,
+          pendingReminderNow
+        )
+      };
       if (interpretation.intent === "delete_memory_request") {
         nextContext = attachPendingDeleteContext(message, interpretation, repo, nextContext);
       }
@@ -779,6 +815,9 @@ export function createInterpretedRelationshipAgent({
               reason: allowedPolicy.reason,
               suppressPendingReminder: allowedPolicy.suppressPendingReminder
             },
+            pendingReminderDecision: tracePendingReminderDecision(pendingReminder),
+            pendingReminderReason: pendingReminder.reason,
+            suppressedPendingReminder: pendingReminder.action !== "append",
             normalizedQuery: searchRequestForTrace?.normalizedQuery || undefined
           },
           outboundText,
@@ -849,6 +888,164 @@ function attachPendingDeleteContext(
   };
 }
 
+function buildPendingReminderContext(input: {
+  message: InboundAgentMessage;
+  interpretation: MessageInterpretation;
+  pendingState: ConversationState;
+  repo: RelationshipRepository;
+  reminderState: PendingReminderState;
+  now: string;
+}): PendingReminderContext {
+  const active = input.pendingState.activeFrame;
+  const savedMemoriesForActiveName = active
+    ? listSavedMemoriesForDisplayName(input.repo, input.message.userId, active.displayName).map((memory) => ({
+        memoryId: memory.id,
+        displayName: memory.displayName
+      }))
+    : [];
+
+  return {
+    userText: input.message.text,
+    userIntent: input.interpretation.intent,
+    searchMode: input.interpretation.search?.mode,
+    responseKind: responseKindForInterpretation(input.interpretation),
+    now: input.now,
+    activeWorkflow: active
+      ? {
+          kind: "pending_contact_confirmation",
+          frameId: active.frameId,
+          candidateId: active.candidateId,
+          displayName: active.displayName,
+          lastFriendyPrompt: active.lastFriendyPrompt
+        }
+      : undefined,
+    pendingCandidates: input.pendingState.pendingContactQueue.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      displayName: candidate.displayName,
+      status: candidate.status
+    })),
+    savedMemoriesForActiveName,
+    duplicateRisk: savedMemoriesForActiveName.length > 0,
+    sameNameDisambiguationPending: Boolean(
+      active &&
+        savedMemoriesForActiveName.length > 0 &&
+        !hasSameOrDifferentResolution(input.reminderState, active.candidateId, active.openedAt)
+    ),
+    listedEntityIds: [],
+    reminderState: input.reminderState
+  };
+}
+
+function responseKindForInterpretation(interpretation: MessageInterpretation): PendingReminderResponseKind {
+  if (interpretation.intent === "list_people" || interpretation.search?.mode === "list_people") {
+    return "list_people";
+  }
+
+  if (interpretation.intent === "search_memory") {
+    return "search_result";
+  }
+
+  if (interpretation.intent === "explain_agent_state" || interpretation.intent === "explain_pending_workflow") {
+    return "explain";
+  }
+
+  if (interpretation.intent === "conversation_repair") {
+    return "repair";
+  }
+
+  if (interpretation.intent === "duplicate_audit") {
+    return "duplicate_audit";
+  }
+
+  if (interpretation.intent === "delete_memory_request") {
+    return "delete_confirm";
+  }
+
+  if (
+    interpretation.intent === "capture_pending_contact_context" ||
+    interpretation.intent === "answer_pending_contact_prompt"
+  ) {
+    return "capture_context";
+  }
+
+  if (interpretation.intent === "clarify" || interpretation.needsClarification) {
+    return "clarify";
+  }
+
+  return "other";
+}
+
+function updateReminderState(
+  previous: PendingReminderState,
+  decision: PendingReminderDecision,
+  pendingState: ConversationState,
+  interpretation: MessageInterpretation,
+  now: string
+): PendingReminderState {
+  const next: PendingReminderState = { ...previous };
+
+  if (decision.action === "append" && pendingState.activeFrame) {
+    next.lastReminderAt = now;
+    next.lastRemindedCandidateId = pendingState.activeFrame.candidateId;
+  }
+
+  if (interpretation.intent === "conversation_repair" || interpretation.intent === "explain_agent_state") {
+    next.lastUserComplaintAt = now;
+  }
+
+  if (
+    interpretation.intent === "capture_pending_contact_context" ||
+    interpretation.intent === "answer_pending_contact_prompt"
+  ) {
+    next.lastReminderAt = undefined;
+    next.lastRemindedCandidateId = undefined;
+  }
+
+  return next;
+}
+
+function clearLastReminder(context: ConversationContext): ConversationContext {
+  return {
+    ...context,
+    reminderState: {
+      ...context.reminderState,
+      lastReminderAt: undefined,
+      lastRemindedCandidateId: undefined
+    }
+  };
+}
+
+function hasSameOrDifferentResolution(
+  state: PendingReminderState,
+  candidateId: string,
+  openedAt: string
+): boolean {
+  const openedAtMs = Date.parse(openedAt);
+  return (
+    state.sameOrDifferentResolutions?.some((resolution) => {
+      if (resolution.candidateId !== candidateId) {
+        return false;
+      }
+
+      const resolvedAtMs = Date.parse(resolution.resolvedAt);
+      return Number.isNaN(openedAtMs) || Number.isNaN(resolvedAtMs) || resolvedAtMs >= openedAtMs;
+    }) ?? false
+  );
+}
+
+function tracePendingReminderDecision(
+  decision: PendingReminderDecision
+): NonNullable<FriendyTrace["pendingReminderDecision"]> {
+  switch (decision.action) {
+    case "append":
+      return "appended_footer";
+    case "defer":
+      return "deferred";
+    case "suppress":
+      return "suppressed";
+  }
+}
+
 function addInteractionWithTrace(
   repo: RelationshipRepository,
   strictMode: boolean,
@@ -900,6 +1097,8 @@ function traceFromInteractionFields(interaction: AgentInteraction, strictMode: b
     route,
     policyDecision: policyDecisionFromInteraction(interaction),
     suppressedPendingReminder: suppressedPendingReminderFromInteraction(interaction),
+    pendingReminderDecision: pendingReminderDecisionFromInteraction(interaction),
+    pendingReminderReason: pendingReminderReasonFromInteraction(interaction),
     activeFrameId: target.frameId,
     activeCandidateId: target.candidateId,
     activeMemoryId: target.memoryId,
@@ -1005,6 +1204,14 @@ function suppressedPendingReminderFromInteraction(interaction: AgentInteraction)
     return undefined;
   }
 
+  if ("suppressedPendingReminder" in interaction.interpretedIntentJson) {
+    const suppressed = (interaction.interpretedIntentJson as { suppressedPendingReminder?: unknown })
+      .suppressedPendingReminder;
+    if (typeof suppressed === "boolean") {
+      return suppressed;
+    }
+  }
+
   const policyDecision = (interaction.interpretedIntentJson as { policyDecision?: unknown }).policyDecision;
   if (typeof policyDecision !== "object" || policyDecision === null || !("suppressPendingReminder" in policyDecision)) {
     return undefined;
@@ -1012,6 +1219,28 @@ function suppressedPendingReminderFromInteraction(interaction: AgentInteraction)
 
   const suppressed = (policyDecision as { suppressPendingReminder?: unknown }).suppressPendingReminder;
   return typeof suppressed === "boolean" ? suppressed : undefined;
+}
+
+function pendingReminderDecisionFromInteraction(
+  interaction: AgentInteraction
+): FriendyTrace["pendingReminderDecision"] | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const decision = (interaction.interpretedIntentJson as { pendingReminderDecision?: unknown }).pendingReminderDecision;
+  return decision === "suppressed" || decision === "deferred" || decision === "appended_footer" ? decision : undefined;
+}
+
+function pendingReminderReasonFromInteraction(interaction: AgentInteraction): PendingReminderReason | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const reason = (interaction.interpretedIntentJson as { pendingReminderReason?: unknown }).pendingReminderReason;
+  return typeof reason === "string" && (PENDING_REMINDER_REASON_CODES as readonly string[]).includes(reason)
+    ? (reason as PendingReminderReason)
+    : undefined;
 }
 
 function hardSafetyDecisionFromRoute(value: unknown): "reject" | undefined {
@@ -1846,6 +2075,7 @@ function updateConversationContext(
   }
 
   return {
+    ...context,
     activeEventName: interpretation.event.name || context.activeEventName,
     activeDateContext: interpretation.dateContext ?? context.activeDateContext,
     recentPeople: [...context.recentPeople, ...interpretation.people.map((person) => person.name)].slice(-10)
