@@ -1,10 +1,11 @@
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
+import { createSqliteRelationshipRepository } from "../sqliteRepository";
 import { createRuntimePromptSender, resolveFriendyRuntimeConfig, startFriendyForegroundRuntime } from "./friendyRuntimeCli";
 import type { SensorChildProcess, SensorRuntimeLineProcessor } from "./sensorProcess";
 
@@ -108,10 +109,13 @@ describe("Friendy foreground runtime CLI configuration", () => {
 
     await runtime?.processLine(JSON.stringify(contactAddedEvent()));
 
-    expect(started.repo.listPendingCandidates("user_friendy")).toEqual([]);
-    expect(prompts).toEqual([]);
+    expect(started.repo.listPendingCandidates("user_friendy")[0]).toMatchObject({
+      displayName: "Maya",
+      contactIdentifier: "ABCD-1234"
+    });
+    expect(prompts[0].text).toContain("Text start and I'll ask about it");
     expect(started.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
-      status: "ignored"
+      status: "candidate_created"
     });
 
     started.onboarding.applyControl("started");
@@ -119,14 +123,57 @@ describe("Friendy foreground runtime CLI configuration", () => {
       JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2", stableId: "EFGH-5678" }))
     );
 
-    expect(started.repo.listPendingCandidates("user_friendy")[0]).toMatchObject({
-      displayName: "Maya",
-      contactIdentifier: "EFGH-5678"
-    });
+    expect(started.repo.listPendingCandidates("user_friendy").map((candidate) => candidate.contactIdentifier)).toEqual([
+      "ABCD-1234",
+      "EFGH-5678"
+    ]);
     expect(started.state.getProcessedEvent("contacts:mac_1:EFGH-5678:add")).toMatchObject({
       status: "candidate_created"
     });
-    expect(prompts[0].text).toContain("Photon Residency Dinner");
+    expect(prompts[1].text).toContain("Photon Residency Dinner");
+    started.close();
+  });
+
+  it("clears stale pending candidates from previous foreground runs on startup", async () => {
+    const cwd = tempDir();
+    const sqlitePath = join(cwd, ".friendy", "friendy.sqlite");
+    mkdirSync(join(cwd, ".friendy"), { recursive: true });
+    const existingRepo = createSqliteRelationshipRepository({ path: sqlitePath });
+    const staleCandidate = existingRepo.createCandidateFromDetectedContact({
+      userId: "user_friendy",
+      displayName: "Old Testing",
+      phoneNumbers: ["ending in 0000"],
+      emails: [],
+      detectedAt: "2026-05-20T12:00:00.000Z",
+      source: "contacts_delta",
+      contactIdentifier: "OLD-CONTACT"
+    });
+    existingRepo.markCandidatePrompted(staleCandidate.id, "interaction_old_prompt", {
+      promptedAt: "2026-05-20T12:00:00.000Z"
+    });
+    existingRepo.close();
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      sender: {
+        async sendPrompt() {
+          return { interactionId: "interaction_prompt_1" };
+        }
+      },
+      startSensor() {
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger()
+    });
+
+    expect(started.repo.listPendingCandidates("user_friendy")).toEqual([]);
+    expect(started.repo.getCandidate(staleCandidate.id)).toMatchObject({
+      status: "ignored"
+    });
     started.close();
   });
 

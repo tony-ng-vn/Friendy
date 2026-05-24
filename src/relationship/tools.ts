@@ -88,6 +88,7 @@ export type LookupMemoryTargetOptions = {
   operation?: "delete" | "update";
   minScore?: number;
   ambiguityGap?: number;
+  includeContext?: boolean;
 };
 
 export type { MemoryTargetLookupResult };
@@ -121,6 +122,12 @@ type UpdateMemoryOptions = {
 type DeleteMemoryOptions = {
   userText?: string;
   now?: string;
+};
+
+type ClearMemoriesOptions = DeleteMemoryOptions;
+
+export type ClearMemoriesResult = {
+  deleted: RelationshipMemory[];
 };
 
 type ResolveDuplicatePersonInput = {
@@ -323,6 +330,20 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       });
     },
 
+    clear_memories(userId: string, options: ClearMemoriesOptions = {}): ClearMemoriesResult {
+      const now = options.now ?? new Date().toISOString();
+      const deleted = repo
+        .listMemories(userId)
+        .map((memory) =>
+          repo.deleteMemory(memory.id, {
+            userText: options.userText,
+            deletedAt: now
+          })
+        );
+
+      return { deleted };
+    },
+
     lookup_memory_target(
       userId: string,
       query: string,
@@ -333,7 +354,8 @@ export function createRelationshipTools(repo: RelationshipRepository) {
         query,
         memories: repo.listMemories(userId),
         minScore: options.minScore,
-        ambiguityGap: options.ambiguityGap
+        ambiguityGap: options.ambiguityGap,
+        includeContext: options.includeContext
       });
     }
   };
@@ -947,6 +969,7 @@ const GENERIC_MEMORY_QUERY_TERMS = new Set([
   "associate",
   "association",
   "about",
+  "at",
   "relevant",
   "that",
   "my",
@@ -954,6 +977,7 @@ const GENERIC_MEMORY_QUERY_TERMS = new Set([
   "in",
   "to",
   "with",
+  "at",
   "from",
   "who",
   "which",

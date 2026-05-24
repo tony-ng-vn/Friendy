@@ -7,12 +7,14 @@
  */
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import { createInterpretedRelationshipAgent } from "../interpretedAgent";
+import { createInterpretedRelationshipAgent, type AgentExpressionComposer } from "../interpretedAgent";
+import { polishOutboundText } from "../expressionComposer";
+import { readExpressionConfig } from "../expressionConfig";
 import {
-  createOpenRouterInterpreter,
+  createOpenAIInterpreter,
   type MessageInterpreter,
-  readOpenRouterConfig
-} from "../openRouterInterpreter";
+  readOpenAIConfig
+} from "../openAIInterpreter";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { resolveConfiguredUserId } from "../identity";
@@ -40,6 +42,7 @@ export type SpectrumRuntimeOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
@@ -50,6 +53,7 @@ export type StartSpectrumFriendyAgentOptions = {
   now?: () => string;
   repo?: RelationshipRepository;
   tools?: RelationshipTools;
+  expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
   env?: Partial<NodeJS.ProcessEnv>;
 };
@@ -95,6 +99,21 @@ export type AgentTurnLog = {
   createdAt: string;
 };
 
+type SpectrumFriendyRuntime = Pick<ReturnType<typeof createSpectrumFriendyRuntime>, "handleInboundText">;
+
+type SpectrumInboundResponderOptions = {
+  runtime: SpectrumFriendyRuntime;
+  input: SpectrumInboundInput;
+  reply(text: string): Promise<void> | void;
+  logger?: Pick<Console, "info" | "error">;
+};
+
+type SpectrumInboundResponderResult = {
+  handled: boolean;
+};
+
+const INBOUND_RECOVERY_REPLY = "I had trouble understanding that. Try saying it another way.";
+
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
 export function toInboundAgentMessage(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv> = {}): InboundAgentMessage {
   return {
@@ -118,6 +137,7 @@ export function createSpectrumFriendyRuntime({
   now,
   repo: providedRepo,
   tools: providedTools,
+  expression: providedExpression,
   onboarding,
   env = process.env
 }: SpectrumRuntimeOptions) {
@@ -130,7 +150,8 @@ export function createSpectrumFriendyRuntime({
   });
   const tools = providedTools ?? createRelationshipTools(repo);
   const strictMode = readFriendyStrictMode(env);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, onboarding, interpreter, strictMode, now });
+  const expression = providedExpression ?? createEnvExpressionComposer(env);
+  const agent = createInterpretedRelationshipAgent({ repo, tools, expression, onboarding, interpreter, strictMode, now });
 
   return {
     repo,
@@ -147,6 +168,27 @@ export function createSpectrumFriendyRuntime({
   };
 }
 
+/** Handles one Spectrum inbound message without letting a failed turn stop the live loop. */
+export async function respondToSpectrumInbound({
+  runtime,
+  input,
+  reply,
+  logger = console
+}: SpectrumInboundResponderOptions): Promise<SpectrumInboundResponderResult> {
+  try {
+    const result = await runtime.handleInboundText(input);
+    logger.info("[friendy:agent_turn]", JSON.stringify(result.turnLog));
+    logger.info("[friendy:agent_interaction]", JSON.stringify(result.log));
+    await reply(result.replyText);
+    return { handled: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[friendy:inbound_agent:error] ${message}`);
+    await reply(INBOUND_RECOVERY_REPLY);
+    return { handled: false };
+  }
+}
+
 /**
  * Starts the Spectrum-backed relationship agent.
  *
@@ -158,18 +200,20 @@ export async function startSpectrumFriendyAgent({
   now,
   repo,
   tools,
+  expression,
   onboarding,
   env = process.env
 }: StartSpectrumFriendyAgentOptions = {}) {
   loadFriendyEnv();
   const { projectId, projectSecret } = readSpectrumCredentials(env as NodeJS.ProcessEnv);
-  const openRouterConfig = readOpenRouterConfig(env);
+  const modelConfig = readOpenAIConfig(env);
   const strictMode = readFriendyStrictMode(env);
   const runtime = createSpectrumFriendyRuntime({
-    interpreter: interpreter ?? createOpenRouterInterpreter({ ...openRouterConfig, strictMode }),
+    interpreter: interpreter ?? createOpenAIInterpreter({ ...modelConfig, strictMode }),
     now,
     repo,
     tools,
+    expression,
     onboarding,
     env
   });
@@ -183,16 +227,30 @@ export async function startSpectrumFriendyAgent({
 
   for await (const [space, message] of app.messages) {
     await space.responding(async () => {
-      const result = await runtime.handleInboundText({
-        text: message.content.type === "text" ? message.content.text : "",
-        spaceId: space.id,
-        receivedAt: new Date().toISOString()
+      await respondToSpectrumInbound({
+        runtime,
+        input: {
+          text: message.content.type === "text" ? message.content.text : "",
+          spaceId: space.id,
+          receivedAt: new Date().toISOString()
+        },
+        reply: async (text) => {
+          await message.reply(text);
+        }
       });
-      console.info("[friendy:agent_turn]", JSON.stringify(result.turnLog));
-      console.info("[friendy:agent_interaction]", JSON.stringify(result.log));
-      await message.reply(result.replyText);
     });
   }
+}
+
+function createEnvExpressionComposer(env: Partial<NodeJS.ProcessEnv>): AgentExpressionComposer {
+  return {
+    polishOutboundText(input) {
+      return polishOutboundText({
+        ...input,
+        config: readExpressionConfig(env)
+      });
+    }
+  };
 }
 
 function toAgentTurnLog(inbound: InboundAgentMessage, agentReply: string, createdAt: string): AgentTurnLog {

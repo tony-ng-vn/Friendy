@@ -64,7 +64,7 @@ Transport message
 - `src/relationship/interpretation.ts`: LLM interpretation contract.
 - `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
-- `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
+- `src/relationship/openAIInterpreter.ts`: OpenAI structured-output interpreter and deterministic fallback.
 - `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion product flow pipeline.
 - `src/relationship/ingestion/localMacAdapters.ts`: explicit macOS Contacts/Calendar adapters, parser helpers, and non-macOS guards.
 - `src/relationship/ingestion/localCheck.ts`: provider-neutral local contact/calendar checker that creates candidates and confirmation prompts.
@@ -103,7 +103,7 @@ FRIENDY_STRICT_MODE=1 npm run agent:friendy
 FRIENDY_STRICT_MODE=1 npm run agent:spectrum
 ```
 
-Use strict mode for manual routing validation. With strict mode enabled, missing OpenRouter config, invalid model route JSON, and fallback routing fail loudly instead of being hidden by the rule-based fallback.
+Use strict mode for manual routing validation. With strict mode enabled, missing model-provider config, invalid model route JSON, and fallback routing fail loudly instead of being hidden by the rule-based fallback.
 
 Optional macOS Contacts smoke command:
 
@@ -154,11 +154,11 @@ SPECTRUM_PROJECT_SECRET=
 FRIENDY_AGENT_NUMBER=+14156056081
 ```
 
-OpenRouter interpreter:
+Model interpreter:
 
 ```bash
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 Local checker:

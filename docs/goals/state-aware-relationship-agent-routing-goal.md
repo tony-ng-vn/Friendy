@@ -566,7 +566,7 @@ Also run any new targeted test file(s) during TDD red/green cycles.
 - 2026-05-23: Event recall routing now treats `Who did I meet/met at X?` as `event_recall`, not `list_people`.
 - 2026-05-23: Manual `add/save/remember Person as/is/from/at context` creates Friendy memory through deterministic tools and does not mutate Apple Contacts.
 - 2026-05-23: Removed the old generic user-facing scope fallback and replaced it with specific blocker copy.
-- 2026-05-23: Focused verification passed for interpreted agent, scope boundary, candidate intake, response composer, tools, OpenRouter interpreter, eval runner, runtime trace, behavior contract, and `npm run build`.
+- 2026-05-23: Focused verification passed for interpreted agent, scope boundary, candidate intake, response composer, tools, OpenAI interpreter, eval runner, runtime trace, behavior contract, and `npm run build`.
 - 2026-05-23: Full verification passed: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
 - 2026-05-23: Implementation commit `1f2bdb1` (`fix:add state-aware relationship routing`) was pushed to `main`.
 

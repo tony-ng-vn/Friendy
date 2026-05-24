@@ -6,7 +6,7 @@ Implement Task 1: add `FRIENDY_STRICT_MODE=1` and a first-class Friendy trace en
 
 Friendy currently has several routes where failures can be hidden by fallback behavior:
 
-- the OpenRouter interpreter can fail and fall back to the rule-based interpreter;
+- the OpenAI interpreter can fail and fall back to the rule-based interpreter;
 - invalid model output can become fallback behavior;
 - unsupported route intents can drift into `unknown`, `clarify`, or search paths;
 - deterministic fallback can answer in ways that make a local demo look acceptable while the real router is broken;
@@ -131,7 +131,7 @@ Exact class shape can follow repo style, but tests must be able to assert the co
 
 ### Model Interpreter Failure
 
-If OpenRouter/model execution fails and strict mode is enabled:
+If OpenAI/model execution fails and strict mode is enabled:
 
 - do not call fallback;
 - throw `FriendyStrictModeError` with `code = "MODEL_INTERPRETATION_FAILED"`;
@@ -154,7 +154,7 @@ If the rule-based interpreter is used in strict mode for any reason:
 - include `fallbackUsed: true`;
 - include a `fallbackReason`.
 
-This means a missing `OPENROUTER_API_KEY` should fail fast in strict mode when a model route is required.
+This means a missing `OPENAI_API_KEY` should fail fast in strict mode when a model route is required.
 
 ### Unknown Route
 
@@ -258,7 +258,7 @@ Live runtime should read `FRIENDY_STRICT_MODE` from env and pass it into the int
 ## Files To Inspect
 
 - `src/relationship/interpretedAgent.ts`
-- `src/relationship/openRouterInterpreter.ts`
+- `src/relationship/openAIInterpreter.ts`
 - `src/relationship/interpretation.ts`
 - `src/relationship/runtime/runtimeTrace.ts`
 - `src/relationship/transports/spectrumTransport.ts`

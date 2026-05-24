@@ -84,7 +84,7 @@ PR 10 **projects** a small snapshot from domain + last N interactions; it does n
 ## Non-Goals
 
 - Do not implement full event-sourced replay graph (future milestone).
-- Do not send full session JSON to OpenRouter — PR 4 envelope remains compact/redacted.
+- Do not send full session JSON to OpenAI — PR 4 envelope remains compact/redacted.
 - Do not replace `interactions` table or store unbounded message history in session row.
 - Do not add cloud sync or multi-device session merge.
 - Do not block PR 4–9 on PR 10 landing.

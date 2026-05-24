@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
 import { fixtureUser } from "./fixtures";
 import {
-  DEFAULT_OPENROUTER_MODEL,
-  createOpenRouterInterpreter,
+  DEFAULT_OPENAI_MODEL,
+  createOpenAIInterpreter,
   createRuleBasedInterpreter,
-  readOpenRouterConfig
-} from "./openRouterInterpreter";
+  readOpenAIConfig
+} from "./openAIInterpreter";
 import { FriendyStrictModeError } from "./strictMode";
 import type { RouterInputEnvelope } from "./routerInputEnvelope";
 import type { InboundAgentMessage } from "./types";
@@ -43,7 +43,7 @@ const routerContext: RouterInputEnvelope = {
   availableRouteCapabilities: ["search_memory", "answer_pending_contact_prompt"]
 };
 
-describe("openrouter message interpreter", () => {
+describe("openai message interpreter", () => {
   it("instructs the model to use state-aware route intents", () => {
     const prompt = buildInterpreterSystemPrompt();
     const instructions = buildStructuredOutputInstructions();
@@ -57,7 +57,7 @@ describe("openrouter message interpreter", () => {
     expect(instructions).toContain("delete_memory_request");
   });
 
-  it("sends OpenRouter a strict structured-output request with the configured model", async () => {
+  it("sends OpenAI a strict structured-output request with the configured model", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init: init ?? {} });
@@ -82,9 +82,9 @@ describe("openrouter message interpreter", () => {
       });
     };
 
-    const interpreter = createOpenRouterInterpreter({
+    const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
-      model: "nvidia/nemotron-3-super-120b-a12b:free",
+      model: "gpt-4o-mini",
       fetchImpl
     });
 
@@ -95,17 +95,17 @@ describe("openrouter message interpreter", () => {
     expect(result.routeSource).toBe("llm");
     expect(result.fallbackUsed).toBe(false);
     expect(result.fallbackReason).toBeUndefined();
-    expect(result.modelRequested).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+    expect(result.modelRequested).toBe("gpt-4o-mini");
     expect(result.modelResponseSchemaValid).toBe(true);
     expect(result.modelErrorCode).toBeUndefined();
-    expect(calls[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(calls[0].url).toBe("https://api.openai.com/v1/chat/completions");
     expect(calls[0].init.headers).toMatchObject({
       Authorization: "Bearer test-key",
       "Content-Type": "application/json"
     });
-    expect(body.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
-    expect(body.temperature).toBe(0);
-    expect(body.provider).toEqual({ require_parameters: true });
+    expect(body.model).toBe("gpt-4o-mini");
+    expect(body.temperature).toBeUndefined();
+    expect(body.provider).toBeUndefined();
     expect(body.response_format).toMatchObject({
       type: "json_schema",
       json_schema: {
@@ -113,11 +113,86 @@ describe("openrouter message interpreter", () => {
         strict: true
       }
     });
+    expect(body.response_format.json_schema.schema.required).toEqual(Object.keys(body.response_format.json_schema.schema.properties));
+    expect(body.response_format.json_schema.schema.properties.target.required).toEqual([
+      "frameId",
+      "candidateId",
+      "memoryId",
+      "displayName"
+    ]);
+    expect(body.response_format.json_schema.schema.properties.search.required).toEqual([
+      "mode",
+      "semanticQuery",
+      "exactTerms",
+      "filters",
+      "topK"
+    ]);
+    expect(body.response_format.json_schema.schema.properties.search.properties.filters.required).toEqual([
+      "personName",
+      "eventName",
+      "topic",
+      "companyOrSchool",
+      "dateText",
+      "tags"
+    ]);
     expect(body.messages[0].content).toContain("Calendar guesses are suggestions");
     expect(body.messages[0].content).toContain("Return JSON that matches the provided schema");
   });
 
-  it("serializes router context into the OpenRouter user message when provided", async () => {
+  it("accepts the explicit OpenAI provider option", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return jsonResponse({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                intent: "search_memory",
+                confidence: 0.86,
+                people: [],
+                event: { name: "Residency", dateText: "", location: "" },
+                contextNote: "",
+                query: "people I met at the Residency",
+                tags: ["Residency"],
+                needsClarification: false,
+                clarificationQuestion: ""
+              })
+            }
+          }
+        ]
+      });
+    };
+
+    const interpreter = createOpenAIInterpreter({
+      apiKey: "test-openai-key",
+      model: "gpt-4o-mini",
+      provider: "openai",
+      fetchImpl
+    });
+
+    const result = await interpreter.interpret({ message: inbound });
+    const body = JSON.parse(String(calls[0].init.body));
+
+    expect(result.interpretation.intent).toBe("search_memory");
+    expect(result.routeSource).toBe("llm");
+    expect(calls[0].url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(calls[0].init.headers).toMatchObject({
+      Authorization: "Bearer test-openai-key",
+      "Content-Type": "application/json"
+    });
+    expect(body.model).toBe("gpt-4o-mini");
+    expect(body.provider).toBeUndefined();
+    expect(body.response_format).toMatchObject({
+      type: "json_schema",
+      json_schema: {
+        name: "friendy_message_interpretation",
+        strict: true
+      }
+    });
+  });
+
+  it("serializes router context into the OpenAI user message when provided", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(url), init: init ?? {} });
@@ -142,7 +217,7 @@ describe("openrouter message interpreter", () => {
       });
     };
 
-    const interpreter = createOpenRouterInterpreter({
+    const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
       model: "model",
       fetchImpl
@@ -189,7 +264,7 @@ describe("openrouter message interpreter", () => {
       });
     };
 
-    const interpreter = createOpenRouterInterpreter({ apiKey: "test-key", model: "model", strictMode: false, fetchImpl });
+    const interpreter = createOpenAIInterpreter({ apiKey: "test-key", model: "model", strictMode: false, fetchImpl });
     const result = await interpreter.interpret({ message: inbound });
 
     expect(calls).toBe(2);
@@ -197,8 +272,8 @@ describe("openrouter message interpreter", () => {
     expect(result.error).toBe("");
   });
 
-  it("falls back when strict mode is explicitly disabled and OpenRouter keeps returning invalid output", async () => {
-    const interpreter = createOpenRouterInterpreter({
+  it("falls back when strict mode is explicitly disabled and OpenAI keeps returning invalid output", async () => {
+    const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
       model: "model",
       strictMode: false,
@@ -228,10 +303,10 @@ describe("openrouter message interpreter", () => {
     expect(result.modelErrorCode).toBe("INVALID_ROUTE_SCHEMA");
   });
 
-  it("uses deterministic fallback only when strict mode is explicitly disabled and no OpenRouter API key exists", async () => {
-    const interpreter = createOpenRouterInterpreter({
+  it("uses deterministic fallback only when strict mode is explicitly disabled and no OpenAI API key exists", async () => {
+    const interpreter = createOpenAIInterpreter({
       apiKey: "",
-      model: DEFAULT_OPENROUTER_MODEL,
+      model: DEFAULT_OPENAI_MODEL,
       strictMode: false,
       fallback: createRuleBasedInterpreter()
     });
@@ -252,15 +327,15 @@ describe("openrouter message interpreter", () => {
     });
     expect(result.routeSource).toBe("fallback");
     expect(result.fallbackUsed).toBe(true);
-    expect(result.fallbackReason).toBe("missing_openrouter_api_key");
-    expect(result.modelRequested).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(result.fallbackReason).toBe("missing_model_api_key");
+    expect(result.modelRequested).toBe(DEFAULT_OPENAI_MODEL);
     expect(result.modelErrorCode).toBe("FALLBACK_USED");
   });
 
-  it("throws instead of using fallback by default when no OpenRouter API key exists", async () => {
-    const interpreter = createOpenRouterInterpreter({
+  it("throws instead of using fallback by default when no OpenAI API key exists", async () => {
+    const interpreter = createOpenAIInterpreter({
       apiKey: "",
-      model: DEFAULT_OPENROUTER_MODEL,
+      model: DEFAULT_OPENAI_MODEL,
       fallback: createRuleBasedInterpreter()
     });
 
@@ -271,8 +346,8 @@ describe("openrouter message interpreter", () => {
         strictMode: true,
         routeSource: "fallback",
         fallbackUsed: true,
-        fallbackReason: "missing_openrouter_api_key",
-        modelRequested: DEFAULT_OPENROUTER_MODEL,
+        fallbackReason: "missing_model_api_key",
+        modelRequested: DEFAULT_OPENAI_MODEL,
         modelErrorCode: "FALLBACK_USED"
       }
     });
@@ -280,7 +355,7 @@ describe("openrouter message interpreter", () => {
 
   it("throws invalid schema errors in strict mode without calling fallback", async () => {
     let fallbackCalls = 0;
-    const interpreter = createOpenRouterInterpreter({
+    const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
       model: "model",
       strictMode: true,
@@ -314,7 +389,7 @@ describe("openrouter message interpreter", () => {
 
   it("throws model execution errors in strict mode without calling fallback", async () => {
     let fallbackCalls = 0;
-    const interpreter = createOpenRouterInterpreter({
+    const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
       model: "model",
       strictMode: true,
@@ -399,14 +474,26 @@ describe("openrouter message interpreter", () => {
     }
   });
 
-  it("reads OpenRouter config with a stable free default model", () => {
-    expect(readOpenRouterConfig({ OPENROUTER_API_KEY: "key" })).toEqual({
-      apiKey: "key",
-      model: DEFAULT_OPENROUTER_MODEL
+  it("reads OpenAI config with a stable default model", () => {
+    expect(readOpenAIConfig({})).toEqual({
+      apiKey: "",
+      model: DEFAULT_OPENAI_MODEL,
+      provider: "openai"
     });
-    expect(readOpenRouterConfig({ OPENROUTER_API_KEY: "key", OPENROUTER_MODEL: "custom-model" })).toEqual({
-      apiKey: "key",
-      model: "custom-model"
+    expect(readOpenAIConfig({ OPENAI_API_KEY: "openai-key" })).toEqual({
+      apiKey: "openai-key",
+      model: DEFAULT_OPENAI_MODEL,
+      provider: "openai"
+    });
+    expect(
+      readOpenAIConfig({
+        OPENAI_API_KEY: "openai-key",
+        OPENAI_MODEL: "gpt-4.1-mini"
+      })
+    ).toEqual({
+      apiKey: "openai-key",
+      model: "gpt-4.1-mini",
+      provider: "openai"
     });
   });
 });

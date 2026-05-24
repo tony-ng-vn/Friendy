@@ -8,7 +8,7 @@ export type MemoryTargetLookupResult =
       memoryId: string;
       displayName: string;
       score: number;
-      matchedVia: "exact" | "fuzzy";
+      matchedVia: "exact" | "fuzzy" | "context";
     }
   | {
       kind: "ambiguous";
@@ -22,12 +22,17 @@ export type LookupMemoryTargetInput = {
   memories: RelationshipMemory[];
   minScore?: number;
   ambiguityGap?: number;
+  includeContext?: boolean;
 };
 
 type ScoredMemoryTarget = {
   memoryId: string;
   displayName: string;
   score: number;
+};
+
+type ContextMemoryTarget = ScoredMemoryTarget & {
+  matchedVia: "context";
 };
 
 function normalizeDisplayName(value: string): string {
@@ -55,6 +60,29 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
   const userMemories = input.memories.filter(
     (memory) => memory.userId === input.userId && !memory.deletedAt
   );
+
+  if (input.includeContext) {
+    const contextMatches = findExactContextMatches(query, userMemories);
+    if (contextMatches.length === 1) {
+      const match = contextMatches[0];
+      return {
+        kind: "single",
+        memoryId: match.memoryId,
+        displayName: match.displayName,
+        score: match.score,
+        matchedVia: match.matchedVia,
+      };
+    }
+
+    if (contextMatches.length > 1) {
+      return {
+        kind: "ambiguous",
+        options: contextMatches.map(({ memoryId, displayName, score }) => ({ memoryId, displayName, score })),
+        query,
+      };
+    }
+  }
+
   const rankedMatches = rankDisplayNameMatches(
     query,
     userMemories.map((memory) => memory.displayName)
@@ -126,4 +154,35 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
   }
 
   return { kind: "none", query };
+}
+
+function findExactContextMatches(query: string, memories: RelationshipMemory[]): ContextMemoryTarget[] {
+  const normalizedQuery = normalizeContextText(query);
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  return memories
+    .filter((memory) => contextAliases(memory.contextNote).some((context) => normalizeContextText(context) === normalizedQuery))
+    .map((memory) => ({
+      memoryId: memory.id,
+      displayName: memory.displayName,
+      score: 100,
+      matchedVia: "context" as const,
+    }));
+}
+
+function contextAliases(contextNote: string): string[] {
+  return contextNote
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeContextText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^context\s*:\s*/i, "")
+    .replace(/\s+/g, " ");
 }

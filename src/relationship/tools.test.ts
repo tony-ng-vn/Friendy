@@ -567,6 +567,30 @@ describe("relationship tools", () => {
     });
   });
 
+  it("clears all visible memories through a bounded tool", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memory("Maya", "Photon Residency II", "building recruiting agents"),
+        memory("Sarah Fan", "Photon Residency II", "community lead")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+
+    const result = tools.clear_memories(fixtureUser.id, {
+      userText: "delete everyone",
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(result.deleted).toHaveLength(2);
+    expect(result.deleted.map((memory) => memory.displayName)).toEqual(["Maya", "Sarah Fan"]);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+    expect(repo.listMemoryRevisions("memory_maya").at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "delete everyone"
+    });
+  });
+
   it("ranks role and project matches above generic shared event matches", () => {
     const tools = createToolsWithMemories([
       memory("Maya", "Photon Residency II", "event: Photon Residency II | I met Maya at Photon Residency II dinner, founder working on recruiting agents | role: founder"),
@@ -667,7 +691,8 @@ describe("relationship tools", () => {
     const tools = createToolsWithMemories([
       memory("Leo", "Photon Residency II", "event: Photon Residency II | I met Leo at Photon Residency II, making devtools for agents | project: devtools for agents"),
       memory("Rina", "Photon Residency II", "event: Photon Residency II | I also met Rina who goes to CMU, class 2027 and making AI infra dashboard | school/company: CMU | class year: 2027 | project: AI infra dashboard"),
-      memory("Nina Park", "Photon Residency II", "event: Photon Residency II | I also met Nina Park who was the designer building an AI note-taking tool | role: designer")
+      memory("Nina Park", "Photon Residency II", "event: Photon Residency II | I also met Nina Park who was the designer building an AI note-taking tool | role: designer"),
+      memory("Maya", "Demo Night", "event: Demo Night | I met Maya at Demo Night")
     ]);
 
     expect(tools.search_memories(fixtureUser.id, "Who goes to CMU?").map((result) => result.memory.displayName)).toEqual([

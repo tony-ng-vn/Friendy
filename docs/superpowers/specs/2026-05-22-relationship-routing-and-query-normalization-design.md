@@ -507,7 +507,7 @@ Eval updates:
 ### PR 3: Interpreter Route Fields
 
 - Extend `MessageInterpretation` schema with `domain` and `search`.
-- Update OpenRouter schema and rule-based fallback.
+- Update OpenAI schema and rule-based fallback.
 - Update `buildSearchQueryFromInterpretation` to use route search fields.
 
 ### PR 4: Policy Validator and Scope Demotion

@@ -10,7 +10,7 @@
   - `npm test -- src/relationship/tools.test.ts`
   - `npm test -- src/relationship/responseComposer.test.ts`
   - `npm test -- src/relationship/interpretedAgent.test.ts`
-  - `npm test -- src/relationship/strictMode.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/transports/spectrumTransport.test.ts`
+  - `npm test -- src/relationship/strictMode.test.ts src/relationship/openAIInterpreter.test.ts src/relationship/transports/spectrumTransport.test.ts`
   - `npm test -- src/relationship/evals/agentEvalRunner.test.ts` remains RED only at the aggregate zero-failure assertion because four frozen non-list cases still fail.
 - Eval status after this PR: `npm run eval:agent` reports 37/41 expected, with four non-list regression-freeze cases still RED.
 
@@ -40,14 +40,14 @@
 - Date: 2026-05-23
 - Added `src/relationship/strictMode.ts` and `src/relationship/trace.ts`.
 - Threaded `FriendyTrace` through interpreted-agent return values, persisted interaction JSON, and redacted runtime trace output.
-- Added OpenRouter interpreter metadata and strict-mode fail-fast errors for missing API key, model failure, invalid schema, and fallback use.
+- Added OpenAI interpreter metadata and strict-mode fail-fast errors for missing API key, model failure, invalid schema, and fallback use.
 - Added route policy validation for unknown routes, unsupported contact-management routes, missing tools, and ambiguous executable memory mutation targets.
 - Wired `FRIENDY_STRICT_MODE` into foreground runtime config and Spectrum runtime.
 - Added eval fallback usage counting plus a strict-mode fallback-rejection eval case.
 - Focused green runs:
   - `npm test -- src/relationship/strictMode.test.ts`
   - `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/runtime/runtimeTrace.test.ts src/relationship/strictMode.test.ts`
-  - `npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/interpretedAgent.test.ts`
+  - `npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/interpretedAgent.test.ts`
   - `npm test -- src/relationship/runtime/friendyRuntimeCli.test.ts src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts`
   - `npm test -- src/relationship/evals/agentEvalRunner.test.ts`
 
@@ -84,7 +84,7 @@
 - Focused green runs:
   - `npm test -- src/relationship/interpretedAgent.test.ts`
   - `npm test -- src/relationship/candidateIntake.test.ts src/relationship/responseComposer.test.ts`
-  - `npm test -- src/relationship/scopeBoundary.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/tools.test.ts`
+  - `npm test -- src/relationship/scopeBoundary.test.ts src/relationship/openAIInterpreter.test.ts src/relationship/tools.test.ts`
   - `npm test -- src/relationship/evals/agentEvalRunner.test.ts src/relationship/runtime/runtimeTrace.test.ts src/relationship/__tests__/behaviorContract.test.ts`
   - `npm run build`
 
@@ -279,9 +279,9 @@
 
 - Date: 2026-05-22
 - Added `docs/agent-behavior-contract.md`, `src/relationship/behaviorContract.ts`, and `src/relationship/evals/behavior-contract-cases.ts`.
-- Wired OpenRouter system prompt to combine behavior rules with structured-output instructions while keeping the JSON schema unchanged.
+- Wired OpenAI system prompt to combine behavior rules with structured-output instructions while keeping the JSON schema unchanged.
 - Updated save confirmation copy to the natural `Got it, saved... I'll remember...` pattern.
-- `npm test -- src/relationship/__tests__/behaviorContract.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/responseComposer.test.ts`: passed with 3 files and 10 tests.
+- `npm test -- src/relationship/__tests__/behaviorContract.test.ts src/relationship/openAIInterpreter.test.ts src/relationship/responseComposer.test.ts`: passed with 3 files and 10 tests.
 - `npm run build`: passed.
 - `npm run eval:agent`: passed 17/17 with zero unsafe mutations.
 - `git diff --check`: passed.

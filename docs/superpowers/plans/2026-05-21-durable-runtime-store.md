@@ -832,7 +832,7 @@ it("writes candidates into an injected repository that another agent instance ca
   const { join } = await import("node:path");
   const { createSqliteRelationshipRepository } = await import("../sqliteRepository");
   const { createRelationshipTools } = await import("../tools");
-  const { createRuleBasedInterpreter } = await import("../openRouterInterpreter");
+  const { createRuleBasedInterpreter } = await import("../openAIInterpreter");
   const { createInterpretedRelationshipAgent } = await import("../interpretedAgent");
 
   const dir = mkdtempSync(join(tmpdir(), "friendy-local-check-"));

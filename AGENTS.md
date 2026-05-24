@@ -45,3 +45,17 @@ Use comments sparingly and only when they make the code easier to understand.
 Prefer simple, useful comments that explain intent, constraints, or non-obvious tradeoffs. Do not add comments that merely restate what the next line of code already says.
 
 For TypeScript modules, add concise JSDoc to exported functions, types, and classes when it helps another agent or engineer understand the purpose, boundary, or design decision behind the API.
+
+<!-- convex-ai-start -->
+
+This project uses [Convex](https://convex.dev) as its backend.
+
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
+
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
+
+<!-- convex-ai-end -->

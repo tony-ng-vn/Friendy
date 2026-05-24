@@ -56,10 +56,12 @@ describe("relationship agent eval runner", () => {
       "pending-reminder-search-footer",
       "pending-reminder-same-name-suppression",
       "pending-reminder-ttl-defer",
-      "pending-reminder-list-never-footer"
+      "pending-reminder-list-never-footer",
+      "strict-ambiguous-delete-clarifies-regression",
+      "delete-everyone-confirmation-regression"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(46);
+    expect(relationshipAgentEvalCases).toHaveLength(48);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -75,8 +77,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(46);
-    expect(summary.requiredTotal).toBe(46);
+    expect(summary.total).toBe(48);
+    expect(summary.requiredTotal).toBe(48);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);
@@ -109,6 +111,16 @@ describe("relationship agent eval runner", () => {
     ]);
   });
 
+  it("tracks the delete-everyone confirmation regression assertions", () => {
+    expect(
+      relationshipAgentEvalCases.find((evalCase) => evalCase.id === "delete-everyone-confirmation-regression")?.assertionNames
+    ).toEqual([
+      "delete everyone opens confirmation",
+      "delete everyone does not mutate before confirmation",
+      "delete everyone removes all memories after yes"
+    ]);
+  });
+
   it("returns nonzero exit code when any required eval fails", () => {
     expect(
       getEvalExitCode({
@@ -122,10 +134,10 @@ describe("relationship agent eval runner", () => {
     ).toBe(0);
   });
 
-  it("gates stochastic OpenRouter evals behind an explicit flag and API key", () => {
-    expect(shouldRunModelBackedEvals({ OPENROUTER_API_KEY: "", FRIENDY_EVAL_RUN_MODEL: "1" })).toBe(false);
-    expect(shouldRunModelBackedEvals({ OPENROUTER_API_KEY: "sk-test", FRIENDY_EVAL_RUN_MODEL: "" })).toBe(false);
-    expect(shouldRunModelBackedEvals({ OPENROUTER_API_KEY: "sk-test", FRIENDY_EVAL_RUN_MODEL: "1" })).toBe(true);
+  it("gates stochastic model evals behind an explicit flag and model API key", () => {
+    expect(shouldRunModelBackedEvals({ OPENAI_API_KEY: "", FRIENDY_EVAL_RUN_MODEL: "1" })).toBe(false);
+    expect(shouldRunModelBackedEvals({ OPENAI_API_KEY: "sk-test", FRIENDY_EVAL_RUN_MODEL: "" })).toBe(false);
+    expect(shouldRunModelBackedEvals({ OPENAI_API_KEY: "sk-test", FRIENDY_EVAL_RUN_MODEL: "1" })).toBe(true);
   });
 
   it("exposes the agent eval runner as an npm script", () => {

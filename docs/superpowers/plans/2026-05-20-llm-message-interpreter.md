@@ -4,9 +4,9 @@
 
 **Goal:** Add an LLM-backed interpretation layer that turns arbitrary user text into validated Friendy intents before deterministic tools write/search memory.
 
-**Architecture:** Keep the existing relationship tools and repository as the source of truth. Add a transport-agnostic interpreter contract, OpenRouter structured-output client, deterministic fallback interpreter, async interpreted agent wrapper, and interaction logging. Wire Spectrum to the interpreted agent while preserving the existing terminal product flow.
+**Architecture:** Keep the existing relationship tools and repository as the source of truth. Add a transport-agnostic interpreter contract, OpenAI structured-output client, deterministic fallback interpreter, async interpreted agent wrapper, and interaction logging. Wire Spectrum to the interpreted agent while preserving the existing terminal product flow.
 
-**Tech Stack:** TypeScript, Vitest, `zod` for runtime validation, Fetch API for OpenRouter, existing `spectrum-ts` transport.
+**Tech Stack:** TypeScript, Vitest, `zod` for runtime validation, Fetch API for OpenAI, existing `spectrum-ts` transport.
 
 ---
 
@@ -14,17 +14,17 @@
 
 - Create `src/relationship/interpretation.ts`: interpretation types, Zod schema, JSON schema, validation helper, query builder.
 - Create `src/relationship/interpretation.test.ts`: schema and helper tests for Amaya/Zhiyuan/search examples.
-- Create `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and fallback handling.
-- Create `src/relationship/openRouterInterpreter.test.ts`: request-body, valid response, invalid response, and fallback tests with fake fetch.
+- Create `src/relationship/openAIInterpreter.ts`: OpenAI structured-output interpreter and fallback handling.
+- Create `src/relationship/openAIInterpreter.test.ts`: request-body, valid response, invalid response, and fallback tests with fake fetch.
 - Create `src/relationship/interpretedAgent.ts`: async agent wrapper that executes validated interpretations through existing tools and logs interactions.
 - Create `src/relationship/interpretedAgent.test.ts`: capture/search/logging tests.
 - Modify `src/relationship/types.ts`: extend `AgentInteraction` with interpretation/model/latency/error fields.
 - Modify `src/relationship/repository.ts`: store and list interaction logs.
 - Modify `src/relationship/repository.test.ts`: verify interaction logs are stored.
-- Modify `src/relationship/env.ts` and `.env.example`: add OpenRouter env support.
+- Modify `src/relationship/env.ts` and `.env.example`: add OpenAI env support.
 - Modify `src/relationship/transports/spectrumTransport.ts`: use interpreted agent and console log interaction records.
 - Modify `src/relationship/transports/spectrumTransport.test.ts`: verify the normalized transport still works and interpreter env wiring is isolated.
-- Modify `README.md`: document `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, and natural-message testing.
+- Modify `README.md`: document `OPENAI_API_KEY`, `OPENAI_MODEL`, and natural-message testing.
 - Modify `implementation-notes.html`: record interpreter architecture and verification.
 - Modify `package.json` / `package-lock.json`: add `zod`.
 
@@ -53,11 +53,11 @@
 - [ ] Re-run `npm test -- src/relationship/repository.test.ts` and confirm it passes.
 - [ ] Commit with `feat:add relationship agent interaction logs`.
 
-## Task 3: OpenRouter Interpreter
+## Task 3: OpenAI Interpreter
 
 **Files:**
-- Create: `src/relationship/openRouterInterpreter.ts`
-- Create: `src/relationship/openRouterInterpreter.test.ts`
+- Create: `src/relationship/openAIInterpreter.ts`
+- Create: `src/relationship/openAIInterpreter.test.ts`
 - Modify: `src/relationship/env.ts`
 - Modify: `.env.example`
 - Modify: `package.json`
@@ -65,10 +65,10 @@
 - [ ] Install `zod` with `npm install zod`.
 - [ ] Write failing tests with a fake `fetch` proving the request uses `response_format.type = "json_schema"`, `strict = true`, `provider.require_parameters = true`, and the configured model.
 - [ ] Add tests for valid response parsing and invalid response fallback.
-- [ ] Run `npm test -- src/relationship/openRouterInterpreter.test.ts` and confirm it fails because the module is missing.
-- [ ] Implement `createOpenRouterInterpreter`, `createRuleBasedInterpreter`, `readOpenRouterConfig`, and default model `nvidia/nemotron-3-super-120b-a12b:free`.
-- [ ] Re-run `npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/env.test.ts`.
-- [ ] Commit with `feat:add openrouter message interpreter`.
+- [ ] Run `npm test -- src/relationship/openAIInterpreter.test.ts` and confirm it fails because the module is missing.
+- [ ] Implement `createOpenAIInterpreter`, `createRuleBasedInterpreter`, `readOpenAIConfig`, and default model `nvidia/nemotron-3-super-120b-a12b:free`.
+- [ ] Re-run `npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/env.test.ts`.
+- [ ] Commit with `feat:add openai message interpreter`.
 
 ## Task 4: Interpreted Agent Execution
 
@@ -97,7 +97,7 @@
 
 - [ ] Write/update tests proving Spectrum message normalization remains transport-only and does not need raw parser behavior.
 - [ ] Wire Spectrum to build an interpreter from env, create the interpreted agent, await `handleMessage`, reply with its outbound text, and print a compact interaction log line.
-- [ ] Update README with OpenRouter env variables and live test examples.
+- [ ] Update README with OpenAI env variables and live test examples.
 - [ ] Update implementation notes with the LLM-interpreter decision.
 - [ ] Run `npm test -- src/relationship/transports/spectrumTransport.test.ts src/relationship/interpretedAgent.test.ts`.
 - [ ] Commit with `feat:wire spectrum through interpreted agent`.
@@ -118,6 +118,6 @@
 
 ## Self-Review
 
-- Spec coverage: The plan covers interpretation schema, OpenRouter structured outputs, fallback, deterministic execution, logs, Spectrum wiring, docs, and verification.
+- Spec coverage: The plan covers interpretation schema, OpenAI structured outputs, fallback, deterministic execution, logs, Spectrum wiring, docs, and verification.
 - Placeholder scan: No task contains unresolved placeholder markers.
 - Type consistency: `MessageInterpretation`, `AgentInteraction`, and `createInterpretedRelationshipAgent` names are used consistently across tasks.

@@ -12,7 +12,7 @@ describe("composeExpressionReply", () => {
     const result = await composeExpressionReply({
       draft: bundle.deterministicDraft,
       bundle,
-      config: { enabled: false, model: "test/model", maxLength: 280, apiKey: "" }
+      config: { enabled: false, provider: "openai", model: "test/model", maxLength: 280, apiKey: "" }
     });
 
     expect(result).toEqual({
@@ -29,7 +29,7 @@ describe("composeExpressionReply", () => {
     const result = await composeExpressionReply({
       draft: bundle.deterministicDraft,
       bundle,
-      config: { enabled: true, model: "test/model", maxLength: 280, apiKey: "key" },
+      config: { enabled: true, provider: "openai", model: "test/model", maxLength: 280, apiKey: "key" },
       fetchImpl
     });
 
@@ -49,7 +49,7 @@ describe("composeExpressionReply", () => {
     const result = await composeExpressionReply({
       draft: bundle.deterministicDraft,
       bundle,
-      config: { enabled: true, model: "test/model", maxLength: 280, apiKey: "key" },
+      config: { enabled: true, provider: "openai", model: "test/model", maxLength: 280, apiKey: "key" },
       fetchImpl
     });
 
@@ -69,7 +69,7 @@ describe("composeExpressionReply", () => {
     const result = await composeExpressionReply({
       draft: bundle.deterministicDraft,
       bundle,
-      config: { enabled: true, model: "test/model", maxLength: 280, apiKey: "key" },
+      config: { enabled: true, provider: "openai", model: "test/model", maxLength: 280, apiKey: "key" },
       fetchImpl
     });
 
@@ -77,6 +77,35 @@ describe("composeExpressionReply", () => {
     expect(result.expressionUsed).toBe(true);
     expect(result.validationPassed).toBe(true);
     expect(result.expressionModel).toBe("test/model");
+  });
+
+  it("uses the OpenAI chat completions endpoint for OpenAI expression config", async () => {
+    const polished = "Yeah, I think that was Sarah Fan — Photon Residency II, community lead.";
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init: init ?? {} });
+      return Response.json({
+        choices: [{ message: { content: polished } }]
+      });
+    });
+
+    await composeExpressionReply({
+      draft: bundle.deterministicDraft,
+      bundle,
+      config: { enabled: true, provider: "openai", model: "gpt-4o-mini", maxLength: 280, apiKey: "openai-key" },
+      fetchImpl
+    });
+
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(calls[0].url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(calls[0].init.headers).toMatchObject({
+      Authorization: "Bearer openai-key",
+      "Content-Type": "application/json"
+    });
+    expect(body.model).toBe("gpt-4o-mini");
+    expect(body.max_completion_tokens).toBe(120);
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.temperature).toBeUndefined();
   });
 
   it("returns draft when fetch aborts", async () => {
@@ -88,7 +117,7 @@ describe("composeExpressionReply", () => {
     const result = await composeExpressionReply({
       draft: bundle.deterministicDraft,
       bundle,
-      config: { enabled: true, model: "test/model", maxLength: 280, apiKey: "key" },
+      config: { enabled: true, provider: "openai", model: "test/model", maxLength: 280, apiKey: "key" },
       fetchImpl
     });
 

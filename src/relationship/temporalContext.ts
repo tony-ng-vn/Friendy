@@ -2,7 +2,7 @@
  * Natural-language date parsing for relationship memories and interpretation.
  *
  * Wraps chrono-node with message `receivedAt` as reference instant. Callers:
- * `openRouterInterpreter`, `interpretedAgent`, tests. Do not hand-roll relative-date
+ * `openAIInterpreter`, `interpretedAgent`, tests. Do not hand-roll relative-date
  * rules elsewhere — use this module. Output shape aligns with `RelationshipDateContext`.
  */
 import * as chrono from "chrono-node";

@@ -231,6 +231,7 @@ export type AgentToolCall =
   | "resolve_duplicate_person"
   | "create_manual_memory"
   | "update_memory"
+  | "clear_memories"
   | "delete_memory";
 
 /**

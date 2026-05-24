@@ -454,7 +454,7 @@ it("preserves pending reminder decision without private reminder text", () => {
     outboundText: "I found Sarah.",
     interpretedIntentJson: {},
     toolCalls: ["search_memories"],
-    model: { used: true, provider: "openrouter", modelName: "test-model", fallbackUsed: false },
+    model: { used: true, provider: "openai", modelName: "test-model", fallbackUsed: false },
     friendyTrace: {
       strictMode: true,
       routeSource: "llm",

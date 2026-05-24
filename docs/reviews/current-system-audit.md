@@ -31,7 +31,7 @@ Assessment: the ingestion seam has good testability because fixture and macOS ad
 ### Interpretation
 
 - `src/relationship/interpretation.ts` defines the strict structured intent schema.
-- `src/relationship/openRouterInterpreter.ts` calls OpenRouter when configured and falls back to a deterministic rule-based interpreter.
+- `src/relationship/openAIInterpreter.ts` calls OpenAI when configured and falls back to a deterministic rule-based interpreter.
 - `src/relationship/interpretedAgent.ts` enriches interpretation with conversation context, dispatches deterministic tools, and logs interactions.
 
 Assessment: the LLM is properly bounded. It interprets; it does not mutate memory directly. The rule-based fallback is useful for tests but is also a growing parallel interpreter with product behavior of its own.
@@ -58,7 +58,7 @@ Assessment: this is a good deep module. It gives callers leverage: selected fact
 ### Evals
 
 - `src/relationship/evals/agentEvalRunner.ts` defines 12 required deterministic trajectory cases across confirmation, event correction, no-event save, ignore, search, context carryover, hallucination guard, unsafe-save guard, Spectrum first-inbound identity, and messy wording.
-- Optional model-backed evals are gated by `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
+- Optional model-backed evals are gated by `OPENAI_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
 
 Assessment: the eval harness is the right shape for this product, but the current required suite only proves deterministic behavior. It does not yet measure stochastic model variance or real macOS/Spectrum integration.
 
@@ -92,7 +92,7 @@ Assessment: docs are strong but starting to sprawl. Several files repeat the sam
    - Severity: high.
 
 5. **The rule-based fallback interpreter is becoming a second product implementation.**
-   - Files: `src/relationship/openRouterInterpreter.ts`, `src/relationship/interpretedAgent.ts`, `src/relationship/evals/agentEvalRunner.ts`.
+   - Files: `src/relationship/openAIInterpreter.ts`, `src/relationship/interpretedAgent.ts`, `src/relationship/evals/agentEvalRunner.ts`.
    - Why it matters: fallback heuristics now encode names, events, schools, roles, projects, and search rules. Tests can pass on fallback behavior while the real model behaves differently.
    - Severity: medium-high.
 

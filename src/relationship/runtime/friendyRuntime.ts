@@ -126,6 +126,7 @@ type FriendySensorRuntimeContext = Omit<FriendySensorRuntimeInput, "logger" | "n
   logger: RuntimeLogger;
   getOnboardingState: () => OnboardingState;
   now: () => string;
+  preStartNotice: { sent: boolean };
 };
 
 /** Creates the runtime line processor wired to repository, state, prompts, and acks. */
@@ -139,7 +140,17 @@ export function createFriendySensorRuntime({
   getOnboardingState = () => "active",
   now = () => new Date().toISOString()
 }: FriendySensorRuntimeInput) {
-  const context: FriendySensorRuntimeContext = { userId, repo, state, sender, ackWriter, logger, getOnboardingState, now };
+  const context: FriendySensorRuntimeContext = {
+    userId,
+    repo,
+    state,
+    sender,
+    ackWriter,
+    logger,
+    getOnboardingState,
+    now,
+    preStartNotice: { sent: false }
+  };
 
   return {
     async processLine(line: string): Promise<void> {
@@ -261,6 +272,7 @@ async function processEvent({
   logger,
   getOnboardingState,
   now,
+  preStartNotice,
   eventNow,
   validationStatus = "ok"
 }: FriendySensorRuntimeContext & {
@@ -353,26 +365,10 @@ async function processEvent({
   }
 
   if (event.type === "contact_added") {
-    const onboardingState = getOnboardingState();
-    if (!isContactAutomationActive(onboardingState)) {
-      const eventNow = now();
-      // Before first `start`, mark ignored so the sensor history batch can ack and stop re-emitting backlog.
-      if (onboardingState === "ready_pending_user_start") {
-        logger.info(
-          "Contact automation paused (ready_pending_user_start); ignoring pre-start contact event so history can ack. Text start, then add a new contact."
-        );
-        recordProcessed(state, event, "ignored", eventNow);
-      } else {
-        logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
-      }
-      return;
-    }
-
     const scoredEvents = scoreCalendarContext({
       detectedAt: event.detectedAt,
       calendarMatches: event.calendarMatches
     });
-
     const persistContactAdded = (): ContactCandidate => {
       repo.addCalendarEvents(scoredEvents.map((scoredEvent) => toCalendarEvent(userId, scoredEvent)));
       const candidate = repo.createCandidateFromDetectedContact(toDetectedContact(userId, event));
@@ -383,6 +379,36 @@ async function processEvent({
       });
       return candidate;
     };
+
+    const onboardingState = getOnboardingState();
+    if (!isContactAutomationActive(onboardingState)) {
+      const eventNow = now();
+      // Before first `start`, queue the contact and record the event so history can ack without losing the prompt.
+      if (onboardingState === "ready_pending_user_start") {
+        const candidate = state.runTransaction?.(() => persistContactAdded()) ?? persistContactAdded();
+        logger.info(
+          `Contact automation paused (ready_pending_user_start); queued pre-start contact event ${event.eventId} as ${candidate.id} so history can ack. Text start to review it.`
+        );
+        if (!preStartNotice.sent) {
+          try {
+            await sender.sendPrompt({
+              userId,
+              text:
+                "I saw a contact change before you started Friendy, so I queued it. Text start and I'll ask about it before saving anything."
+            });
+            preStartNotice.sent = true;
+            logger.info("[friendy:pre_start_contact_notice] sent");
+          } catch (error) {
+            logger.warn(
+              `Failed to send pre-start contact notice: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+        }
+      } else {
+        logger.info(`Contact automation paused (${onboardingState}); holding sensor event: ${event.eventId}`);
+      }
+      return;
+    }
 
     const candidate = state.runTransaction?.(() => persistContactAdded()) ?? persistContactAdded();
 

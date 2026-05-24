@@ -158,6 +158,7 @@ export async function startFriendyForegroundRuntime({
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
   const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
   logger.info("[friendy] sqlite store ready");
+  clearPreviousRunPendingCandidates({ repo, userId, logger });
   logger.info("[friendy] contact memory ready; waiting for user start");
   const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
   logger.info(`[friendy] prompt transport ready: ${promptSenderKind(promptSender)}`);
@@ -236,6 +237,26 @@ async function notifyRuntimeStartup({
 function promptSenderKind(sender: RuntimePromptSender): string {
   const kind = (sender as Partial<RuntimePromptSenderWithKind>).kind;
   return kind ?? "custom";
+}
+
+function clearPreviousRunPendingCandidates({
+  repo,
+  userId,
+  logger
+}: {
+  repo: RelationshipRepository;
+  userId: string;
+  logger: RuntimeLogger;
+}): void {
+  const pending = repo.listPendingCandidates(userId);
+  if (pending.length === 0) {
+    return;
+  }
+
+  for (const candidate of pending) {
+    repo.ignoreCandidate(candidate.id);
+  }
+  logger.info(`[friendy] cleared ${pending.length} stale pending contact candidate(s) from previous runtime runs`);
 }
 
 /** Selects console or Spectrum prompt delivery from env and sensor mode. */

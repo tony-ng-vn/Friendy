@@ -13,7 +13,7 @@ The product boundary stays the same: Spectrum/iMessage is a communication transp
   - `Ok so at the residency, I also met Zhiyuan who also call zed...`
   - `Who I have met at the Residency?`
 - Route messages into a small set of internal intents.
-- Use OpenRouter structured outputs when `OPENROUTER_API_KEY` is configured.
+- Use OpenAI structured outputs when `OPENAI_API_KEY` is configured.
 - Default to `nvidia/nemotron-3-super-120b-a12b:free` for the first interpreter model.
 - Validate interpreter output before executing tools.
 - Keep a deterministic fallback interpreter for local tests and missing API keys.
@@ -42,7 +42,7 @@ Spectrum / iMessage / terminal
   -> OutboundAgentMessage
 ```
 
-The interpreter is an adapter. The rest of the system should not know whether the interpretation came from OpenRouter, a local fallback parser, or a future specialized model.
+The interpreter is an adapter. The rest of the system should not know whether the interpretation came from OpenAI, a local fallback parser, or a future specialized model.
 
 ## Message Interpretation Contract
 
@@ -81,12 +81,12 @@ Rules:
 - `tags` and `aliases` are arrays even when empty.
 - `needsClarification` means the backend should ask instead of writing or searching.
 
-## OpenRouter Interpreter
+## OpenAI Interpreter
 
-Use OpenRouter chat completions with:
+Use OpenAI chat completions with:
 
-- `POST https://openrouter.ai/api/v1/chat/completions`
-- `Authorization: Bearer <OPENROUTER_API_KEY>`
+- `POST https://api.openai.com/v1/chat/completions`
+- `Authorization: Bearer <OPENAI_API_KEY>`
 - `response_format.type = "json_schema"`
 - `response_format.json_schema.strict = true`
 - `provider.require_parameters = true`
@@ -94,7 +94,7 @@ Use OpenRouter chat completions with:
 
 The JSON schema should be kept in source control and tested. The system prompt should instruct the model to classify the user's message, extract people/event/context, preserve uncertainty, and never invent contacts.
 
-If the OpenRouter response is invalid, empty, or fails validation, retry once. If it still fails, fall back to the deterministic interpreter and log the error.
+If the OpenAI response is invalid, empty, or fails validation, retry once. If it still fails, fall back to the deterministic interpreter and log the error.
 
 ## Deterministic Execution
 
@@ -137,16 +137,16 @@ nvidia/nemotron-3-super-120b-a12b:free
 
 Reason:
 
-- It is free in the current OpenRouter models API.
+- It is free in the current OpenAI models API.
 - It advertises `response_format` and `structured_outputs`.
 - It is a text model with enough capacity for messy human memory messages.
 
-Keep the model configurable through `OPENROUTER_MODEL` because free model availability changes.
+Keep the model configurable through `OPENAI_MODEL` because free model availability changes.
 
 ## Failure Modes
 
-- Missing `OPENROUTER_API_KEY`: use deterministic fallback.
-- OpenRouter request fails: fallback and log the error.
+- Missing `OPENAI_API_KEY`: use deterministic fallback.
+- OpenAI request fails: fallback and log the error.
 - Invalid model JSON: retry once, then fallback and log.
 - Low confidence or missing required fields: ask a clarifying question.
 - User asks a search before saving anything: say no confident match and ask for more detail.
@@ -159,6 +159,6 @@ Required test cases:
 - Interpret the Zhiyuan/Zed sentence as `capture_memory`.
 - Interpret `Who I have met at the Residency?` as `search_memory`.
 - Validate that malformed interpretation JSON is rejected.
-- Verify OpenRouter request body includes structured output schema.
+- Verify OpenAI request body includes structured output schema.
 - Verify interpreted agent logs inbound text, interpretation JSON, tool calls, and outbound text.
 - Verify Spectrum uses interpreted agent behavior, not raw regex behavior.

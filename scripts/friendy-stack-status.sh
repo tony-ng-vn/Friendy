@@ -41,7 +41,7 @@ else
 fi
 
 if file_exists "src/relationship/runtime/normalizeSensorEvent.ts"; then M8=yes; else M8=no; fi
-if grep -q 'modelRequested' src/relationship/openRouterInterpreter.ts 2>/dev/null \
+if grep -q 'modelRequested' src/relationship/openAIInterpreter.ts 2>/dev/null \
   && grep -q 'scope_boundary' src/relationship/interpretedAgent.ts 2>/dev/null \
   && grep -q 'modelResponseSchemaValid' src/relationship/runtime/runtimeTrace.ts 2>/dev/null \
   && grep -q 'FRIENDY_STRICT_MODE=1 npm run agent:friendy' REFERENCE.md 2>/dev/null; then

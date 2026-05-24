@@ -1,5 +1,5 @@
 /**
- * OpenRouter structured-output interpreter with strict failure by default.
+ * OpenAI structured-output interpreter with strict failure by default.
  *
  * Callers: interpretedAgent.ts and tests that stub the HTTP client.
  *
@@ -17,19 +17,20 @@ import { FriendyStrictModeError, type FriendyStrictModeErrorCode } from "./stric
 import { createFriendyTrace } from "./trace";
 import type { MessageInterpreterInput } from "./routerInputEnvelope";
 
-/** Default free-tier model when `OPENROUTER_MODEL` is unset. */
-export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
-
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
+/** Default OpenAI model when `OPENAI_MODEL` is unset. */
+export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 /** Retry budget before surfacing model failure. */
 const MAX_MODEL_ATTEMPTS = 2;
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
+export type ModelProvider = "openai";
 
-/** Resolved OpenRouter credentials and model id from environment. */
-export type OpenRouterConfig = {
+/** Resolved model credentials and model id from environment. */
+export type OpenAIConfig = {
   apiKey: string;
   model: string;
+  provider: ModelProvider;
 };
 
 /** Interpreter output including model attribution and optional upstream error text. */
@@ -39,7 +40,7 @@ export type MessageInterpreterResult = {
   error: string;
   routeSource: "llm" | "fallback";
   fallbackUsed: boolean;
-  fallbackReason?: "missing_openrouter_api_key" | "model_interpreter_failed" | "invalid_model_output" | "explicit_fallback";
+  fallbackReason?: "missing_model_api_key" | "model_interpreter_failed" | "invalid_model_output" | "explicit_fallback";
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: FriendyStrictModeErrorCode;
@@ -50,9 +51,10 @@ export type MessageInterpreter = {
   interpret(input: MessageInterpreterInput): Promise<MessageInterpreterResult>;
 };
 
-type OpenRouterInterpreterOptions = {
+type OpenAIInterpreterOptions = {
   apiKey: string;
   model: string;
+  provider?: ModelProvider;
   strictMode?: boolean;
   /** Injectable HTTP client for tests; defaults to global fetch. */
   fetchImpl?: FetchLike;
@@ -61,37 +63,39 @@ type OpenRouterInterpreterOptions = {
 };
 
 /**
- * Reads OpenRouter config with a stable free default model.
+ * Reads OpenAI config with a stable default model.
  *
  * The API key may be empty in config, but strict live routing will throw before fallback.
  */
-export function readOpenRouterConfig(
-  env: Partial<Pick<NodeJS.ProcessEnv, "OPENROUTER_API_KEY" | "OPENROUTER_MODEL">> = process.env
-): OpenRouterConfig {
+export function readOpenAIConfig(
+  env: Partial<Pick<NodeJS.ProcessEnv, "OPENAI_API_KEY" | "OPENAI_MODEL">> = process.env
+): OpenAIConfig {
   return {
-    apiKey: env.OPENROUTER_API_KEY ?? "",
-    model: env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL
+    apiKey: env.OPENAI_API_KEY ?? "",
+    model: env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+    provider: "openai"
   };
 }
 
-/** Creates a structured-output OpenRouter interpreter. Strict mode is on by default. */
-export function createOpenRouterInterpreter({
+/** Creates a structured-output OpenAI interpreter. Strict mode is on by default. */
+export function createOpenAIInterpreter({
   apiKey,
   model,
+  provider = "openai",
   strictMode = true,
   fetchImpl = fetch,
   fallback = createRuleBasedInterpreter()
-}: OpenRouterInterpreterOptions): MessageInterpreter {
+}: OpenAIInterpreterOptions): MessageInterpreter {
   return {
     async interpret(input) {
       if (!apiKey) {
         throwStrictInterpreterError({
           strictMode,
           code: "FALLBACK_USED",
-          message: "OpenRouter API key is missing, and fallback is not allowed in strict mode.",
+          message: "OpenAI API key is missing, and fallback is not allowed in strict mode.",
           routeSource: "fallback",
           fallbackUsed: true,
-          fallbackReason: "missing_openrouter_api_key",
+          fallbackReason: "missing_model_api_key",
           modelRequested: model
         });
         const fallbackResult = await fallback.interpret(input);
@@ -99,7 +103,7 @@ export function createOpenRouterInterpreter({
           ...fallbackResult,
           routeSource: "fallback",
           fallbackUsed: true,
-          fallbackReason: "missing_openrouter_api_key",
+          fallbackReason: "missing_model_api_key",
           modelRequested: model,
           modelErrorCode: "FALLBACK_USED"
         };
@@ -109,7 +113,7 @@ export function createOpenRouterInterpreter({
       let fallbackReason: MessageInterpreterResult["fallbackReason"] = "model_interpreter_failed";
       for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt += 1) {
         try {
-          const interpretation = await callOpenRouter({ apiKey, model, fetchImpl, input });
+          const interpretation = await callOpenAI({ apiKey, model, fetchImpl, input });
           return {
             interpretation,
             modelUsed: model,
@@ -128,8 +132,8 @@ export function createOpenRouterInterpreter({
             code,
             message:
               fallbackReason === "invalid_model_output"
-                ? "OpenRouter returned output that did not match Friendy's interpretation schema."
-                : "OpenRouter interpretation failed, and fallback is not allowed in strict mode.",
+                ? "OpenAI returned output that did not match Friendy's interpretation schema."
+                : "OpenAI interpretation failed, and fallback is not allowed in strict mode.",
             routeSource: "llm",
             fallbackUsed: false,
             fallbackReason,
@@ -210,7 +214,7 @@ function isInvalidModelOutputError(error: unknown): boolean {
   return message.includes("Invalid message interpretation") || message.includes("JSON");
 }
 
-async function callOpenRouter({
+async function callOpenAI({
   apiKey,
   model,
   fetchImpl,
@@ -221,43 +225,81 @@ async function callOpenRouter({
   fetchImpl: FetchLike;
   input: MessageInterpreterInput;
 }): Promise<MessageInterpretation> {
-  const response = await fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
+  const response = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      model,
-      // Zero temperature keeps structured JSON classification stable across retries and eval replay.
-      temperature: 0,
-      provider: { require_parameters: true },
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "friendy_message_interpretation",
-          strict: true,
-          schema: messageInterpretationJsonSchema
-        }
-      },
-      messages: [
-        {
-          role: "system",
-          content: [buildInterpreterSystemPrompt(), buildStructuredOutputInstructions()].join("\n\n")
-        },
-        { role: "user", content: serializeRouterUserContent(input) }
-      ]
-    })
+    body: JSON.stringify(buildChatCompletionsBody({ model, input }))
   });
 
   if (!response.ok) {
-    throw new Error(`OpenRouter request failed with status ${response.status}`);
+    throw new Error(`OpenAI request failed with status ${response.status}`);
   }
 
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
   const content = payload.choices?.[0]?.message?.content;
   const parsed = typeof content === "string" ? JSON.parse(content) : content;
   return validateMessageInterpretation(parsed);
+}
+
+function buildChatCompletionsBody({
+  model,
+  input
+}: {
+  model: string;
+  input: MessageInterpreterInput;
+}) {
+  return {
+    model,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "friendy_message_interpretation",
+        strict: true,
+        schema: toOpenAIStrictJsonSchema(messageInterpretationJsonSchema)
+      }
+    },
+    messages: [
+      {
+        role: "system",
+        content: [buildInterpreterSystemPrompt(), buildStructuredOutputInstructions()].join("\n\n")
+      },
+      { role: "user", content: serializeRouterUserContent(input) }
+    ]
+  };
+}
+
+function toOpenAIStrictJsonSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((item) => toOpenAIStrictJsonSchema(item));
+  }
+
+  if (typeof schema !== "object" || schema === null) {
+    return schema;
+  }
+
+  const input = schema as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    output[key] = toOpenAIStrictJsonSchema(value);
+  }
+
+  if (isObjectJsonSchema(input) && isRecord(input.properties)) {
+    output.properties = toOpenAIStrictJsonSchema(input.properties);
+    output.required = Object.keys(input.properties);
+  }
+
+  return output;
+}
+
+function isObjectJsonSchema(schema: Record<string, unknown>): boolean {
+  return schema.type === "object" || (Array.isArray(schema.type) && schema.type.includes("object"));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function serializeRouterUserContent(input: MessageInterpreterInput): string {

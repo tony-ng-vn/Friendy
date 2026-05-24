@@ -66,8 +66,8 @@ This file records the main product, architecture, and verification progress for 
 ### LLM Interpretation Layer
 
 - Added a transport-agnostic message interpretation contract.
-- Added OpenRouter structured-output interpretation using validated JSON.
-- Set the default OpenRouter model to `nvidia/nemotron-3-super-120b-a12b:free`.
+- Added OpenAI structured-output interpretation using validated JSON.
+- Set the default OpenAI model to `nvidia/nemotron-3-super-120b-a12b:free`.
 - Added deterministic fallback interpretation for local testing and missing API keys.
 - Added retry and invalid-output fallback behavior.
 - Kept the LLM bounded: it interprets messy text into intent JSON, but deterministic tools perform all memory writes, ignores, and searches.
@@ -125,7 +125,7 @@ This file records the main product, architecture, and verification progress for 
   - Spectrum first-inbound identity,
   - messy human wording.
 - Eval metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness.
-- Optional model-backed evals are gated behind `OPENROUTER_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
+- Optional model-backed evals are gated behind `OPENAI_API_KEY` and `FRIENDY_EVAL_RUN_MODEL=1`.
 
 ### Contact And Calendar Ingestion
 

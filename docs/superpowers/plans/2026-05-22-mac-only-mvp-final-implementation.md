@@ -636,8 +636,8 @@ git commit -m "feat:clarify friendy runtime lifecycle"
 - Create: `src/relationship/behaviorContract.ts`
 - Create: `src/relationship/__tests__/behaviorContract.test.ts`
 - Create: `src/relationship/evals/behavior-contract-cases.ts`
-- Modify: `src/relationship/openRouterInterpreter.ts`
-- Modify: `src/relationship/openRouterInterpreter.test.ts`
+- Modify: `src/relationship/openAIInterpreter.ts`
+- Modify: `src/relationship/openAIInterpreter.test.ts`
 - Modify: `src/relationship/responseComposer.ts`
 - Modify: `src/relationship/responseComposer.test.ts`
 
@@ -752,7 +752,7 @@ export function buildStructuredOutputInstructions(): string {
 
 - [ ] **Step 5: Wire interpreter without weakening JSON constraints**
 
-In `src/relationship/openRouterInterpreter.ts`, import:
+In `src/relationship/openAIInterpreter.ts`, import:
 
 ```ts
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
@@ -790,14 +790,14 @@ Use these names in `agentEvalRunner.ts` when later tasks add the eval cases.
 Run:
 
 ```bash
-npm test -- src/relationship/__tests__/behaviorContract.test.ts src/relationship/openRouterInterpreter.test.ts
+npm test -- src/relationship/__tests__/behaviorContract.test.ts src/relationship/openAIInterpreter.test.ts
 npm run build
 ```
 
 Commit:
 
 ```bash
-git add docs/agent-behavior-contract.md src/relationship/behaviorContract.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/evals/behavior-contract-cases.ts src/relationship/openRouterInterpreter.ts src/relationship/openRouterInterpreter.test.ts
+git add docs/agent-behavior-contract.md src/relationship/behaviorContract.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/evals/behavior-contract-cases.ts src/relationship/openAIInterpreter.ts src/relationship/openAIInterpreter.test.ts
 git commit -m "feat:add agent behavior contract"
 ```
 
@@ -1586,7 +1586,7 @@ describe("redacted runtime trace", () => {
         topMatches: [{ memoryId: "memory_1", score: 12, reasons: ["note matched recruiting agents"] }],
         outcome: "single"
       },
-      model: { used: true, provider: "openrouter", modelName: "test", fallbackUsed: false },
+      model: { used: true, provider: "openai", modelName: "test", fallbackUsed: false },
       errors: ["raw message included Maya"]
     });
 

@@ -277,9 +277,52 @@ describe("Friendy macOS sensor runtime", () => {
     });
   });
 
-  it("ignores contact events before user start so history batches can still ack", async () => {
+  it("queues contact events before user start, notifies once, and lets history batches ack", async () => {
     const harness = createHarness(
       {},
+      {
+        getOnboardingState: () => "ready_pending_user_start" as OnboardingState
+      }
+    );
+    const contactLine = JSON.stringify(contactAddedEvent());
+    const secondContactLine = JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2", stableId: "EFGH-5678" }));
+    const batchLine = JSON.stringify({
+      ...baseEvent("history_batch_complete"),
+      historyBatchId: "history_batch_1",
+      contactEventIds: ["sensor_evt_contact_1"],
+      ackPath: ".friendy/macos-sensor-state/acks/history_batch_1.ack"
+    });
+
+    await harness.runtime.processLine(contactLine);
+    await harness.runtime.processLine(secondContactLine);
+    await harness.runtime.processLine(batchLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy").map((candidate) => candidate.displayName)).toEqual([
+      "Maya",
+      "Maya"
+    ]);
+    expect(harness.prompts).toHaveLength(1);
+    expect(harness.prompts[0].text).toContain("I saw a contact change before you started Friendy");
+    expect(harness.prompts[0].text).toContain("Text start and I'll ask about it");
+    expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_1.ack"]);
+    expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
+      status: "candidate_created"
+    });
+    expect(harness.state.getProcessedEvent("contacts:mac_1:EFGH-5678:add")).toMatchObject({
+      status: "candidate_created"
+    });
+    expect(harness.logs.join("\n")).toContain(
+      "Contact automation paused (ready_pending_user_start); queued pre-start contact event sensor_evt_contact_1"
+    );
+  });
+
+  it("still queues pre-start contact events when the start notice cannot be sent", async () => {
+    const harness = createHarness(
+      {
+        sendPrompt() {
+          throw new Error("Spectrum pre-start notice failed");
+        }
+      },
       {
         getOnboardingState: () => "ready_pending_user_start" as OnboardingState
       }
@@ -295,14 +338,13 @@ describe("Friendy macOS sensor runtime", () => {
     await harness.runtime.processLine(contactLine);
     await harness.runtime.processLine(batchLine);
 
-    expect(harness.repo.listPendingCandidates("user_friendy")).toEqual([]);
-    expect(harness.prompts).toEqual([]);
+    expect(harness.repo.listPendingCandidates("user_friendy").map((candidate) => candidate.displayName)).toEqual(["Maya"]);
     expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_1.ack"]);
     expect(harness.state.getProcessedEvent("contacts:mac_1:ABCD-1234:add")).toMatchObject({
-      status: "ignored"
+      status: "candidate_created"
     });
     expect(harness.logs.join("\n")).toContain(
-      "Contact automation paused (ready_pending_user_start); ignoring pre-start contact event so history can ack. Text start, then add a new contact."
+      "Failed to send pre-start contact notice: Spectrum pre-start notice failed"
     );
   });
 

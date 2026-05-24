@@ -31,7 +31,7 @@ describe("FriendyStrictModeError", () => {
       strictMode: true,
       routeSource: "fallback",
       fallbackUsed: true,
-      fallbackReason: "missing_openrouter_api_key",
+      fallbackReason: "missing_model_api_key",
       policyDecision: "reject",
       toolCalls: []
     } as const;

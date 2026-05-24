@@ -22,7 +22,7 @@ describe("redacted runtime trace", () => {
         topMatches: [{ memoryId: "memory_1", score: 12, reasons: ["note matched recruiting agents"] }],
         outcome: "single"
       },
-      model: { used: true, provider: "openrouter", modelName: "test-model", fallbackUsed: false },
+      model: { used: true, provider: "openai", modelName: "test-model", fallbackUsed: false },
       errors: ["raw provider error included Maya and Photon Dinner"],
       now: "2026-05-22T12:00:00.000Z"
     });
@@ -144,7 +144,7 @@ describe("redacted runtime trace", () => {
         scopeDecision: "in_scope",
         activeWorkflowKind: "pending_delete_confirm",
         selectedTool: "lookup_memory_target",
-        modelRequested: "openrouter/model",
+        modelRequested: "gpt-4o-mini",
         modelResponseSchemaValid: true,
         modelErrorCode: undefined,
         toolCalls: ["lookup_memory_target"]
@@ -155,7 +155,7 @@ describe("redacted runtime trace", () => {
     expect(trace.scopeDecision).toBe("in_scope");
     expect(trace.activeWorkflowKind).toBe("pending_delete_confirm");
     expect(trace.selectedTool).toBe("lookup_memory_target");
-    expect(trace.modelRequested).toBe("openrouter/model");
+    expect(trace.modelRequested).toBe("gpt-4o-mini");
     expect(trace.modelResponseSchemaValid).toBe(true);
     expect(JSON.stringify(trace)).not.toContain("Maya");
   });

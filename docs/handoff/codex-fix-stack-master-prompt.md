@@ -125,7 +125,7 @@ After each PR lands: `superpowers:requesting-code-review` with BASE_SHA=pre-PR c
 - Commit format: `<scope>:<message>` e.g. `feat:wire pending reminder policy`
 - After meaningful behavior changes, update: `docs/agent-handoff.md`, active goal if any, `implementation-notes.html`
 - Do NOT run destructive git commands without explicit approval
-- One agent per hot file: `interpretedAgent.ts`, `openRouterInterpreter.ts` — serialize integration PRs
+- One agent per hot file: `interpretedAgent.ts`, `openAIInterpreter.ts` — serialize integration PRs
 
 ## Verification baseline (green at handoff)
 
@@ -171,7 +171,7 @@ PR 8 is already done. PR 6 and PR 7 can share prep work but **full integration**
 
 - **New:** `src/relationship/routerInputEnvelope.ts` + tests
 - **Wired:** `interpretedAgent.ts` builds `buildRouterInputEnvelope(...)` after pending state reconstruction, passes `routerContext` to `interpreter.interpret({ message, routerContext })`
-- **Wired:** `openRouterInterpreter.ts` serializes envelope into OpenRouter user message
+- **Wired:** `openAIInterpreter.ts` serializes envelope into OpenAI user message
 - **Eval:** state envelope routing eval cases (`fb15762`, etc.)
 
 Key rule from PR 4: **Do not put reminder/footer decisions in the router envelope.** Envelope is LLM routing context only; reminder presentation stays deterministic in the agent.
@@ -187,13 +187,13 @@ Key rule from PR 4: **Do not put reminder/footer decisions in the router envelop
 ### PR 9 wave 1 — done
 
 - Strict-off runtime warning in `friendyRuntimeCli.ts`
-- Doctor strict + OpenRouter key hints in `friendyDoctor.ts`
+- Doctor strict + OpenAI key hints in `friendyDoctor.ts`
 
 ### PR 9 Task 1 partial — trace delta types (`7137bda`)
 
 - `src/relationship/trace.ts`: `ActiveWorkflowKind`, `scope_boundary` route source, `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode`, `activeWorkflowKind`, `selectedTool`
 - `src/relationship/trace.test.ts` added
-- **Still missing:** agent populates these fields on real turns; OpenRouter interpreter sets schema-valid flags on all paths; scope-boundary short-circuit trace; PR 5 `pendingReminderDecision` fields
+- **Still missing:** agent populates these fields on real turns; OpenAI interpreter sets schema-valid flags on all paths; scope-boundary short-circuit trace; PR 5 `pendingReminderDecision` fields
 
 ### Parallel prep commits on main (modules only — integrate, don't rewrite)
 
@@ -300,9 +300,9 @@ Note: `interpretedAgent.ts` still has some inline delete confirm paths — migra
 
 **You must complete (Tasks 2–3, 6):**
 
-1. **Task 2:** OpenRouter interpreter sets `modelResponseSchemaValid`, `modelRequested`, `modelErrorCode` on all paths
+1. **Task 2:** OpenAI interpreter sets `modelResponseSchemaValid`, `modelRequested`, `modelErrorCode` on all paths
 2. **Task 3:** `interpretedAgent.ts` scope-boundary short-circuit → `routeSource: "scope_boundary"`; populate `activeWorkflowKind`, `selectedTool` on real turns
-3. **Task 6:** Joint May 23 acceptance test — mocked OpenRouter transcript; strict on → no fallback on list/duplicate/repair/delete turns
+3. **Task 6:** Joint May 23 acceptance test — mocked OpenAI transcript; strict on → no fallback on list/duplicate/repair/delete turns
 
 **Known open blocker (external review, still valid):** Scope vs executor gap for drafting/follow-up/social intents — may need additional `interpretedAgent` routing work beyond trace-only changes. Investigate if May 23 eval fails.
 

@@ -98,7 +98,7 @@ macOS **Add** fires before **Done**. Current mitigation: debounce + Update + req
 
 ### P2 — Search UX with empty memory
 
-`search_memory` with 0 memories + slow OpenRouter model (~32s). Optional: if pending `prompted` candidates exist, reply “You haven’t confirmed them in chat yet” instead of generic no-match.
+`search_memory` with 0 memories + slow OpenAI model (~32s). Optional: if pending `prompted` candidates exist, reply “You haven’t confirmed them in chat yet” instead of generic no-match.
 
 ### P3 — Test drift
 

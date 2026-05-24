@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_OPENROUTER_MODEL } from "./openRouterInterpreter";
+import { DEFAULT_OPENAI_MODEL } from "./openAIInterpreter";
 import { readExpressionConfig } from "./expressionConfig";
 
 describe("readExpressionConfig", () => {
@@ -7,8 +7,9 @@ describe("readExpressionConfig", () => {
     const config = readExpressionConfig({});
     expect(config.enabled).toBe(false);
     expect(config.maxLength).toBe(280);
-    expect(config.model).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(config.model).toBe(DEFAULT_OPENAI_MODEL);
     expect(config.apiKey).toBe("");
+    expect(config.provider).toBe("openai");
   });
 
   it("enables when FRIENDY_EXPRESSION_LLM=1", () => {
@@ -16,12 +17,22 @@ describe("readExpressionConfig", () => {
     expect(config.enabled).toBe(true);
   });
 
-  it("prefers FRIENDY_EXPRESSION_MODEL over OPENROUTER_MODEL", () => {
+  it("prefers FRIENDY_EXPRESSION_MODEL over OPENAI_MODEL", () => {
     const config = readExpressionConfig({
       FRIENDY_EXPRESSION_MODEL: "voice/model",
-      OPENROUTER_MODEL: "router/model"
+      OPENAI_MODEL: "gpt-4.1-mini"
     });
     expect(config.model).toBe("voice/model");
+  });
+
+  it("uses OpenAI expression config when OPENAI_API_KEY is set", () => {
+    const config = readExpressionConfig({
+      OPENAI_API_KEY: "openai-key"
+    });
+
+    expect(config.apiKey).toBe("openai-key");
+    expect(config.model).toBe(DEFAULT_OPENAI_MODEL);
+    expect(config.provider).toBe("openai");
   });
 
   it("parses custom max length", () => {

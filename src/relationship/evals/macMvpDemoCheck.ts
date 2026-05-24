@@ -1,6 +1,6 @@
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
 import { createOnboardingStateController } from "../onboardingState";
-import { createRuleBasedInterpreter } from "../openRouterInterpreter";
+import { createRuleBasedInterpreter } from "../openAIInterpreter";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";

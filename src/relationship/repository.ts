@@ -519,11 +519,25 @@ export function computeLegacyMemoryMethodFingerprint(displayName: string, memory
 }
 
 /** Computes a stable method fingerprint from a candidate's normalized contact methods. */
-export function candidateMethodFingerprint(candidate: Pick<ContactCandidate, "phoneNumbers" | "emails">): string {
-  return computeMethodFingerprint({
+export function candidateMethodFingerprint(
+  candidate: Pick<ContactCandidate, "phoneNumbers" | "emails"> &
+    Partial<Pick<ContactCandidate, "id" | "contactIdentifier" | "unifiedContactIdentifier">>
+): string {
+  const methodFingerprint = computeMethodFingerprint({
     phoneNumbers: candidate.phoneNumbers,
     emails: candidate.emails
   });
+  const emptyFingerprint = computeMethodFingerprint({});
+  if (methodFingerprint !== emptyFingerprint) {
+    return methodFingerprint;
+  }
+
+  const contactIdentifier = candidate.unifiedContactIdentifier || candidate.contactIdentifier;
+  if (contactIdentifier?.trim()) {
+    return createHash("sha256").update(`contact:${contactIdentifier.trim().toLowerCase()}`).digest("hex");
+  }
+
+  return createHash("sha256").update(`candidate:${candidate.id ?? "unknown"}`).digest("hex");
 }
 
 type EnsureCandidatePersonIdInput = {
