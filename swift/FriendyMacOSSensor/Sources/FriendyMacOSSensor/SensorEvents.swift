@@ -62,6 +62,7 @@ func commonSensorEvent(_ type: String, identity: SensorIdentity, now: Date = Dat
     ]
 }
 
+/// Terminal error envelope; Node supervisor treats these as non-retryable startup failures.
 func fatalSensorEvent(code: String, message: String, identity: SensorIdentity) -> [String: Any] {
     var event = commonSensorEvent("fatal_error", identity: identity)
     event["idempotencyKey"] = "fatal_error:\(identity.deviceId):\(identity.runId):\(code)"
@@ -71,6 +72,7 @@ func fatalSensorEvent(code: String, message: String, identity: SensorIdentity) -
     return event
 }
 
+/// Emitted once monitoring starts; `baselineCreated` signals first-run history token seeding.
 func readySensorEvent(identity: SensorIdentity, baselineCreated: Bool, calendarPermissionStatus: String) -> [String: Any] {
     var event = commonSensorEvent("ready", identity: identity)
     event["contactsPermissionStatus"] = "authorized"
@@ -204,6 +206,7 @@ func historyBatchCompleteFixtureEvent(identity: SensorIdentity) -> [String: Any]
     )
 }
 
+/// Closes a contact batch; runtime must create `ackPath` before the sensor advances its history token.
 func historyBatchCompleteEvent(identity: SensorIdentity, historyBatchId: String, contactEventIds: [String], ackPath: String) -> [String: Any] {
     var event = commonSensorEvent("history_batch_complete", identity: identity)
     event["historyBatchId"] = historyBatchId

@@ -44,6 +44,7 @@ type CandidateAmbiguityReplyInput = {
   candidates: Array<{ displayName: string }>;
 };
 
+/** Setup control verbs surfaced as user-facing start/pause/resume copy. */
 export type OnboardingControlReplyKind = "started" | "paused" | "resumed";
 
 /**
@@ -223,6 +224,7 @@ export function composePendingCandidateInquiryReply({
   return `I'm asking about ${name}, the contact you just added. Where did you meet them?`;
 }
 
+/** Short nudge when a prompted contact still lacks relationship context. */
 export function composePendingContactReminder(displayName: string): string {
   return `I still need context for ${displayName} — what should I remember about them?`;
 }

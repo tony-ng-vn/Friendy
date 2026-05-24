@@ -1,8 +1,15 @@
+/**
+ * Privacy-preserving agent turn traces for local debugging and eval fixtures.
+ *
+ * Replaces inbound/outbound text and search queries with stable SHA-256 shape
+ * tokens while preserving routing, policy, tool, and model metadata from `FriendyTrace`.
+ */
 import { createHash } from "node:crypto";
 import { PENDING_REMINDER_REASON_CODES, type PendingReminderReason } from "../pendingReminderPolicy";
 import type { FriendyTrace } from "../trace";
 import type { AgentToolCall } from "../types";
 
+/** Redacted snapshot of one agent turn suitable for logs and regression snapshots. */
 export type AgentTrace = {
   traceId: string;
   createdAt: string;

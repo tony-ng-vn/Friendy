@@ -25,6 +25,7 @@ export type SensorLaunchConfig =
       eventLogPath: string;
     };
 
+/** Usually `createFriendySensorRuntime().processLine`; invoked serially per NDJSON line. */
 export type SensorRuntimeLineProcessor = {
   processLine(line: string): Promise<void> | void;
 };

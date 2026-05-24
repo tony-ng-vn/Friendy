@@ -1,5 +1,13 @@
+/**
+ * Lexical search document builder for relationship memories.
+ *
+ * Converts persisted {@link RelationshipMemory} rows into a flat text surface and field bag
+ * used by in-memory and SQLite repository lexical search. Keeps
+ * retrieval deterministic before embeddings or FTS are layered in.
+ */
 import type { RelationshipMemory } from "./types";
 
+/** Flattened memory row used by lexical retrieval and optional FTS indexing. */
 export type MemorySearchDocument = {
   memoryId: string;
   userId: string;
@@ -15,6 +23,7 @@ export type MemorySearchDocument = {
   updatedAt: string;
 };
 
+/** Scored retrieval hit with provenance so callers can merge lexical, FTS, and future embedding ranks. */
 export type RetrievalCandidate = {
   memoryId: string;
   source: "field_lexical" | "document_lexical" | "fts" | "embedding";
@@ -22,6 +31,7 @@ export type RetrievalCandidate = {
   matchedTerms: string[];
 };
 
+/** Builds the labeled text document stored or scored during memory search. */
 export function buildMemorySearchDocument(memory: RelationshipMemory): MemorySearchDocument {
   const fields = {
     displayName: memory.displayName,
@@ -51,6 +61,11 @@ export function buildMemorySearchDocument(memory: RelationshipMemory): MemorySea
   };
 }
 
+/**
+ * Scores one document against normalized query terms using simple token overlap.
+ *
+ * Returns undefined when no terms match so callers can skip the row without a zero-score sentinel.
+ */
 export function scoreMemorySearchDocument(
   document: MemorySearchDocument,
   terms: string[]
@@ -81,6 +96,7 @@ function tokenize(value: string): Set<string> {
 }
 
 function normalizeSearchToken(value: string): string {
+  // Cheap English suffix stripping keeps lexical recall tolerant without a stemmer dependency.
   return value.toLowerCase().replace(/ing$/, "").replace(/ed$/, "").replace(/s$/, "");
 }
 

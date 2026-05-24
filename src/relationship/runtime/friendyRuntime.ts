@@ -21,6 +21,7 @@ import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer
 import { planCandidatePrompt, type CandidatePromptPlan } from "./promptPlanner";
 import { parseSensorEventLineWithMeta, type MacosSensorEvent } from "./sensorEvents";
 
+/** Spectrum (or console mock) identifiers returned after a prompt is delivered. */
 export type RuntimePromptSendResult = {
   interactionId?: string;
   spaceId?: string;
@@ -56,6 +57,7 @@ export type ProcessedSensorEvent = {
   processedAt: string;
 };
 
+/** Per-warning notification cooldown persisted across sensor restarts. */
 export type RuntimeWarningState = {
   userId: string;
   sensorName: string;
@@ -67,6 +69,7 @@ export type RuntimeWarningState = {
   notificationCount: number;
 };
 
+/** Per-device sensor cursor, permission snapshot, and baseline markers. */
 export type RuntimeSensorState = {
   userId: string;
   sensorName: string;
@@ -111,6 +114,7 @@ export type RuntimeStateStore = {
   }): RuntimeWarningState;
 };
 
+/** Dependencies for `createFriendySensorRuntime`; onboarding gate controls pre-start queuing. */
 export type FriendySensorRuntimeInput = {
   userId: string;
   repo: RelationshipRepository;

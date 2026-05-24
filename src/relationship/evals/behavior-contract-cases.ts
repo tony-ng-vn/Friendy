@@ -1,3 +1,10 @@
+/**
+ * Human-readable names for high-level behavior-contract scenarios.
+ *
+ * Used by docs and smoke checks to refer to the same flows covered in
+ * `agentEvalRunner.ts` without duplicating full eval implementations here.
+ */
+/** Stable ids for behavior-contract documentation and cross-referencing eval cases. */
 export const behaviorContractCaseNames = [
   "unsafe save from contact detection is blocked",
   "user correction overrides calendar guess",

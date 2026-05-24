@@ -21,8 +21,10 @@ import { createRelationshipTools } from "../tools";
 import { createSpectrumFriendyRuntime } from "../transports/spectrumTransport";
 import type { CalendarEvent, ContactCandidateDetected, InboundAgentMessage, RelationshipMemory } from "../types";
 
+/** Which agent stack the case exercises (rule router, LLM interpreter, or Spectrum transport). */
 export type AgentEvalMode = "deterministic" | "interpreted" | "spectrum";
 
+/** Rollup bucket for pass-rate metrics in `RelationshipAgentEvalSummary`. */
 export type AgentEvalMetric =
   | "intent"
   | "memoryWrite"
@@ -32,6 +34,7 @@ export type AgentEvalMetric =
   | "clarification"
   | "scopeBoundary";
 
+/** Catalog entry; runnable logic lives in `executableEvalCases`. */
 export type RelationshipAgentEvalCase = {
   id: string;
   required: boolean;
@@ -54,6 +57,7 @@ export type AgentEvalResult = {
   assertions: AgentEvalAssertion[];
 };
 
+/** Aggregated results from `runRelationshipAgentEvals`, including optional model-backed variance. */
 export type RelationshipAgentEvalSummary = {
   total: number;
   requiredTotal: number;

@@ -199,6 +199,7 @@ export function parseSensorEventLineWithMeta(line: string): ParsedSensorEventLin
   return { event: result.data, didNormalize };
 }
 
+/** Parses one NDJSON line; use `parseSensorEventLineWithMeta` when normalization metadata is needed. */
 export function parseSensorEventLine(line: string): MacosSensorEvent {
   return parseSensorEventLineWithMeta(line).event;
 }

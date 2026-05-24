@@ -122,6 +122,8 @@ type AgentReplyDraft = {
   text: string;
   expressionBundle?: ExpressionFactBundle;
 };
+
+/** Optional post-tool copy polish layer; must not change routing or tool outcomes. */
 export type AgentExpressionComposer = {
   polishOutboundText(input: {
     draft: string;

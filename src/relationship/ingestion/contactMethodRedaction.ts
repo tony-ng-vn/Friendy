@@ -1,14 +1,22 @@
+/**
+ * Contact-method redaction for macOS ingestion snapshots.
+ *
+ * Hashes normalized phones/emails for method-centric diffing while keeping only safe hints
+ * (last four digits, email domain) in persisted snapshots and logs.
+ */
 import { createHash } from "node:crypto";
 import { normalizeContactMethod } from "./contactSnapshot";
 
 type ContactMethodKind = "phone" | "email";
 
+/** Redacted phone fingerprint plus user-safe display label. */
 export type RedactedPhoneMethod = {
   hash: string;
   hint: { last4?: string; label?: string };
   label: string;
 };
 
+/** Redacted email fingerprint plus user-safe display label. */
 export type RedactedEmailMethod = {
   hash: string;
   hint: { domain?: string; label?: string };

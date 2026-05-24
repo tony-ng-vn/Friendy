@@ -1,3 +1,9 @@
+/**
+ * Structured per-turn trace for evals, strict-mode errors, and interaction logging.
+ *
+ * Captures route source, policy outcome, pending-reminder decision, and tool call list
+ * without embedding full model payloads.
+ */
 import type { MessageInterpretation } from "./interpretation";
 import type { PendingReminderReason } from "./pendingReminderPolicy";
 import type { AgentToolCall } from "./types";
@@ -27,6 +33,7 @@ export type FriendyRouteTrace = {
   };
 };
 
+/** Serializable routing and policy metadata attached to each agent turn. */
 export type FriendyTrace = {
   strictMode: boolean;
   routeSource: FriendyRouteSource;
@@ -49,6 +56,7 @@ export type FriendyTrace = {
   modelErrorCode?: string;
 };
 
+/** Builds a normalized trace with safe defaults for missing optional fields. */
 export function createFriendyTrace(input: {
   strictMode: boolean;
   routeSource: FriendyRouteSource;
@@ -93,6 +101,7 @@ export function createFriendyTrace(input: {
   };
 }
 
+/** Normalizes loose interpretation objects into a bounded route trace slice. */
 export function routeTraceFromUnknown(value: unknown): FriendyRouteTrace | undefined {
   if (typeof value !== "object" || value === null || !("intent" in value)) {
     return undefined;
@@ -130,6 +139,7 @@ export function routeTraceFromUnknown(value: unknown): FriendyRouteTrace | undef
   };
 }
 
+/** Unwraps a nested `{ trace }` payload or returns a minimal deterministic fallback. */
 export function extractFriendyTrace(value: unknown): FriendyTrace {
   if (
     typeof value === "object" &&

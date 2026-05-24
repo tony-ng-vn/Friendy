@@ -8,6 +8,7 @@ type RawJsonRow = {
   raw_json: string;
 };
 
+/** Evidence summary from live sensor NDJSON + SQLite after a manual Mac E2E run. */
 export type MacMvpE2eStateCheckReport = {
   ok: boolean;
   latestContactName?: string;
@@ -20,6 +21,7 @@ export type MacMvpE2eStateCheckReport = {
   lines: string[];
 };
 
+/** Overrides for artifact paths when checking outside the repo cwd. */
 export type MacMvpE2eStateCheckInput = {
   cwd?: string;
   sensorEventsPath?: string;
@@ -246,6 +248,7 @@ function lastOf<T>(values: T[]): T | undefined {
   return values[values.length - 1];
 }
 
+/** CLI entry for `npm run check:mac-mvp-e2e-state`. */
 export function main(): void {
   loadFriendyEnv();
   const report = runMacMvpE2eStateCheck();

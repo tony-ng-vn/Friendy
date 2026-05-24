@@ -1,9 +1,17 @@
+/**
+ * Bounded state envelope passed to the LLM router alongside user text.
+ *
+ * Summarizes active workflows, pending candidates, name collisions, and tool surface area
+ * without sending full repository rows. Enforces size caps and redacts contact identifiers
+ * before serialization. Callers: `interpretedAgent`, `openAIInterpreter`.
+ */
 import type { MessageInterpretation } from "./interpretation";
 import type { ConversationState } from "./conversationState";
 import type { AgentToolCall, ContactCandidate, InboundAgentMessage, RelationshipMemory } from "./types";
 
 export type RouterRouteCapability = MessageInterpretation["intent"];
 
+/** Active pending-contact workflow projected for the interpreter. */
 export type RouterActiveWorkflow = {
   kind: "pending_contact_confirmation";
   frameId: string;
@@ -13,6 +21,7 @@ export type RouterActiveWorkflow = {
   promptedAt: string;
 };
 
+/** Compact router context: user text, conversation hints, domain summary, and capabilities. */
 export type RouterInputEnvelope = {
   userText: string;
   conversationState: {
@@ -59,11 +68,18 @@ export type RouterInputEnvelope = {
   availableRouteCapabilities: RouterRouteCapability[];
 };
 
+/** Interpreter input: inbound message plus optional structured router envelope. */
 export type MessageInterpreterInput = {
   message: InboundAgentMessage;
   routerContext?: RouterInputEnvelope;
 };
 
+/**
+ * Builds a capped, redacted router envelope from repository-backed conversation state.
+ *
+ * Name mentions in user text drive `knownPeopleNamed` / `possibleDuplicates` so the model
+ * can disambiguate without loading every memory row.
+ */
 export function buildRouterInputEnvelope(_input: {
   message: InboundAgentMessage;
   conversationState: ConversationState;

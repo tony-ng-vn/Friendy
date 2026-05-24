@@ -265,6 +265,7 @@ function toAgentTurnLog(inbound: InboundAgentMessage, agentReply: string, create
 }
 
 function resolveSpectrumUserId(input: SpectrumInboundInput, env: Partial<NodeJS.ProcessEnv>): string {
+  // Prefer explicit transport user id, then env owner id, then Spectrum space id, then fixture fallback.
   return input.userId?.trim() || resolveConfiguredUserId(env) || input.spaceId?.trim() || fixtureUser.id;
 }
 
@@ -292,6 +293,7 @@ function toCompactInteractionLog(interaction: AgentInteraction): CompactInteract
 }
 
 function toCompactTrace(trace: unknown): CompactInteractionLog["trace"] | undefined {
+  // Redacted traces are persisted as loose JSON; accept partial shapes without failing the transport log.
   if (typeof trace !== "object" || trace === null || !("traceId" in trace)) {
     return undefined;
   }

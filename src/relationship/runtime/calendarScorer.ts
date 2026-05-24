@@ -8,8 +8,10 @@
  */
 import type { MacosCalendarMatch } from "./sensorEvents";
 
+/** Coarse confidence band derived from the additive score and overlap heuristics. */
 export type EventGuessStrength = "strong" | "weak" | "none";
 
+/** Ranked calendar candidate passed to `promptPlanner` (at most three survive filtering). */
 export type ScoredCalendarEvent = {
   eventId: string;
   title: string;
@@ -20,6 +22,7 @@ export type ScoredCalendarEvent = {
   snapshot: MacosCalendarMatch;
 };
 
+/** Contact detection timestamp plus raw EventKit matches from a `contact_added` event. */
 export type ScoreCalendarContextInput = {
   detectedAt: string;
   calendarMatches: MacosCalendarMatch[];

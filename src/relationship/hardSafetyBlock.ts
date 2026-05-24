@@ -1,5 +1,12 @@
+/**
+ * Fast regex safety gate before LLM interpretation or tools.
+ *
+ * Blocks empty input, prompt-injection patterns, and obvious general-assistant tasks.
+ * Relationship-shaped memory queries still pass through so recall is not over-blocked.
+ */
 import { isListPeopleRecall } from "./listPeopleRecall";
 
+/** Allow or reject with a short redirect before structured routing runs. */
 export type HardSafetyDecision =
   | { decision: "allow"; reason: string }
   | { decision: "reject"; reason: string; redirect: string };

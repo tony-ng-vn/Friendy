@@ -48,12 +48,14 @@ export type RepositorySeed = {
   appleContactLinks?: AppleContactLink[];
 };
 
+/** Input for creating a durable person identity row during candidate confirmation. */
 export type CreatePersonIdentityInput = {
   userId: string;
   canonicalDisplayName: string;
   createdAt?: string;
 };
 
+/** Links an Apple Contacts row to a person identity via method fingerprint. */
 export type LinkAppleContactInput = {
   personId: string;
   userId: string;
@@ -66,6 +68,7 @@ export type LinkAppleContactInput = {
   linkedAt?: string;
 };
 
+/** User choice when a new contact shares a display name with saved memory. */
 export type ResolveDuplicateCandidateInput = {
   resolution: DuplicateResolutionStatus;
   personId?: string;
@@ -87,6 +90,7 @@ export type MarkCandidatePromptedOptions = {
   promptedAt?: string;
 };
 
+/** Audit fields written when a user edits an existing memory in place. */
 export type UpdateMemoryInput = {
   contextNote: string;
   relationshipContext?: string;
@@ -95,6 +99,7 @@ export type UpdateMemoryInput = {
   updatedAt: string;
 };
 
+/** Audit fields written when a user soft-deletes a memory. */
 export type DeleteMemoryInput = {
   userText?: string;
   deletedAt: string;

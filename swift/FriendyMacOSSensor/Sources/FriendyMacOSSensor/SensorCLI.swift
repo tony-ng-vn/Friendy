@@ -42,6 +42,7 @@ func runSensorCLI(arguments: [String]) {
     runNativeMacosSensor(stateDir: options.stateDir, identity: identity)
 }
 
+/// Requires `--state-dir`; optional `--emit-fixture` and `--event-log` for smoke and `.app` launches.
 func parseSensorCLIOptions(_ arguments: [String]) -> SensorCLIOptions? {
     guard let stateDir = valueAfter("--state-dir", in: arguments) else {
         return nil

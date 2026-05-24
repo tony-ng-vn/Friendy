@@ -1,3 +1,9 @@
+/**
+ * Mac/iMessage onboarding gate shared by chat controls and contact automation.
+ *
+ * State machine is reduced in-process; production persistence may live elsewhere.
+ * Chat phrases like "start" / "pause" map to `detectOnboardingControl`.
+ */
 export type OnboardingState =
   | "unverified"
   | "verification_sent"
@@ -36,6 +42,7 @@ export type OnboardingStateController = {
   applyControl(action: OnboardingControlAction): OnboardingState;
 };
 
+/** Pure transition table for onboarding lifecycle events. */
 export function reduceOnboardingState(current: OnboardingState, event: OnboardingEvent): OnboardingState {
   if (event.type === "code_sent" && current === "unverified") {
     return "verification_sent";

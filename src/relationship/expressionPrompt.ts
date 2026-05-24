@@ -1,3 +1,8 @@
+/**
+ * Prompt templates for the optional expression LLM.
+ *
+ * System rules enforce grounding; the user message carries the deterministic draft plus JSON bundle.
+ */
 import type { ExpressionFactBundle } from "./expressionFacts";
 
 /** System prompt for the expression LLM — buddy voice with hard grounding rules. */

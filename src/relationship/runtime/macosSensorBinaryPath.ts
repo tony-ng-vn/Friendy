@@ -1,9 +1,18 @@
+/**
+ * Resolves paths to the compiled macOS sensor binary and packaged `.app` bundle.
+ *
+ * Prefers `FRIENDY_SENSOR_*` overrides, then the checked-in app bundle (for TCC),
+ * then the standalone Mach-O under `bin/`.
+ */
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+/** Checked-in `.app` used for `open -a` launches so Contacts TCC binds to the app identity. */
 export const MACOS_SENSOR_APP_BUNDLE_RELATIVE_PATH = "bin/Friendy macOS Sensor.app";
+/** Mach-O inside the app bundle; preferred over the standalone binary when the bundle exists. */
 export const MACOS_SENSOR_APP_RELATIVE_PATH =
   "bin/Friendy macOS Sensor.app/Contents/MacOS/friendy-macos-sensor";
+/** NDJSON log filename written when launching via app bundle (stdout may be empty). */
 export const MACOS_SENSOR_EVENT_LOG_FILENAME = "sensor-events.ndjson";
 
 /** Prefer the packaged .app executable on macOS so TCC registers a visible app identity. */

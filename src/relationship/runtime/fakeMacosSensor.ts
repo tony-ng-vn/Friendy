@@ -7,6 +7,7 @@
  */
 import { MACOS_SENSOR_NAME, MACOS_SENSOR_SCHEMA_VERSION } from "./sensorEvents";
 
+/** `ready` emits only a handshake; `contact_added` adds a full contact + history batch sequence. */
 export type FakeSensorMode = "ready" | "contact_added";
 
 type FakeSensorEvent = Record<string, unknown> & {
@@ -41,6 +42,7 @@ export function createFakeMacosSensorEvents({
   return [ready, contactAddedEvent(now), historyBatchCompleteEvent(now)];
 }
 
+/** Prints mock NDJSON lines to stdout when run as `tsx fakeMacosSensor.ts`. */
 export function main(): void {
   const mode = resolveFakeSensorMode();
   for (const event of createFakeMacosSensorEvents({ mode })) {

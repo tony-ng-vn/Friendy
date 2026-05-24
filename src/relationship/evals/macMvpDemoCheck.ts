@@ -7,6 +7,7 @@ import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUse
 import { buildCandidateReviewPrompt } from "../agentCore";
 import type { InboundAgentMessage } from "../types";
 
+/** Scripted Mac MVP transcript lines plus whether onboarding, save, recall, and update succeeded. */
 export type MacMvpDemoCheckReport = {
   ok: boolean;
   lines: string[];
@@ -63,6 +64,7 @@ export async function runMacMvpDemoCheck(): Promise<MacMvpDemoCheckReport> {
   return { ok, lines };
 }
 
+/** CLI entry for `npm run check:mac-mvp-demo`. */
 export async function main(): Promise<void> {
   const report = await runMacMvpDemoCheck();
   for (const line of report.lines) {
