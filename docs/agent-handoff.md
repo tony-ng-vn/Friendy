@@ -45,7 +45,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ### Local Onboarding API Backend Slice
 
-- Added a local-first onboarding backend for the deployed Friendy UI at `https://friedy-ui.vercel.app`.
+- Added a local-first onboarding backend for the deployed Friendy UI at `https://friendy-ui.vercel.app`.
 - New command: `npm run agent:friendy:local-api`, defaulting to `http://127.0.0.1:8788`.
 - The server exposes `POST /api/onboarding/connect` and `GET /api/onboarding/status?phoneNumber=...` without starting the Mac sensor runtime.
 - Phone input is normalized for `+1` and digit-only US input. Invalid phone input returns `invalid_phone`.
@@ -53,7 +53,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 - Non-allowed phones are upserted into a local SQLite waitlist table and return the private-beta 202 response without creating a Friendy user or Photon user.
 - Allowed phones create/reuse a local Friendy UUID user, create/reuse a Photon shared user mapping, and return the Spectrum redirect URL. Repeated Connect reuses the stored Photon mapping and does not call Photon again.
 - The production Photon client uses `POST https://spectrum.photon.codes/projects/{SPECTRUM_PROJECT_ID}/users` with `{ type: "shared", phoneNumber }`, HTTP Basic auth from `SPECTRUM_PROJECT_ID:SPECTRUM_PROJECT_SECRET`, and nested `data` response parsing; tests inject a fake client.
-- CORS preflight is allowed for `https://friedy-ui.vercel.app`, exact origins listed in `FRIENDY_LOCAL_API_ALLOWED_ORIGINS`, and localhost development origins.
+- CORS preflight is allowed for `https://friendy-ui.vercel.app`, exact origins listed in `FRIENDY_LOCAL_API_ALLOWED_ORIGINS`, and localhost development origins.
 - SQLite onboarding tables are colocated in the existing `FRIENDY_SQLITE_PATH` database. The SQLite setup now preserves higher `PRAGMA user_version` values so later repository opens do not downgrade the onboarding migration marker.
 - Verification on 2026-05-24: RED test run failed for missing `./onboardingLocalApi`; Photon auth RED test failed against the old Bearer/top-level-response client; focused onboarding/SQLite tests passed 2 files/41 tests after review fixes; focused onboarding API tests passed 11/11 after the Photon Basic-auth fix; `npm run build` passed; full `npm test` passed 75 files/599 tests before the final review fixes; `npm run eval:agent` passed 51/51 with 0 unsafe mutations and 0 hallucinations before the final review fixes; `git diff --check` passed.
 

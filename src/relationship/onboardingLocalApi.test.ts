@@ -168,13 +168,13 @@ describe("Friendy local onboarding API", () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/onboarding/connect`, {
         method: "OPTIONS",
         headers: {
-          Origin: "https://friedy-ui.vercel.app",
+          Origin: "https://friendy-ui.vercel.app",
           "Access-Control-Request-Method": "POST"
         }
       });
 
       expect(response.status).toBe(204);
-      expect(response.headers.get("access-control-allow-origin")).toBe("https://friedy-ui.vercel.app");
+      expect(response.headers.get("access-control-allow-origin")).toBe("https://friendy-ui.vercel.app");
       expect(response.headers.get("access-control-allow-methods")).toContain("POST");
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
@@ -226,7 +226,7 @@ describe("Friendy local onboarding API", () => {
       const response = await fetch(`http://127.0.0.1:${address.port}/api/onboarding/connect`, {
         method: "POST",
         headers: {
-          Origin: "https://friedy-ui-attacker.vercel.app",
+          Origin: "https://friendy-ui-attacker.vercel.app",
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ phoneNumber: "+14155550123" })

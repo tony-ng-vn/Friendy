@@ -9,7 +9,10 @@ import { openSqliteRuntimeDatabase } from "./sqliteRepository";
 const PRIVATE_BETA_MESSAGE =
   "Friendy is currently in beta demo and will be rolling out to users one by one. Until then, please give Friendy some time.";
 
-const DEFAULT_ALLOWED_ORIGINS: readonly string[] = ["https://friedy-ui.vercel.app"];
+const DEFAULT_ALLOWED_ORIGINS: readonly string[] = [
+  "https://friendy-ui.vercel.app",
+  "https://friedy-ui.vercel.app"
+];
 
 const DEFAULT_ALLOWED_ORIGIN_PATTERNS = [/^http:\/\/localhost:\d+$/i, /^http:\/\/127\.0\.0\.1:\d+$/i] as const;
 
