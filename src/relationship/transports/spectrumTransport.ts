@@ -112,6 +112,13 @@ type SpectrumInboundResponderResult = {
   handled: boolean;
 };
 
+type SpectrumInboundRouterOptions = {
+  text: string;
+  env?: Partial<NodeJS.ProcessEnv>;
+  fetchImpl?: typeof fetch;
+  logger?: Pick<Console, "info" | "error">;
+};
+
 const INBOUND_RECOVERY_REPLY = "I had trouble understanding that. Try saying it another way.";
 
 /** Converts a Spectrum/iMessage event into the normalized message consumed by the relationship agent. */
@@ -189,6 +196,66 @@ export async function respondToSpectrumInbound({
   }
 }
 
+/** Returns whether an inbound message is worth sending through the heavier agent loop. */
+export async function shouldRouteSpectrumInbound({
+  text,
+  env = process.env,
+  fetchImpl = fetch,
+  logger = console
+}: SpectrumInboundRouterOptions): Promise<boolean> {
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return false;
+  }
+
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return true;
+  }
+
+  const model = env.FRIENDY_ROUTER_MODEL || env.OPENAI_MODEL || "gpt-4o-mini";
+  try {
+    const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content: "Does this message contain a new fact, request, or require an action? Return true or false."
+          },
+          { role: "user", content: trimmedText }
+        ],
+        temperature: 0,
+        max_tokens: 4
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`router request failed with status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
+    const content = String(payload.choices?.[0]?.message?.content ?? "").trim().toLowerCase();
+    if (content.startsWith("false")) {
+      return false;
+    }
+    if (content.startsWith("true")) {
+      return true;
+    }
+
+    throw new Error(`router returned non-boolean content: ${content || "empty"}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[friendy:inbound_router:error] ${message}`);
+    return true;
+  }
+}
+
 /**
  * Starts the Spectrum-backed relationship agent.
  *
@@ -227,13 +294,23 @@ export async function startSpectrumFriendyAgent({
 
   for await (const [space, message] of app.messages) {
     await space.responding(async () => {
+      const input = {
+        text: message.content.type === "text" ? message.content.text : "",
+        spaceId: space.id,
+        receivedAt: new Date().toISOString()
+      };
+      const shouldRoute = await shouldRouteSpectrumInbound({ text: input.text, env });
+      if (!shouldRoute) {
+        console.info(
+          "[friendy:inbound_router:drop]",
+          JSON.stringify({ spaceId: input.spaceId, receivedAt: input.receivedAt })
+        );
+        return;
+      }
+
       await respondToSpectrumInbound({
         runtime,
-        input: {
-          text: message.content.type === "text" ? message.content.text : "",
-          spaceId: space.id,
-          receivedAt: new Date().toISOString()
-        },
+        input,
         reply: async (text) => {
           await message.reply(text);
         }
