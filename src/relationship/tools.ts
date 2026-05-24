@@ -13,7 +13,7 @@ import { isListPeopleRecall } from "./listPeopleRecall";
 import { lookupMemoryTarget, type MemoryTargetLookupResult } from "./memoryTargetLookup";
 import { buildMemorySearchDocument, scoreMemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
-import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
+import type { CalendarEvent, ContactCandidateDetected, DuplicateResolutionStatus, RelationshipDateContext, RelationshipMemory } from "./types";
 
 /** Search hit with diagnostic explanation text for logs and tests, not direct user-facing copy. */
 export type MemorySearchResult = {
@@ -123,6 +123,12 @@ type DeleteMemoryOptions = {
   now?: string;
 };
 
+type ResolveDuplicatePersonInput = {
+  candidateId: string;
+  resolution: "same" | "different" | "ignore" | "not_sure";
+  personId?: string;
+};
+
 /**
  * Builds bounded tools for the relationship agent.
  *
@@ -216,6 +222,48 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return { ignored: true };
     },
 
+    resolve_duplicate_person(userId: string, input: ResolveDuplicatePersonInput) {
+      const candidate = repo.getCandidate(input.candidateId);
+      if (!candidate || candidate.userId !== userId) {
+        throw new Error(`Candidate not found for user: ${input.candidateId}`);
+      }
+
+      if (input.resolution === "ignore") {
+        return {
+          candidate: repo.resolveDuplicateCandidate(candidate.id, {
+            resolution: "ignored",
+            suspectedDuplicatePersonId: candidate.suspectedDuplicatePersonId ?? input.personId
+          })
+        };
+      }
+
+      if (input.resolution === "not_sure") {
+        return {
+          candidate: repo.resolveDuplicateCandidate(candidate.id, {
+            resolution: "not_sure",
+            suspectedDuplicatePersonId: candidate.suspectedDuplicatePersonId ?? input.personId
+          })
+        };
+      }
+
+      const personId =
+        input.resolution === "same"
+          ? requireDuplicatePersonId(input.personId)
+          : repo.createPersonIdentity({
+              userId,
+              canonicalDisplayName: candidate.displayName
+            }).id;
+      const resolution: DuplicateResolutionStatus = input.resolution === "same" ? "same" : "different";
+
+      return {
+        candidate: repo.resolveDuplicateCandidate(candidate.id, {
+          resolution,
+          personId,
+          suspectedDuplicatePersonId: input.personId ?? candidate.suspectedDuplicatePersonId
+        })
+      };
+    },
+
     create_manual_memory(
       userId: string,
       name: string,
@@ -296,6 +344,14 @@ function interactionIdFromManualKey(idempotencyKey: string | undefined): string 
   return idempotencyKey?.startsWith(prefix) ? idempotencyKey.slice(prefix.length) : undefined;
 }
 
+function requireDuplicatePersonId(personId: string | undefined): string {
+  if (!personId) {
+    throw new Error("Duplicate resolution requires a person id for same-person resolution.");
+  }
+
+  return personId;
+}
+
 function listPeopleFromRepository(
   repo: RelationshipRepository,
   userId: string,
@@ -339,13 +395,14 @@ function listPeopleFromRepository(
       .map((candidate) => candidate.candidateId);
 
     return {
+      ...(group.personId ? { personId: group.personId } : {}),
       displayName: group.displayName,
       memories: group.memories.map((memory) => ({
         memoryId: memory.id,
         summary: summarizeListedMemory(memory)
       })),
-      duplicateGroupId: duplicateGroup?.duplicateGroupId,
-      pendingCandidateIds: pendingCandidateIds.length > 0 ? pendingCandidateIds : undefined
+      ...(duplicateGroup ? { duplicateGroupId: duplicateGroup.duplicateGroupId } : {}),
+      ...(pendingCandidateIds.length > 0 ? { pendingCandidateIds } : {})
     };
   });
 
@@ -360,6 +417,7 @@ function listPeopleFromRepository(
 
 type MemoryGroup = {
   key: string;
+  personId?: string;
   displayName: string;
   contextTerms: Set<string>;
   memories: RelationshipMemory[];
@@ -368,6 +426,7 @@ type MemoryGroup = {
 function groupMemoriesIndividually(memories: RelationshipMemory[]): MemoryGroup[] {
   return memories.map((memory) => ({
     key: memory.id,
+    personId: memory.personId,
     displayName: memory.displayName,
     contextTerms: new Set<string>(),
     memories: [memory]
@@ -380,7 +439,7 @@ function groupMemoriesByPerson(memories: RelationshipMemory[], filterTerms: stri
 
   for (const memory of memories) {
     const contextTerms = memoryGroupingContextTerms(memory, filterTerms, sharedContextTerms);
-    const key = normalizedPersonName(memory.displayName, contextTerms);
+    const key = memory.personId ? `person:${memory.personId}` : normalizedPersonName(memory.displayName, contextTerms);
     const existing = groups.get(key);
     if (existing) {
       existing.memories.push(memory);
@@ -390,6 +449,7 @@ function groupMemoriesByPerson(memories: RelationshipMemory[], filterTerms: stri
 
     groups.set(key, {
       key,
+      personId: memory.personId,
       displayName: baseDisplayName(memory.displayName, contextTerms),
       contextTerms,
       memories: [memory]
@@ -410,7 +470,7 @@ function buildDuplicateGroups(groups: MemoryGroup[], pendingCandidates: PendingC
       ...group.memories.map((memory) => memory.displayName),
       ...matchingPending.map((candidate) => candidate.displayName)
     ]);
-    const hasMemoryDuplicate = group.memories.length > 1;
+    const hasMemoryDuplicate = !group.personId && group.memories.length > 1;
     const hasPendingDuplicate = matchingPending.length > 0 && group.memories.length > 0;
     if (!hasMemoryDuplicate && !hasPendingDuplicate) {
       continue;

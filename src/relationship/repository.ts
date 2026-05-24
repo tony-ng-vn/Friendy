@@ -30,6 +30,7 @@ import type {
   MemoryRevisionReason,
   RelationshipDateContext,
   RelationshipMemory,
+  DuplicateResolutionStatus,
   User
 } from "./types";
 
@@ -63,6 +64,12 @@ export type LinkAppleContactInput = {
   displayNameSnapshot: string;
   sensorEventId?: string;
   linkedAt?: string;
+};
+
+export type ResolveDuplicateCandidateInput = {
+  resolution: DuplicateResolutionStatus;
+  personId?: string;
+  suspectedDuplicatePersonId?: string;
 };
 
 /** Optional overrides when confirming a detected contact into a durable memory. */
@@ -142,6 +149,7 @@ export type RelationshipRepository = {
   findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined;
   findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[];
   attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate;
+  resolveDuplicateCandidate(candidateId: string, input: ResolveDuplicateCandidateInput): ContactCandidate;
 };
 
 /**
@@ -478,6 +486,28 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       }
 
       candidate.personId = personId;
+      return candidate;
+    },
+
+    resolveDuplicateCandidate(candidateId: string, input: ResolveDuplicateCandidateInput): ContactCandidate {
+      const candidate = candidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+
+      if (input.personId) {
+        const person = personIdentities.find((item) => item.id === input.personId);
+        if (!person || person.userId !== candidate.userId) {
+          throw new Error(`Person not found: ${input.personId}`);
+        }
+        candidate.personId = input.personId;
+      }
+
+      candidate.suspectedDuplicatePersonId = input.suspectedDuplicatePersonId;
+      candidate.duplicateResolutionStatus = input.resolution;
+      if (input.resolution === "ignored") {
+        candidate.status = "ignored";
+      }
       return candidate;
     }
   };

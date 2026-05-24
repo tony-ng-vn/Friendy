@@ -388,6 +388,31 @@ describe("relationship tools", () => {
     ]);
   });
 
+  it("returns personId for listed people when memories are identity-linked", () => {
+    const tools = createToolsWithMemories([
+      { ...memory("Sarah Fan", "Photon Residency I", "community lead"), personId: "person_sarah" },
+      { ...memory("Sarah Fan", "Photon Residency II", "member"), id: "memory_sarah_2", personId: "person_sarah" }
+    ]);
+
+    const result = tools.list_people(fixtureUser.id, {
+      source: "friendy_memory",
+      limit: 20,
+      dedupeByPerson: true
+    });
+
+    expect(result.people).toEqual([
+      {
+        personId: "person_sarah",
+        displayName: "Sarah Fan",
+        memories: [
+          { memoryId: "memory_sarah_fan", summary: "community lead" },
+          { memoryId: "memory_sarah_2", summary: "member" }
+        ]
+      }
+    ]);
+    expect(result.duplicateGroups).toEqual([]);
+  });
+
   it("does not group unrelated from-suffix display names without shared context", () => {
     const tools = createToolsWithMemories([
       memory("Alex from Sales", "Pipeline Review", "account executive"),
@@ -440,6 +465,45 @@ describe("relationship tools", () => {
         pendingCandidateIds: [pending.id]
       }
     ]);
+  });
+
+  it("resolves same-name pending candidates through explicit duplicate resolution", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+    const pending = tools.create_contact_candidate(candidate("Testing 3", "contact_testing_3_pending"));
+
+    const same = tools.resolve_duplicate_person(fixtureUser.id, {
+      candidateId: pending.id,
+      resolution: "same",
+      personId: person.id
+    });
+
+    expect(same.candidate).toMatchObject({
+      id: pending.id,
+      status: "pending",
+      personId: person.id,
+      suspectedDuplicatePersonId: person.id,
+      duplicateResolutionStatus: "same"
+    });
+
+    const differentPending = tools.create_contact_candidate(candidate("Testing 3", "contact_testing_3_different"));
+    const different = tools.resolve_duplicate_person(fixtureUser.id, {
+      candidateId: differentPending.id,
+      resolution: "different"
+    });
+
+    expect(different.candidate).toMatchObject({
+      id: differentPending.id,
+      status: "pending",
+      duplicateResolutionStatus: "different"
+    });
+    expect(different.candidate.personId).toMatch(/^person_/);
+    expect(different.candidate.personId).not.toBe(person.id);
   });
 
   it("marks Apple Contacts sources unsupported without pretending to list them", () => {

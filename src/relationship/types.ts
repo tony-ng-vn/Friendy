@@ -228,6 +228,7 @@ export type AgentToolCall =
   | "get_candidate"
   | "confirm_candidate"
   | "ignore_candidate"
+  | "resolve_duplicate_person"
   | "create_manual_memory"
   | "update_memory"
   | "delete_memory";

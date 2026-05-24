@@ -152,6 +152,7 @@ const ROUTER_AVAILABLE_TOOLS = [
   "get_candidate",
   "confirm_candidate",
   "ignore_candidate",
+  "resolve_duplicate_person",
   "create_manual_memory",
   "update_memory",
   "delete_memory"
@@ -393,6 +394,20 @@ export function createInterpretedRelationshipAgent({
         listSavedMemoriesForDisplayName(repo, message.userId, pendingState.activeFrame.displayName).length > 0
       ) {
         const resolvedAt = now();
+        const savedMatches = listSavedMemoriesForDisplayName(
+          repo,
+          message.userId,
+          pendingState.activeFrame.displayName
+        );
+        const existingPersonId =
+          savedMatches.find((memory) => memory.personId)?.personId ??
+          repo.findPeopleByDisplayNameNormalized(message.userId, pendingState.activeFrame.displayName)[0]?.id;
+        const toolCalls: AgentToolCall[] = ["resolve_duplicate_person"];
+        tools.resolve_duplicate_person(message.userId, {
+          candidateId: pendingState.activeFrame.candidateId,
+          resolution: duplicateResolutionReply,
+          personId: duplicateResolutionReply === "same" ? existingPersonId : undefined
+        });
         const nextContext = recordSameOrDifferentResolution(
           turnContext,
           pendingState.activeFrame.candidateId,
@@ -417,7 +432,8 @@ export function createInterpretedRelationshipAgent({
               frame: pendingState.activeFrame,
               confidence: 1,
               traceReason: "User resolved the same-name pending contact prompt.",
-              policyDecision: { decision: "allow" }
+              policyDecision: { decision: "allow" },
+              activeWorkflowKind: "duplicate_resolution"
             }),
             duplicateResolutionReply,
             pendingReminderDecision: "suppressed",
@@ -425,7 +441,7 @@ export function createInterpretedRelationshipAgent({
             suppressedPendingReminder: true
           },
           outboundText,
-          toolCalls: [],
+          toolCalls,
           modelUsed: "deterministic-scope",
           confidence: 1,
           latencyMs: Date.now() - startedAt,
@@ -439,7 +455,7 @@ export function createInterpretedRelationshipAgent({
             spaceId: message.spaceId,
             text: outboundText
           },
-          toolCalls: [],
+          toolCalls,
           interaction,
           trace: traceFromInteraction(interaction)
         };
@@ -1194,7 +1210,8 @@ function traceFromInteractionFields(interaction: AgentInteraction, strictMode: b
     activeFrameId: target.frameId,
     activeCandidateId: target.candidateId,
     activeMemoryId: target.memoryId,
-    toolCalls: interaction.toolCalls as AgentToolCall[]
+    toolCalls: interaction.toolCalls as AgentToolCall[],
+    activeWorkflowKind: activeWorkflowKindFromInteraction(interaction)
   });
 }
 
@@ -1335,6 +1352,25 @@ function pendingReminderReasonFromInteraction(interaction: AgentInteraction): Pe
     : undefined;
 }
 
+function activeWorkflowKindFromInteraction(interaction: AgentInteraction): FriendyTrace["activeWorkflowKind"] | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const kind = (interaction.interpretedIntentJson as { activeWorkflowKind?: unknown }).activeWorkflowKind;
+  if (
+    kind === "pending_contact_confirm" ||
+    kind === "duplicate_resolution" ||
+    kind === "pending_delete_confirm" ||
+    kind === "pending_update_confirm" ||
+    kind === "none"
+  ) {
+    return kind;
+  }
+
+  return undefined;
+}
+
 function hardSafetyDecisionFromRoute(value: unknown): "reject" | undefined {
   if (typeof value !== "object" || value === null || !("hardSafetyDecision" in value)) {
     return undefined;
@@ -1402,7 +1438,8 @@ function routeLog({
   extractedContext,
   confidence,
   traceReason,
-  policyDecision
+  policyDecision,
+  activeWorkflowKind
 }: {
   intent: string;
   conversationRelation: string;
@@ -1411,6 +1448,7 @@ function routeLog({
   confidence: number;
   traceReason: string;
   policyDecision: { decision: "allow" | "reject" | "clarify"; reason?: string };
+  activeWorkflowKind?: FriendyTrace["activeWorkflowKind"];
 }) {
   return {
     domain: "relationship_memory",
@@ -1424,7 +1462,8 @@ function routeLog({
     extractedContext,
     confidence,
     traceReason,
-    policyDecision
+    policyDecision,
+    activeWorkflowKind
   };
 }
 

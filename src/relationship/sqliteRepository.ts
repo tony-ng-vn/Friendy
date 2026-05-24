@@ -44,6 +44,7 @@ import {
   type LinkAppleContactInput,
   type MarkCandidatePromptedOptions,
   type RelationshipRepository,
+  type ResolveDuplicateCandidateInput,
   type RepositorySeed,
   type UpdateMemoryInput
 } from "./repository";
@@ -57,6 +58,7 @@ import type {
   MemoryRevision,
   MemoryRevisionReason,
   RelationshipMemory,
+  DuplicateResolutionStatus,
   User
 } from "./types";
 
@@ -531,6 +533,36 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         const attachedCandidate: ContactCandidate = { ...candidate, personId };
         upsertCandidate(db, attachedCandidate);
         return attachedCandidate;
+      });
+    },
+
+    resolveDuplicateCandidate(candidateId: string, input: ResolveDuplicateCandidateInput): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+
+        if (input.personId) {
+          const person = readOptionalRow<PersonIdentity>(
+            db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(input.personId)
+          );
+          if (!person || person.userId !== candidate.userId) {
+            throw new Error(`Person not found: ${input.personId}`);
+          }
+        }
+
+        const resolvedCandidate: ContactCandidate = {
+          ...candidate,
+          personId: input.personId ?? candidate.personId,
+          suspectedDuplicatePersonId: input.suspectedDuplicatePersonId,
+          duplicateResolutionStatus: input.resolution as DuplicateResolutionStatus,
+          status: input.resolution === "ignored" ? "ignored" : candidate.status
+        };
+        upsertCandidate(db, resolvedCandidate);
+        return resolvedCandidate;
       });
     },
 

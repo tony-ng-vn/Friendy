@@ -1044,7 +1044,11 @@ describe("interpreted relationship agent", () => {
 
     const resolution = await agent.handleMessage(inboundInSpace("different person"));
     expect(resolution.outbound.text).toContain("different Sarah Fan");
-    expect(resolution.toolCalls).toEqual([]);
+    expect(resolution.toolCalls).toEqual(["resolve_duplicate_person"]);
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      duplicateResolutionStatus: "different",
+      personId: expect.stringMatching(/^person_/)
+    });
     expect(resolution.trace.pendingReminderDecision).toBe("suppressed");
 
     const capture = await agent.handleMessage(inboundInSpace("She is a community lead at Photon Residency II"));
@@ -1060,6 +1064,58 @@ describe("interpreted relationship agent", () => {
       "community lead at Photon Residency I",
       "community lead at Photon Residency II"
     ]);
+  });
+
+  it("attaches same-name pending contact to an existing person on same-person resolution", async () => {
+    const person = {
+      id: "person_sarah_existing",
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Sarah Fan",
+      createdAt: "2026-05-20T11:50:00.000Z",
+      updatedAt: "2026-05-20T11:50:00.000Z"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      personIdentities: [person],
+      memories: [
+        {
+          ...memoryFixture("Sarah Fan", "community lead at Photon Residency I"),
+          id: "memory_sarah_old",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101052"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah_duplicate", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const resolution = await agent.handleMessage(inboundInSpace("same person"));
+
+    expect(resolution.toolCalls).toEqual(["resolve_duplicate_person"]);
+    expect(resolution.outbound.text).toContain("same Sarah Fan");
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      status: "prompted",
+      personId: person.id,
+      suspectedDuplicatePersonId: person.id,
+      duplicateResolutionStatus: "same"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+    expect(resolution.trace.activeWorkflowKind).toBe("duplicate_resolution");
   });
 
   it("cleans named pending-contact facts before saving the note", async () => {
