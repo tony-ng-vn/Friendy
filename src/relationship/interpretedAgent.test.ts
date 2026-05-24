@@ -948,6 +948,9 @@ describe("interpreted relationship agent", () => {
       "confirm_candidate"
     ]);
     expect(repo.listMemories(fixtureUser.id)[0].contextNote).toContain("test friendy");
+    expect(result.trace.pendingReminderDecision).toBe("suppressed");
+    expect(result.trace.pendingReminderReason).toBe("not_search_interrupt");
+    expect(result.trace.suppressedPendingReminder).toBe(true);
   });
 
   it("captures pronoun facts as context for the active pending contact before follow-up search", async () => {
@@ -1005,6 +1008,58 @@ describe("interpreted relationship agent", () => {
       extractedContext: "community lead at Photon Residency II",
       policyDecision: { decision: "allow" }
     });
+    expect(result.trace.pendingReminderDecision).toBe("suppressed");
+    expect(result.trace.pendingReminderReason).toBe("not_search_interrupt");
+    expect(result.trace.suppressedPendingReminder).toBe(true);
+  });
+
+  it("records same-name resolution before allowing pending contact context", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [{ ...memoryFixture("Sarah Fan", "community lead at Photon Residency I"), id: "memory_sarah_old" }]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101052"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_sarah_duplicate", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for same-name resolution flow");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const resolution = await agent.handleMessage(inboundInSpace("different person"));
+    expect(resolution.outbound.text).toContain("different Sarah Fan");
+    expect(resolution.toolCalls).toEqual([]);
+    expect(resolution.trace.pendingReminderDecision).toBe("suppressed");
+
+    const capture = await agent.handleMessage(inboundInSpace("She is a community lead at Photon Residency II"));
+
+    expect(interpreterCalls).toBe(0);
+    expect(capture.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(capture.outbound.text).toContain("Sarah Fan is a community lead at Photon Residency II");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.contextNote)).toEqual([
+      "community lead at Photon Residency I",
+      "community lead at Photon Residency II"
+    ]);
   });
 
   it("cleans named pending-contact facts before saving the note", async () => {

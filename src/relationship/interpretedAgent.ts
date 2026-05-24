@@ -15,6 +15,7 @@ import {
   type CandidateIgnoreResult,
   type CandidateReplyResult
 } from "./candidateIntake";
+import { parseDuplicateResolutionReply } from "./duplicateResolution";
 import { buildConversationState, type ConversationState, type PendingContactContextFrame } from "./conversationState";
 import { detectOnboardingControl, type OnboardingStateController } from "./onboardingState";
 import type { MessageInterpreter } from "./openRouterInterpreter";
@@ -383,13 +384,77 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
+      const duplicateResolutionReply = pendingState.activeFrame
+        ? parseDuplicateResolutionReply(message.text)
+        : undefined;
+      if (
+        pendingState.activeFrame &&
+        (duplicateResolutionReply === "same" || duplicateResolutionReply === "different") &&
+        listSavedMemoriesForDisplayName(repo, message.userId, pendingState.activeFrame.displayName).length > 0
+      ) {
+        const resolvedAt = now();
+        const nextContext = recordSameOrDifferentResolution(
+          turnContext,
+          pendingState.activeFrame.candidateId,
+          duplicateResolutionReply === "same" ? "same_person" : "different_person",
+          resolvedAt
+        );
+        conversationContexts.set(message.userId, nextContext);
+        const outboundText =
+          duplicateResolutionReply === "same"
+            ? `Got it — I'll treat this as the same ${pendingState.activeFrame.displayName}. What should I remember about them?`
+            : `Got it — I'll treat this as a different ${pendingState.activeFrame.displayName}. What should I remember about them?`;
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${resolvedAt.replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...routeLog({
+              intent: "answer_pending_contact_prompt",
+              conversationRelation: "answers_open_workflow",
+              frame: pendingState.activeFrame,
+              confidence: 1,
+              traceReason: "User resolved the same-name pending contact prompt.",
+              policyDecision: { decision: "allow" }
+            }),
+            duplicateResolutionReply,
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: resolvedAt
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
       if (pendingState.activeFrame && looksLikeDirectPendingContactContext(message.text, pendingState.activeFrame)) {
         const savedMatches = listSavedMemoriesForDisplayName(
           repo,
           message.userId,
           pendingState.activeFrame.displayName
         );
-        if (savedMatches.length > 0) {
+        if (
+          savedMatches.length > 0 &&
+          !hasSameOrDifferentResolution(turnContext.reminderState ?? {}, pendingState.activeFrame.candidateId, pendingState.activeFrame.openedAt)
+        ) {
           const outboundText = composeSameOrDifferentPendingReply({
             displayName: pendingState.activeFrame.displayName
           });
@@ -441,15 +506,20 @@ export function createInterpretedRelationshipAgent({
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-          interpretedIntentJson: routeLog({
-            intent: "capture_pending_contact_context",
-            conversationRelation: "answers_open_workflow",
-            frame: pendingState.activeFrame,
-            extractedContext,
-            confidence: 1,
-            traceReason: "User supplied plausible relationship context for the active pending contact.",
-            policyDecision: { decision: "allow" }
-          }),
+          interpretedIntentJson: {
+            ...routeLog({
+              intent: "capture_pending_contact_context",
+              conversationRelation: "answers_open_workflow",
+              frame: pendingState.activeFrame,
+              extractedContext,
+              confidence: 1,
+              traceReason: "User supplied plausible relationship context for the active pending contact.",
+              policyDecision: { decision: "allow" }
+            }),
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true
+          },
           outboundText,
           toolCalls,
           modelUsed: "deterministic-scope",
@@ -613,11 +683,14 @@ export function createInterpretedRelationshipAgent({
           platform: message.platform,
           spaceId: message.spaceId,
           inboundText: message.text,
-          interpretedIntentJson: {
-            intent: "candidate_confirmation",
-            confidence: 1,
-            policyDecision: { decision: "allow" }
-          },
+            interpretedIntentJson: {
+              intent: "candidate_confirmation",
+              confidence: 1,
+              policyDecision: { decision: "allow" },
+              pendingReminderDecision: "suppressed",
+              pendingReminderReason: "not_search_interrupt",
+              suppressedPendingReminder: true
+            },
           outboundText,
           toolCalls,
           modelUsed: "deterministic-scope",
@@ -1011,6 +1084,25 @@ function clearLastReminder(context: ConversationContext): ConversationContext {
       ...context.reminderState,
       lastReminderAt: undefined,
       lastRemindedCandidateId: undefined
+    }
+  };
+}
+
+function recordSameOrDifferentResolution(
+  context: ConversationContext,
+  candidateId: string,
+  resolution: "same_person" | "different_person",
+  resolvedAt: string
+): ConversationContext {
+  const previous = context.reminderState?.sameOrDifferentResolutions ?? [];
+  return {
+    ...context,
+    reminderState: {
+      ...context.reminderState,
+      sameOrDifferentResolutions: [
+        ...previous.filter((item) => item.candidateId !== candidateId),
+        { candidateId, resolution, resolvedAt }
+      ]
     }
   };
 }
