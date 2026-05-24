@@ -36,6 +36,7 @@ Transport message
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
+- Native Apple Contacts goal: `docs/goals/apple-contacts-bidirectional-integration-goal.md`
 - Current Mac-only MVP behavior spec: `docs/superpowers/specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md`
 - Current Mac-only MVP implementation plan: `docs/superpowers/plans/2026-05-22-mac-only-mvp-final-implementation.md`
 - Current Mac-only MVP goal prompts: `docs/goals/mac-mvp-final-goal-runbook.md`
@@ -58,6 +59,7 @@ Transport message
 - `src/relationship/repository.ts`: in-memory repository boundary for candidates, memories, events, and future logs.
 - `src/relationship/candidateConfirmation.ts`: deterministic consent-reply parsing for pending contact candidates, including corrected event context.
 - `src/relationship/tools.ts`: bounded tool API used by the agent, including deterministic field-aware memory search.
+- `src/relationship/contacts/macContactsAdapter.ts`: TypeScript bridge to the native macOS Contacts actuator for Apple Contact read/create/update/delete JSON commands.
 - `src/relationship/responseComposer.ts`: deterministic user-facing wording for save/search/no-match/clarify/ignore replies.
 - `src/relationship/agentCore.ts`: current deterministic relationship-agent router.
 - `src/relationship/env.ts`: local env loading for standalone `tsx` scripts.
@@ -67,6 +69,7 @@ Transport message
 - `src/relationship/openAIInterpreter.ts`: OpenAI structured-output interpreter and deterministic fallback.
 - `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion product flow pipeline.
 - `src/relationship/ingestion/localMacAdapters.ts`: explicit macOS Contacts/Calendar adapters, parser helpers, and non-macOS guards.
+- `swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor/MacContactsActuator.swift`: native `Contacts` framework actuator used by the TypeScript Apple Contacts adapter; no AppleScript.
 - `src/relationship/ingestion/localCheck.ts`: provider-neutral local contact/calendar checker that creates candidates and confirmation prompts.
 - `src/relationship/ingestion/localCheckCli.ts`: `npm run ingest:local:check` entry point, state file handling, dry-run default, and guarded live Spectrum sender.
 - `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
@@ -92,6 +95,7 @@ npm run ingest:local:check -- --mock
 npm run doctor:friendy
 npm run friendy:stack-status
 npm run agent:friendy:local-api
+npm run build:macos-sensor
 npm run agent:friendy
 npm run agent:spectrum
 ```

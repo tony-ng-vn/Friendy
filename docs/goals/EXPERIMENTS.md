@@ -100,6 +100,17 @@
   - `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts src/relationship/interpretedAgent.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/conversationSession.test.ts src/relationship/conversationSessionStore.test.ts` passed with 169 tests.
   - `npm run build` passed.
 
+## Final Verification
+
+- Date: 2026-05-24
+- Tightened Apple-contact-management text detection after the full eval gate exposed a false positive on `Who did I save while debugging the Mac contact watcher?`; that phrase now remains normal relationship-memory recall.
+- Final verification passed:
+  - `npm test` passed with 76 files and 620 tests.
+  - `npm run build` passed.
+  - `npm run eval:agent` passed 51/51 with zero unsafe mutations and zero hallucinations.
+  - `git diff --check` passed.
+  - `npm run build:macos-sensor` passed and re-signed the checked-in macOS sensor binary/app bundle.
+
 # Friendy List People Tool
 
 ## GREEN

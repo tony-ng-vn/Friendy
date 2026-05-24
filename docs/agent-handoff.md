@@ -33,6 +33,16 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ## Current Status (2026-05-24)
 
+### Bi-Directional Apple Contacts Integration
+
+- Implemented native Apple Contacts CRUD support behind a Swift `Contacts` framework actuator and a TypeScript adapter. The actuator is invoked with `--contacts-actuator-stdin`, accepts `READ` / `CREATE` / `UPDATE` / `DELETE` JSON commands, and uses `CNContactStore` / `CNSaveRequest` with no AppleScript.
+- Added Apple Contact tools: `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact`. Friendy Memory and Apple Contacts remain separate stores.
+- Added Apple-specific interpretation intents (`request_apple_contact_create`, `request_apple_contact_update`, `request_apple_contact_delete`) and confirmation gating. Apple Contact writes do not execute on the initial request; an explicit later `yes` is required.
+- Pending Apple Contact workflows are persisted through `ConversationSessionStore.activeWorkflow` as `pending_apple_contact_create/update/delete`, so confirmation can resume after a fresh agent instance.
+- Added repository lookup for Apple Contact links by Friendy `personId`; when a user asks about a named saved person with a linked `CNContact.identifier`, Friendy reads Apple Contacts metadata and injects it into `routerInputEnvelope.domainStateSummary.linkedAppleContacts` before interpretation.
+- Final verification on 2026-05-24: `npm test` passed 76 files/620 tests; `npm run build` passed; `npm run eval:agent` passed 51/51 with zero unsafe mutations and zero hallucinations; `git diff --check` passed; `npm run build:macos-sensor` passed and re-signed the checked-in macOS sensor binary/app bundle.
+- Latest implementation commit series on `main`: `6107842` native Swift actuator, `dca04fe` TypeScript adapter/tools, `350b04b` confirmation gating, `795b3c2` linked context sync/session persistence, plus final docs/regression cleanup pending commit.
+
 ### Local Onboarding API Backend Slice
 
 - Added a local-first onboarding backend for the deployed Friendy UI at `https://friedy-ui.vercel.app`.

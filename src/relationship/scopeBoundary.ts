@@ -236,9 +236,7 @@ function isExplicitRelationshipMemory(text: string): boolean {
 }
 
 function isAppleContactManagement(text: string): boolean {
-  return /\b(add|create|save|update|edit|change|delete|remove)\b.*\b(apple contacts?|contacts app|mac contacts?|native contacts?)\b/.test(
-    text
-  );
+  return /\b(add|create|save|update|edit|change|delete|remove)\b.{0,80}\b(?:to|in|from|my|your)\s+(?:apple contacts?|contacts app|native contacts?|mac contacts?(?: app)?)\b/.test(text);
 }
 
 function isRelationshipDraft(text: string): boolean {

@@ -4,6 +4,9 @@
 - 2026-05-24: The new Swift actuator must not use AppleScript. Existing local macOS ingestion adapters and smoke helpers still contain AppleScript for older explicit commands; this goal should not expand those paths for native CRUD.
 - 2026-05-24: Tests must not read or mutate real macOS Contacts. Source-level Swift tests and TypeScript adapter tests should validate command contracts, spawned JSON envelopes, parsing, route gating, and workflow behavior with fakes.
 - 2026-05-24: The current worktree has unrelated onboarding API edits before this goal. Preserve them and stage Apple Contacts goal changes explicitly.
+- 2026-05-24: Apple Contact mutation workflows now use the durable conversation session `activeWorkflow` projection (`pending_apple_contact_create/update/delete`) in addition to the interpreted-agent in-memory context, so a fresh agent instance can resume a pending `yes` confirmation.
+- 2026-05-24: Linked Apple Contact context is injected only for named Friendy memories with a `personId` whose Apple link has a `CNContact.identifier`. Friendy still does not merge Apple Contacts into memory; it reads Apple metadata into the router envelope before interpretation.
+- 2026-05-24: The router envelope intentionally includes official Apple Contact fields such as job title, email addresses, and notes so the model can avoid asking for details the user already saved natively. Runtime trace redaction remains the boundary for logs.
 
 # Friendy List People Tool Notes
 

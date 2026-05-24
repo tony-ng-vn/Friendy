@@ -2165,9 +2165,7 @@ function normalizePersonReference(value: string): string {
 }
 
 function isAppleContactManagementText(text: string): boolean {
-  return /\b(add|create|save|update|edit|change|delete|remove)\b.*\b(apple contacts?|contacts app|mac contacts?|native contacts?)\b/i.test(
-    text
-  );
+  return /\b(add|create|save|update|edit|change|delete|remove)\b.{0,80}\b(?:to|in|from|my|your)\s+(?:apple contacts?|contacts app|native contacts?|mac contacts?(?: app)?)\b/i.test(text);
 }
 
 function appleContactWorkflowFromInterpretation(

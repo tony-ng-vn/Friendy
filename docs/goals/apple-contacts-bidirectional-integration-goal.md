@@ -138,6 +138,14 @@ Implement a confirmation state machine to prevent unauthorized mutations.
 - All required docs are updated through the run.
 - Relevant tests/build checks pass and are reported.
 
+## Implementation Evidence
+
+- 2026-05-24: Added native Swift `MacContactsActuator.swift` and `--contacts-actuator-stdin`; `npm test -- src/relationship/runtime/macosSensorSource.test.ts` passed and `npm run build:macos-sensor` rebuilt/signed the checked-in sensor binaries.
+- 2026-05-24: Added `src/relationship/contacts/macContactsAdapter.ts` and Apple Contact tools in `src/relationship/tools.ts`; focused adapter/tool tests passed.
+- 2026-05-24: Added Apple-specific interpretation intents, route capabilities, confirmation gating, and durable conversation-session workflow persistence; focused interpreted-agent/policy tests passed.
+- 2026-05-24: Added `listAppleContactLinksForPerson`, linked Apple Contact router-envelope metadata, and automatic pre-interpretation reads for named linked persons; focused repository/router/agent tests passed and `npm run build` passed.
+- 2026-05-24: Final verification passed: `npm test` 76 files/620 tests, `npm run build`, `npm run eval:agent` 51/51 with zero unsafe mutations and zero hallucinations, `git diff --check`, and `npm run build:macos-sensor`.
+
 Keep this outcome sentence as the completion check:
 
 > The goal after this ran is that friendy will be able to interact directly with contact beside just the memory, which means whenever a new contact is saved from user contact Friendy will know all the info in their that user already put in before friendy asking for more info
