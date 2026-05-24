@@ -22,6 +22,31 @@
 - Focused green run: `npm test -- src/relationship/runtime/macosSensorSource.test.ts` passed with 9 tests.
 - Native build check: `npm run build:macos-sensor` passed and signed both `bin/friendy-macos-sensor` and `bin/Friendy macOS Sensor.app`.
 
+## TypeScript Adapter RED
+
+- Date: 2026-05-24
+- Added `src/relationship/contacts/macContactsAdapter.test.ts` to pin READ/CREATE/UPDATE/DELETE command envelopes, Swift process spawning with `--contacts-actuator-stdin`, stdin JSON, stdout JSON parsing, and failed-result rejection.
+- RED run: `npm test -- src/relationship/contacts/macContactsAdapter.test.ts` failed because `src/relationship/contacts/macContactsAdapter.ts` does not exist.
+
+## TypeScript Adapter GREEN
+
+- Date: 2026-05-24
+- Added `src/relationship/contacts/macContactsAdapter.ts` with typed Apple contact fields, an injectable adapter, default Swift child-process bridge, JSON stdout parser, and identifier-required mutation wrappers.
+- Focused green run: `npm test -- src/relationship/contacts/macContactsAdapter.test.ts` passed with 3 tests.
+
+## Apple Contact Tools RED
+
+- Date: 2026-05-24
+- Added tool-boundary tests requiring `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact` to call an injected native adapter without mutating Friendy memory, and to reject update/delete without a `CNContact.identifier`.
+- RED run: `npm test -- src/relationship/tools.test.ts` failed because `tools.read_apple_contact` and `tools.update_apple_contact` do not exist.
+
+## Apple Contact Tools GREEN
+
+- Date: 2026-05-24
+- Added Apple Contact tool names to `AgentToolCall` and wired `createRelationshipTools(repo, { appleContacts })` to an injected/native adapter for read/create/update/delete.
+- Mutation tool boundaries require a non-empty Apple Contact identifier for update/delete before calling the adapter.
+- Focused green run: `npm test -- src/relationship/tools.test.ts` passed with 36 tests.
+
 # Friendy List People Tool
 
 ## GREEN

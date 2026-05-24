@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools, normalizeMemorySearchQuery } from "./tools";
+import type { MacContactsAdapter } from "./contacts/macContactsAdapter";
 import type { ContactCandidateDetected, RelationshipMemory } from "./types";
 
 describe("relationship tools", () => {
@@ -58,6 +59,67 @@ describe("relationship tools", () => {
       status: "confirmed"
     });
     expect(repo.listMemories(fixtureUser.id)).toEqual([memory]);
+  });
+
+  it("exposes bounded Apple Contact tools through an injected native adapter", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const adapter: MacContactsAdapter = {
+      getAppleContact: vi.fn(async () => ({
+        ok: true,
+        contacts: [
+          {
+            identifier: "apple_contact_anna",
+            givenName: "Anna",
+            familyName: "Lee",
+            phoneNumbers: [],
+            emailAddresses: [],
+            postalAddresses: []
+          }
+        ]
+      })),
+      createAppleContact: vi.fn(async () => ({ identifier: "apple_contact_anna" })),
+      updateAppleContact: vi.fn(async () => ({ identifier: "apple_contact_anna" })),
+      deleteAppleContact: vi.fn(async () => ({ identifier: "apple_contact_anna", deleted: true }))
+    };
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+
+    await expect(tools.read_apple_contact({ id: "apple_contact_anna" })).resolves.toMatchObject({
+      contacts: [{ identifier: "apple_contact_anna", givenName: "Anna" }]
+    });
+    await expect(tools.add_apple_contact({ givenName: "Anna" })).resolves.toEqual({
+      identifier: "apple_contact_anna"
+    });
+    await expect(tools.update_apple_contact("apple_contact_anna", { jobTitle: "Founder" })).resolves.toEqual({
+      identifier: "apple_contact_anna"
+    });
+    await expect(tools.delete_apple_contact("apple_contact_anna")).resolves.toEqual({
+      identifier: "apple_contact_anna",
+      deleted: true
+    });
+
+    expect(adapter.getAppleContact).toHaveBeenCalledWith({ id: "apple_contact_anna" });
+    expect(adapter.createAppleContact).toHaveBeenCalledWith({ givenName: "Anna" });
+    expect(adapter.updateAppleContact).toHaveBeenCalledWith("apple_contact_anna", { jobTitle: "Founder" });
+    expect(adapter.deleteAppleContact).toHaveBeenCalledWith("apple_contact_anna");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("rejects Apple Contact update and delete tools without an Apple identifier", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const adapter: MacContactsAdapter = {
+      getAppleContact: vi.fn(),
+      createAppleContact: vi.fn(),
+      updateAppleContact: vi.fn(),
+      deleteAppleContact: vi.fn()
+    };
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+
+    await expect(tools.update_apple_contact("", { familyName: "Lee" })).rejects.toThrow(
+      "Apple Contact identifier is required"
+    );
+    await expect(tools.delete_apple_contact("")).rejects.toThrow("Apple Contact identifier is required");
+    expect(adapter.updateAppleContact).not.toHaveBeenCalled();
+    expect(adapter.deleteAppleContact).not.toHaveBeenCalled();
   });
 
   it("returns the existing manual memory when the same interaction is retried", () => {

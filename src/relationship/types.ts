@@ -225,6 +225,10 @@ export type OutboundAgentMessage = {
 export type AgentToolCall =
   | "list_people"
   | "find_duplicate_people"
+  | "read_apple_contact"
+  | "add_apple_contact"
+  | "update_apple_contact"
+  | "delete_apple_contact"
   | "search_memories"
   | "lookup_memory_target"
   | "list_pending_candidates"

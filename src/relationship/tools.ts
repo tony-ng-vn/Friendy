@@ -8,6 +8,11 @@
  * and tests; user-facing copy must come from `responseComposer.ts` and must never surface scores.
  */
 import { randomUUID } from "node:crypto";
+import {
+  defaultMacContactsAdapter,
+  type AppleContactFields,
+  type MacContactsAdapter
+} from "./contacts/macContactsAdapter";
 import { createCandidateId } from "./eventMapper";
 import { isListPeopleRecall } from "./listPeopleRecall";
 import { lookupMemoryTarget, type MemoryTargetLookupResult } from "./memoryTargetLookup";
@@ -138,13 +143,19 @@ type ResolveDuplicatePersonInput = {
   personId?: string;
 };
 
+type RelationshipToolsOptions = {
+  appleContacts?: MacContactsAdapter;
+};
+
 /**
  * Builds bounded tools for the relationship agent.
  *
  * Keeping these as small explicit actions makes the agent traceable: contact capture,
  * search, confirmation, ignore, and manual memory creation can each be tested independently.
  */
-export function createRelationshipTools(repo: RelationshipRepository) {
+export function createRelationshipTools(repo: RelationshipRepository, options: RelationshipToolsOptions = {}) {
+  const appleContacts = options.appleContacts ?? defaultMacContactsAdapter;
+
   return {
     create_contact_candidate(contact: ContactCandidateDetected) {
       return repo.createCandidateFromDetectedContact(contact);
@@ -167,6 +178,24 @@ export function createRelationshipTools(repo: RelationshipRepository) {
         includePending: options.includePending ?? true
       });
       return { duplicateGroups: result.duplicateGroups };
+    },
+
+    read_apple_contact(input: { id?: string; query?: string }) {
+      return appleContacts.getAppleContact(input);
+    },
+
+    add_apple_contact(fields: AppleContactFields) {
+      return appleContacts.createAppleContact(fields);
+    },
+
+    async update_apple_contact(id: string, patch: AppleContactFields) {
+      requireAppleContactIdentifier(id);
+      return appleContacts.updateAppleContact(id, patch);
+    },
+
+    async delete_apple_contact(id: string) {
+      requireAppleContactIdentifier(id);
+      return appleContacts.deleteAppleContact(id);
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
@@ -379,6 +408,12 @@ function requireDuplicatePersonId(personId: string | undefined): string {
   }
 
   return personId;
+}
+
+function requireAppleContactIdentifier(id: string): void {
+  if (!id.trim()) {
+    throw new Error("Apple Contact identifier is required for mutation.");
+  }
 }
 
 function listPeopleFromRepository(

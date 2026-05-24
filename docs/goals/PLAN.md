@@ -4,10 +4,11 @@
 - [x] Start subagent-driven execution with separate Swift and TypeScript codebase explorers.
 - [x] Add RED source-level Swift contract tests for the native Contacts JSON actuator.
 - [x] Implement Swift stdin JSON actuator using `CNContactStore` / `CNSaveRequest`, with no AppleScript.
-- [ ] Add RED TypeScript tests for the Apple Contacts adapter command envelope and result parsing.
-- [ ] Implement `src/relationship/contacts/macContactsAdapter.ts`.
-- [ ] Add RED tool tests for `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact`.
-- [ ] Expose Apple Contact tools through `src/relationship/tools.ts` and route capability lists.
+- [x] Add RED TypeScript tests for the Apple Contacts adapter command envelope and result parsing.
+- [x] Implement `src/relationship/contacts/macContactsAdapter.ts`.
+- [x] Add RED tool tests for `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact`.
+- [x] Expose Apple Contact tools through `src/relationship/tools.ts`.
+- [ ] Expose Apple Contact tools and intents through route capability lists.
 - [ ] Add RED interpretation/prompt tests for Apple Contact mutation intents and confirmation rules.
 - [ ] Add confirmation workflow state for Apple Contact create/update/delete and block writes before explicit `yes`.
 - [ ] Add RED router-envelope test for linked Apple Contact metadata injection.
