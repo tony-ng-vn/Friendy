@@ -38,7 +38,7 @@ describe("Friendy local onboarding API", () => {
     const photon = fakePhotonClient();
     const api = createTestApi({ photon });
 
-    const response = await api.connect({ phoneNumber: "415-555-0130" });
+    const response = await api.connect({ phoneNumber: "415-555-0130", email: "wait@example.com" });
 
     expect(response.statusCode).toBe(202);
     expect(response.body).toEqual({
@@ -47,6 +47,46 @@ describe("Friendy local onboarding API", () => {
         "Friendy is currently in beta demo and will be rolling out to users one by one. Until then, please give Friendy some time."
     });
     expect(photon.createSharedUser).not.toHaveBeenCalled();
+  });
+
+  it("stores waitlist email addresses in SQLite", async () => {
+    const photon = fakePhotonClient();
+    const dir = mkdtempSync(join(tmpdir(), "friendy-waitlist-email-"));
+    tempDirs.push(dir);
+    const dbPath = join(dir, "friendy.sqlite");
+    const api = createOnboardingLocalApi({
+      env: {
+        FRIENDY_SQLITE_PATH: dbPath,
+        SPECTRUM_PROJECT_ID: "project_test",
+        SPECTRUM_PROJECT_SECRET: "secret_test"
+      },
+      photon
+    });
+
+    await api.connect({ phoneNumber: "415-555-0130", email: "Wait.Person@Gmail.com" });
+
+    const db = trackCloseable(openSqliteRuntimeDatabase(dbPath));
+    const row = db
+      .prepare("SELECT phone_number, email FROM friendy_onboarding_waitlist WHERE phone_number = ?")
+      .get("+14155550130") as { phone_number: string; email: string };
+
+    expect(row).toEqual({
+      phone_number: "+14155550130",
+      email: "wait.person@gmail.com"
+    });
+    api.close();
+  });
+
+  it("rejects connect without a valid email", async () => {
+    const api = createTestApi();
+
+    await expect(api.connect({ phoneNumber: "+14155550130", email: "not-an-email" })).resolves.toMatchObject({
+      statusCode: 400,
+      body: {
+        error: "invalid_email",
+        message: "Enter a valid email address."
+      }
+    });
   });
 
   it("creates a Friendy user, Photon mapping, and redirect URL for an allowed owner", async () => {
@@ -58,7 +98,7 @@ describe("Friendy local onboarding API", () => {
       }
     });
 
-    const response = await api.connect({ phoneNumber: "(415) 555-0123" });
+    const response = await api.connect({ phoneNumber: "(415) 555-0123", email: "owner@example.com" });
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toMatchObject({
@@ -79,8 +119,8 @@ describe("Friendy local onboarding API", () => {
       }
     });
 
-    const first = await api.connect({ phoneNumber: "+14155550123" });
-    const second = await api.connect({ phoneNumber: "4155550123" });
+    const first = await api.connect({ phoneNumber: "+14155550123", email: "owner@example.com" });
+    const second = await api.connect({ phoneNumber: "4155550123", email: "owner@example.com" });
 
     expect(first.body).toMatchObject(second.body);
     expect(photon.createSharedUser).toHaveBeenCalledTimes(1);
@@ -95,8 +135,8 @@ describe("Friendy local onboarding API", () => {
       }
     });
 
-    await api.connect({ phoneNumber: "+14155550123" });
-    await api.connect({ phoneNumber: "+14155550130" });
+    await api.connect({ phoneNumber: "+14155550123", email: "owner@example.com" });
+    await api.connect({ phoneNumber: "+14155550130", email: "wait@example.com" });
 
     await expect(api.status({ phoneNumber: "+14155550123" })).resolves.toMatchObject({
       statusCode: 200,
@@ -209,8 +249,8 @@ describe("Friendy local onboarding API", () => {
     });
 
     const [first, second] = await Promise.all([
-      api.connect({ phoneNumber: "+14155550123" }),
-      api.connect({ phoneNumber: "4155550123" })
+      api.connect({ phoneNumber: "+14155550123", email: "owner@example.com" }),
+      api.connect({ phoneNumber: "4155550123", email: "owner@example.com" })
     ]);
 
     expect(first.body).toMatchObject(second.body);
@@ -230,7 +270,9 @@ describe("Friendy local onboarding API", () => {
       }
     });
 
-    await expect(api.connect({ phoneNumber: "+14155550123" })).rejects.toThrow("Photon unavailable");
+    await expect(
+      api.connect({ phoneNumber: "+14155550123", email: "owner@example.com" })
+    ).rejects.toThrow("Photon unavailable");
     await expect(api.status({ phoneNumber: "+14155550123" })).resolves.toMatchObject({
       statusCode: 409,
       body: {

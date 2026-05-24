@@ -25,6 +25,7 @@ export type OnboardingLocalApiOptions = {
 
 export type OnboardingConnectInput = {
   phoneNumber?: string;
+  email?: string;
 };
 
 export type OnboardingStatusInput = {
@@ -82,8 +83,13 @@ export function createOnboardingLocalApi({
         return invalidPhoneResponse();
       }
 
+      const normalizedEmail = normalizeEmail(input.email);
+      if (!normalizedEmail) {
+        return invalidEmailResponse();
+      }
+
       if (!isAllowedPhone(normalizedPhone, env)) {
-        upsertWaitlist(db, normalizedPhone, now());
+        upsertWaitlist(db, normalizedPhone, normalizedEmail, now());
         return privateBetaResponse({ statusCode: 202 });
       }
 
@@ -196,7 +202,10 @@ export function createOnboardingLocalHttpServer({
         const body = await readJsonBody(request);
         writeJson(
           response,
-          await api.connect({ phoneNumber: typeof body.phoneNumber === "string" ? body.phoneNumber : undefined }),
+          await api.connect({
+            phoneNumber: typeof body.phoneNumber === "string" ? body.phoneNumber : undefined,
+            email: typeof body.email === "string" ? body.email : undefined
+          }),
           allowedOrigin
         );
         return;
@@ -292,6 +301,7 @@ function setupOnboardingSchema(db: DatabaseSync): void {
 
     CREATE TABLE IF NOT EXISTS friendy_onboarding_waitlist (
       phone_number TEXT PRIMARY KEY,
+      email TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -302,6 +312,11 @@ function setupOnboardingSchema(db: DatabaseSync): void {
   const currentVersion = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   if (currentVersion < 4) {
     db.exec("PRAGMA user_version = 4");
+  }
+
+  const waitlistColumns = db.prepare("PRAGMA table_info(friendy_onboarding_waitlist)").all() as Array<{ name: string }>;
+  if (!waitlistColumns.some((column) => column.name === "email")) {
+    db.exec("ALTER TABLE friendy_onboarding_waitlist ADD COLUMN email TEXT");
   }
 }
 
@@ -340,14 +355,29 @@ function readAllowedPhones(env: Partial<NodeJS.ProcessEnv>): Set<string> {
   return new Set(rawPhones.map((phone) => normalizePhoneNumber(phone)).filter((phone): phone is string => Boolean(phone)));
 }
 
-function upsertWaitlist(db: DatabaseSync, phoneNumber: string, timestamp: string): void {
+function normalizeEmail(email: string | undefined): string | undefined {
+  if (!email) {
+    return undefined;
+  }
+
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function upsertWaitlist(db: DatabaseSync, phoneNumber: string, email: string, timestamp: string): void {
   db.prepare(
     `
-      INSERT INTO friendy_onboarding_waitlist (phone_number, created_at, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(phone_number) DO UPDATE SET updated_at = excluded.updated_at
+      INSERT INTO friendy_onboarding_waitlist (phone_number, email, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(phone_number) DO UPDATE SET
+        email = excluded.email,
+        updated_at = excluded.updated_at
     `
-  ).run(phoneNumber, timestamp, timestamp);
+  ).run(phoneNumber, email, timestamp, timestamp);
 }
 
 function upsertOnboardingUser(db: DatabaseSync, phoneNumber: string, timestamp: string): OnboardingUserRow {
@@ -448,6 +478,16 @@ function invalidPhoneResponse(): OnboardingApiResponse {
     statusCode: 400,
     body: {
       error: "invalid_phone"
+    }
+  };
+}
+
+function invalidEmailResponse(): OnboardingApiResponse {
+  return {
+    statusCode: 400,
+    body: {
+      error: "invalid_email",
+      message: "Enter a valid email address."
     }
   };
 }
