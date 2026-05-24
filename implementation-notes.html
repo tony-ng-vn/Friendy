@@ -6,6 +6,17 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>State-Aware Router Envelope PR 4 (2026-05-24)</h2>
+    <ul>
+      <li>Rebased PR 4 cleanly onto <code>origin/main</code> at <code>3d7d727</code>, preserving the concurrent PR 8 sensor normalization/ack work, PR 5/6/7 prep modules, PR 9 wave 1 doctor/runtime strict checks, and review fixes.</li>
+      <li>Added <code>routerInputEnvelope.ts</code> as the compact state-envelope boundary between <code>interpretedAgent.ts</code> and <code>openRouterInterpreter.ts</code>. The envelope includes user text, active pending workflow, bounded recent context placeholders, pending candidates, same-name saved/pending summaries, deterministic tool names, and route capabilities.</li>
+      <li>Privacy boundary: the envelope redacts free-text phone numbers, emails, contact identifiers, and raw hashes, while preserving stable candidate and memory ids needed for deterministic policy/tool validation. List-result ids are trimmed/deduped without text redaction.</li>
+      <li><code>openRouterInterpreter.ts</code> now accepts <code>{ message, routerContext }</code>. When a router context is present, OpenRouter receives a short routing instruction plus serialized JSON envelope as the user message; without router context it preserves raw-text behavior for tests/local fixtures.</li>
+      <li><code>interpretedAgent.ts</code> builds the envelope after pending-state reconstruction and before model routing. Deterministic fast paths still run first, so lifecycle controls, hard safety blocks, direct pending-contact context captures, and other existing bypasses remain unchanged.</li>
+      <li>Behavior contract copy now tells the model to route from the state envelope and current schema-supported intents such as <code>explain_agent_state</code>, <code>conversation_repair</code>, <code>duplicate_audit</code>, and <code>delete_memory_request</code>. Deterministic policy/tools remain authoritative.</li>
+      <li>Added a state-envelope eval that seeds saved <code>Testing 3</code> plus active pending <code>Testing 3</code>, verifies the envelope exposes the same-name pending/saved summary, and verifies stale-prompt complaints do not confirm the pending candidate.</li>
+      <li>Deferred PR 5/6/7 behavior wiring. Pending reminder policy, identity resolution, duplicate resolution, and robust delete/update prep modules remain separate integration PRs.</li>
+    </ul>
     <h2>Friendy List People Tool (2026-05-23)</h2>
     <ul>
       <li>Added a dedicated <code>list_people</code> tool for Friendy memory inventory/list requests, separate from <code>search_memories</code>.</li>

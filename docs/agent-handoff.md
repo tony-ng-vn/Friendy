@@ -31,7 +31,25 @@ Whenever you **finish meaningful work**, **change runtime behavior**, **close a 
 
 Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
-## Current Status (2026-05-23)
+## Current Status (2026-05-24)
+
+### PR 4 Branch Status
+
+- Branch: `pr4-state-into-llm-router`, rebased cleanly onto `origin/main` at `3d7d727`.
+- PR 4 pass-state-into-LLM-router is implemented on this branch.
+- `routerInputEnvelope.ts` owns the compact router envelope: `userText`, active workflow, bounded recent context placeholders, pending-candidate summaries, same-name saved/pending summaries, available deterministic tools, and route capabilities.
+- `interpretedAgent.ts` builds the envelope after pending state is reconstructed and before `interpreter.interpret({ message, routerContext })`.
+- `openRouterInterpreter.ts` serializes the envelope into the OpenRouter user message when present; raw text remains the no-context compatibility path.
+- No PR 5/6/7 prep modules are wired here. Pending reminder policy, identity resolution, duplicate resolution, and robust target lookup remain separate integration PRs.
+- `npm run friendy:stack-status` reports PR 4 as `done`, PR 5-7 as `prep`, PR 8 as `done`, PR 9 as `partial`, and PR 10 as `plan ready`.
+- The requested `.agents/skills/friendy-fix-stack/references/parallel-tracks.md` file was not present in this checkout; repo search found no `parallel-tracks.md`.
+
+### PR 4 Handoff For PR 5
+
+- PR 5 should hook pending-reminder decisions after the existing route policy decision in `interpretedAgent.ts`, where `pendingState.activeFrame`, `interpretation.intent`, `allowedPolicy.suppressPendingReminder`, and the final `outboundText` are all available.
+- Do not put reminder decisions into the router envelope. The envelope is routing context for the LLM; reminder/footer presentation should remain deterministic.
+- The current inline reminder append remains in place for PR 5 to replace:
+  `if (pendingState.activeFrame && interpretation.intent === "search_memory" && !allowedPolicy.suppressPendingReminder) ...`.
 
 | Item | State |
 |------|--------|
