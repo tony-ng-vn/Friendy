@@ -145,6 +145,110 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("asks same-or-different on start when a queued contact matches a saved display name", async () => {
+    const person = {
+      id: "person_testing_existing",
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing",
+      createdAt: "2026-05-20T11:50:00.000Z",
+      updatedAt: "2026-05-20T11:50:00.000Z"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      personIdentities: [person],
+      memories: [
+        {
+          ...memoryFixture("Testing", "During testing friendy"),
+          id: "memory_testing_existing",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const onboarding = createOnboardingStateController("ready_pending_user_start");
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      userId: fixtureUser.id,
+      displayName: "Testing",
+      phoneNumbers: ["+15550109999"],
+      detectedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      onboarding,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for control messages");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const started = await agent.handleMessage(inbound("start"));
+
+    expect(started.outbound.text).toContain("Great. Friendy is on.");
+    expect(started.outbound.text).toContain("I already have Testing saved in Friendy memory");
+    expect(started.outbound.text).toContain("Reply same, different, ignore, or not sure.");
+    expect(started.outbound.text).not.toContain("Where did you meet them?");
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      status: "prompted",
+      duplicateResolutionStatus: "pending"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
+  it("asks same-or-different before confirming a broad pending-context reply", async () => {
+    const person = {
+      id: "person_testing_existing",
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing",
+      createdAt: "2026-05-20T11:50:00.000Z",
+      updatedAt: "2026-05-20T11:50:00.000Z"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      personIdentities: [person],
+      memories: [
+        {
+          ...memoryFixture("Testing", "During testing friendy"),
+          id: "memory_testing_existing",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing",
+      phoneNumbers: ["+15550109999"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_testing", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run before duplicate clarification");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("During testing friendy"));
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("I already have Testing saved in Friendy memory");
+    expect(result.outbound.text).toContain("Reply same, different, ignore, or not sure.");
+    expect(result.trace.activeWorkflowKind).toBe("duplicate_resolution");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("does not route messages before start into pending-contact memory writes", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);

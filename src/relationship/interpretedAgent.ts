@@ -270,11 +270,17 @@ export function createInterpretedRelationshipAgent({
       const onboardingControl = detectOnboardingControl(message.text);
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
+        const pendingForStart =
+          onboardingControl === "started" ? repo.listPendingCandidates(message.userId) : [];
+        if (onboardingControl === "started") {
+          prepareQueuedContactsForStartPrompt(repo, message.userId, pendingForStart);
+        }
         const outboundText =
           onboardingControl === "started"
             ? composeStartedReplyWithQueuedContacts(
                 composeOnboardingControlReply(onboardingControl),
-                repo.listPendingCandidates(message.userId)
+                pendingForStart,
+                { repo, userId: message.userId }
               )
             : composeOnboardingControlReply(onboardingControl);
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -295,6 +301,9 @@ export function createInterpretedRelationshipAgent({
           latencyMs: Date.now() - startedAt,
           createdAt: now()
         });
+        if (onboardingControl === "started") {
+          markQueuedContactsPromptedAfterStart(repo, pendingForStart, interaction, message.spaceId, now());
+        }
 
         return {
           outbound: {
@@ -1000,52 +1009,17 @@ export function createInterpretedRelationshipAgent({
       }
 
       if (pendingState.activeFrame && looksLikeDirectPendingContactContext(message.text, pendingState.activeFrame)) {
-        const savedMatches = listSavedMemoriesForDisplayName(
+        const duplicateResolution = tryDuplicateResolutionBeforeConfirm({
+          message,
+          pendingState,
+          turnContext,
           repo,
-          message.userId,
-          pendingState.activeFrame.displayName
-        );
-        if (
-          savedMatches.length > 0 &&
-          !hasSameOrDifferentResolution(turnContext.reminderState ?? {}, pendingState.activeFrame.candidateId, pendingState.activeFrame.openedAt)
-        ) {
-          const outboundText = composeDuplicateResolutionPrompt({
-            displayName: pendingState.activeFrame.displayName
-          });
-          const interaction = addInteractionWithTrace(repo, strictMode, {
-            id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
-            userId: message.userId,
-            platform: message.platform,
-            spaceId: message.spaceId,
-            inboundText: message.text,
-            interpretedIntentJson: routeLog({
-              intent: "answer_pending_contact_prompt",
-              conversationRelation: "answers_open_workflow",
-              frame: pendingState.activeFrame,
-              confidence: 1,
-              traceReason: "Saved memory exists for the same display name; ask same-or-different before confirming.",
-              policyDecision: { decision: "clarify" },
-              activeWorkflowKind: "duplicate_resolution"
-            }),
-            outboundText,
-            toolCalls: [],
-            modelUsed: "deterministic-scope",
-            confidence: 1,
-            latencyMs: Date.now() - startedAt,
-            createdAt: now()
-          });
-
-          return {
-            outbound: {
-              userId: message.userId,
-              platform: message.platform,
-              spaceId: message.spaceId,
-              text: outboundText
-            },
-            toolCalls: [],
-            interaction,
-            trace: traceFromInteraction(interaction)
-          };
+          strictMode,
+          startedAt,
+          now
+        });
+        if (duplicateResolution) {
+          return duplicateResolution;
         }
 
         const toolCalls: AgentToolCall[] = [];
@@ -1281,6 +1255,19 @@ export function createInterpretedRelationshipAgent({
         isPendingPromptContextReply(message.text) &&
         !isRelationshipMetaRouteMessage(message.text)
       ) {
+        const duplicateResolution = tryDuplicateResolutionBeforeConfirm({
+          message,
+          pendingState,
+          turnContext,
+          repo,
+          strictMode,
+          startedAt,
+          now
+        });
+        if (duplicateResolution) {
+          return duplicateResolution;
+        }
+
         const toolCalls: AgentToolCall[] = [];
         const reply = confirmPendingCandidate(message, candidateIntake, tools, toolCalls, pendingState);
         const expressionResult = await polishAgentReply(reply, expression);
@@ -2097,13 +2084,24 @@ function policyDecisionFromRoute(value: unknown): FriendyPolicyDecision | undefi
   return undefined;
 }
 
-function composeStartedReplyWithQueuedContacts(baseReply: string, pendingCandidates: ContactCandidate[]): string {
+function composeStartedReplyWithQueuedContacts(
+  baseReply: string,
+  pendingCandidates: ContactCandidate[],
+  options?: { repo: RelationshipRepository; userId: string }
+): string {
   if (pendingCandidates.length === 0) {
     return baseReply;
   }
 
   if (pendingCandidates.length === 1) {
     const [candidate] = pendingCandidates;
+    if (
+      options &&
+      listSavedMemoriesForDisplayName(options.repo, options.userId, candidate.displayName).length > 0
+    ) {
+      return `${baseReply}\n\n${composeDuplicateResolutionPrompt({ displayName: candidate.displayName })}`;
+    }
+
     return `${baseReply}\n\nI noticed you added ${candidate.displayName}. Where did you meet them?`;
   }
 
@@ -2111,6 +2109,140 @@ function composeStartedReplyWithQueuedContacts(baseReply: string, pendingCandida
     items: pendingCandidates.map((candidate) => ({ displayName: candidate.displayName }))
   });
   return `${baseReply}\n\n${footer}`;
+}
+
+function prepareQueuedContactsForStartPrompt(
+  repo: RelationshipRepository,
+  userId: string,
+  pendingCandidates: ContactCandidate[]
+): void {
+  if (pendingCandidates.length !== 1) {
+    return;
+  }
+
+  const [candidate] = pendingCandidates;
+  if (candidate.status !== "pending") {
+    return;
+  }
+
+  const suspectedDuplicatePersonId = suspectedDuplicatePersonIdForDisplayName(repo, userId, candidate.displayName);
+  if (!suspectedDuplicatePersonId) {
+    return;
+  }
+
+  repo.resolveDuplicateCandidate(candidate.id, {
+    resolution: "pending",
+    suspectedDuplicatePersonId
+  });
+}
+
+function markQueuedContactsPromptedAfterStart(
+  repo: RelationshipRepository,
+  pendingCandidates: ContactCandidate[],
+  interaction: AgentInteraction,
+  spaceId: string | undefined,
+  promptedAt: string
+): void {
+  if (pendingCandidates.length !== 1) {
+    return;
+  }
+
+  const candidate = repo.getCandidate(pendingCandidates[0].id);
+  if (!candidate || candidate.status !== "pending") {
+    return;
+  }
+
+  repo.markCandidatePrompted(candidate.id, interaction.id, {
+    spaceId,
+    promptedAt
+  });
+}
+
+function suspectedDuplicatePersonIdForDisplayName(
+  repo: RelationshipRepository,
+  userId: string,
+  displayName: string
+): string | undefined {
+  const savedMatches = listSavedMemoriesForDisplayName(repo, userId, displayName);
+  if (savedMatches.length === 0) {
+    return undefined;
+  }
+
+  return (
+    savedMatches.find((memory) => memory.personId)?.personId ??
+    repo.findPeopleByDisplayNameNormalized(userId, displayName)[0]?.id
+  );
+}
+
+function shouldClarifySameNameBeforeConfirm(
+  repo: RelationshipRepository,
+  userId: string,
+  frame: PendingContactContextFrame,
+  reminderState?: PendingReminderState
+): boolean {
+  return (
+    listSavedMemoriesForDisplayName(repo, userId, frame.displayName).length > 0 &&
+    !hasSameOrDifferentResolution(reminderState ?? {}, frame.candidateId, frame.openedAt)
+  );
+}
+
+function tryDuplicateResolutionBeforeConfirm({
+  message,
+  pendingState,
+  turnContext,
+  repo,
+  strictMode,
+  startedAt,
+  now
+}: {
+  message: InboundAgentMessage;
+  pendingState: ConversationState;
+  turnContext: ConversationContext;
+  repo: RelationshipRepository;
+  strictMode: boolean;
+  startedAt: number;
+  now: () => string;
+}): InterpretedAgentResult | undefined {
+  const frame = pendingState.activeFrame;
+  if (!frame || !shouldClarifySameNameBeforeConfirm(repo, message.userId, frame, turnContext.reminderState)) {
+    return undefined;
+  }
+
+  const outboundText = composeDuplicateResolutionPrompt({ displayName: frame.displayName });
+  const interaction = addInteractionWithTrace(repo, strictMode, {
+    id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+    userId: message.userId,
+    platform: message.platform,
+    spaceId: message.spaceId,
+    inboundText: message.text,
+    interpretedIntentJson: routeLog({
+      intent: "answer_pending_contact_prompt",
+      conversationRelation: "answers_open_workflow",
+      frame,
+      confidence: 1,
+      traceReason: "Saved memory exists for the same display name; ask same-or-different before confirming.",
+      policyDecision: { decision: "clarify" },
+      activeWorkflowKind: "duplicate_resolution"
+    }),
+    outboundText,
+    toolCalls: [],
+    modelUsed: "deterministic-scope",
+    confidence: 1,
+    latencyMs: Date.now() - startedAt,
+    createdAt: now()
+  });
+
+  return {
+    outbound: {
+      userId: message.userId,
+      platform: message.platform,
+      spaceId: message.spaceId,
+      text: outboundText
+    },
+    toolCalls: [],
+    interaction,
+    trace: traceFromInteraction(interaction)
+  };
 }
 
 function suppressedPendingReminderFromInteraction(interaction: AgentInteraction): boolean | undefined {
