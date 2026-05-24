@@ -1,0 +1,460 @@
+/**
+ * Foreground Friendy runtime CLI composition.
+ *
+ * Environment variables:
+ * - `FRIENDY_RUNTIME_STORE` — must be `sqlite` for shared local state
+ * - `FRIENDY_SQLITE_PATH` — relationship and runtime SQLite file (default `.friendy/friendy.sqlite`)
+ * - `FRIENDY_MACOS_SENSOR_STATE_DIR` — native sensor state root (default `.friendy/macos-sensor-state`)
+ * - `FRIENDY_SENSOR_MOCK=1` — run `fakeMacosSensor.ts` via `tsx` instead of the compiled binary
+ * - `FRIENDY_SENSOR_BINARY_PATH` — path to `friendy-macos-sensor` when mock is off
+ * - `FRIENDY_PROMPT_TRANSPORT` — `console` or `spectrum` (defaults to console in mock mode)
+ * - `FRIENDY_DISABLE_INBOUND_AGENT` / `FRIENDY_START_INBOUND_AGENT` — inbound Spectrum agent toggles
+ */
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { loadFriendyEnv } from "../env";
+import { resolveConfiguredUserId } from "../identity";
+import {
+  createOnboardingStateController,
+  type OnboardingControlAction,
+  type OnboardingStateController
+} from "../onboardingState";
+import { requestMacosSensorContactSnapshotReset } from "./macosSensorState";
+import { readFriendyStrictMode } from "../strictMode";
+import { terminateExistingMacosSensorProcesses } from "./terminateMacosSensorProcesses";
+import { composeRuntimeStartupReply } from "../responseComposer";
+import type { RelationshipRepository } from "../repository";
+import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
+import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
+import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
+import { createLiveSpectrumPromptSender } from "../transports/spectrumPromptSender";
+import { startSpectrumFriendyAgent } from "../transports/spectrumTransport";
+import {
+  MACOS_SENSOR_EVENT_LOG_FILENAME,
+  resolveMacosSensorAppBundlePath,
+  resolveMacosSensorBinaryPath,
+  shouldLaunchMacosSensorViaAppBundle
+} from "./macosSensorBinaryPath";
+import type { SensorLaunchConfig } from "./sensorProcess";
+
+/** cwd/env overrides used by doctor, tests, and `startFriendyForegroundRuntime`. */
+export type FriendyRuntimeConfigInput = {
+  cwd?: string;
+  env?: Partial<NodeJS.ProcessEnv>;
+};
+
+/** Either the TypeScript fake sensor (`tsx`) or a real binary/app-bundle launch. */
+export type FriendySensorLaunchConfig =
+  | {
+      mode: "mock";
+      command: "tsx";
+      args: string[];
+    }
+  | ({
+      mode: "real";
+    } & SensorLaunchConfig);
+
+/** Resolved local runtime paths and whether the sensor runs in mock or real mode. */
+export type FriendyRuntimeConfig = {
+  runtimeStore: "sqlite" | string;
+  sqlitePath: string;
+  sensorStateDir: string;
+  strictMode: boolean;
+  sensor: FriendySensorLaunchConfig;
+};
+
+/** Injectable hooks for tests (custom sender, sensor spawn, inbound agent, ack writer). */
+export type StartFriendyForegroundRuntimeInput = FriendyRuntimeConfigInput & {
+  sender?: RuntimePromptSender;
+  logger?: RuntimeLogger;
+  startSensor?: (input: { launch: FriendySensorLaunchConfig; runtime: SensorRuntimeLineProcessor }) => StartedSensorProcess;
+  startInboundAgent?: FriendyInboundAgentStarter;
+  ackWriter?: RuntimeAckWriter;
+  onboarding?: OnboardingStateController;
+};
+
+export type RuntimePromptSenderWithKind = RuntimePromptSender & {
+  kind: "console" | "spectrum";
+};
+
+/** Live handles returned by `startFriendyForegroundRuntime`; call `close()` on shutdown. */
+export type StartedFriendyForegroundRuntime = {
+  config: FriendyRuntimeConfig;
+  repo: SqliteRelationshipRepository;
+  state: SqliteRuntimeStateStore;
+  onboarding: OnboardingStateController;
+  sensor: StartedSensorProcess;
+  inboundAgent?: StartedInboundAgent;
+  close(): void;
+};
+
+export type StartedInboundAgent = {
+  close?(): void;
+} | void;
+
+export type FriendyInboundAgentStarter = (input: {
+  repo: RelationshipRepository;
+  userId: string;
+  onboarding: OnboardingStateController;
+  env: Partial<NodeJS.ProcessEnv>;
+  logger: RuntimeLogger;
+}) => StartedInboundAgent;
+
+/**
+ * Resolves the foreground Friendy runtime config without starting Spectrum or a sensor process.
+ *
+ * Mock mode (`FRIENDY_SENSOR_MOCK=1`) launches the TypeScript fake sensor; real mode requires
+ * a built binary at `FRIENDY_SENSOR_BINARY_PATH` or `bin/friendy-macos-sensor`.
+ */
+export function resolveFriendyRuntimeConfig({
+  cwd = process.cwd(),
+  env = process.env
+}: FriendyRuntimeConfigInput = {}): FriendyRuntimeConfig {
+  const runtimeStore = env.FRIENDY_RUNTIME_STORE || "sqlite";
+  const sqlitePath = resolve(cwd, env.FRIENDY_SQLITE_PATH || ".friendy/friendy.sqlite");
+  const sensorStateDir = resolve(cwd, env.FRIENDY_MACOS_SENSOR_STATE_DIR || ".friendy/macos-sensor-state");
+
+  return {
+    runtimeStore,
+    sqlitePath,
+    sensorStateDir,
+    strictMode: readFriendyStrictMode(env),
+    sensor: resolveSensorLaunchConfig({ cwd, env, sensorStateDir })
+  };
+}
+
+/** Starts the foreground Friendy runtime pieces that are safe to compose without real macOS APIs. */
+export async function startFriendyForegroundRuntime({
+  cwd = process.cwd(),
+  env = process.env,
+  sender,
+  logger = console,
+  ackWriter = createFileAckWriter(cwd),
+  startSensor = defaultStartSensor,
+  startInboundAgent = defaultStartInboundAgent,
+  onboarding
+}: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
+  logger.info("[friendy] loading env");
+  const config = resolveFriendyRuntimeConfig({ cwd, env });
+  const resolvedOnboarding =
+    onboarding ??
+    createOnboardingStateController("ready_pending_user_start", {
+      onControlApplied(action: OnboardingControlAction) {
+        if (action !== "started") {
+          return;
+        }
+
+        const reset = requestMacosSensorContactSnapshotReset(config.sensorStateDir);
+        logger.info(
+          reset.removedSnapshot
+            ? "[friendy] reset macOS contact identifier snapshot for post-start detection"
+            : "[friendy] requested macOS contact snapshot reset signal for post-start detection"
+        );
+      }
+    });
+  logger.info("[friendy] config resolved");
+  if (config.runtimeStore !== "sqlite") {
+    throw new Error("agent:friendy requires FRIENDY_RUNTIME_STORE=sqlite for shared local runtime state.");
+  }
+  warnIfRuntimePathIsCloudSynced(config, logger);
+
+  const userId = resolveConfiguredUserId(env, "local_friendy_user") ?? "local_friendy_user";
+  const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
+  const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
+  logger.info("[friendy] sqlite store ready");
+  clearPreviousRunPendingCandidates({ repo, userId, logger });
+  logger.info("[friendy] contact memory ready; waiting for user start");
+  const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
+  logger.info(`[friendy] prompt transport ready: ${promptSenderKind(promptSender)}`);
+  const runtime = createFriendySensorRuntime({
+    userId,
+    repo,
+    state,
+    sender: promptSender,
+    ackWriter,
+    logger,
+    getOnboardingState: () => resolvedOnboarding.getState()
+  });
+  warnIfStrictModeDisabledForInboundAgent(config, env, logger);
+  const inboundAgent = shouldStartInboundAgent(config, env)
+    ? startInboundAgent({ repo, userId, onboarding: resolvedOnboarding, env, logger })
+    : undefined;
+  logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
+  if (config.sensor.mode === "real") {
+    terminateExistingMacosSensorProcesses(logger);
+  }
+  const sensor = startSensor({ launch: config.sensor, runtime });
+  logger.info("[friendy] watching for contact signals");
+  if (config.sensor.mode === "real" && config.sensor.kind === "app_bundle") {
+    logger.info(
+      "[friendy:e2e] keep this terminal open → text start from your phone → add a NEW contact in Contacts"
+    );
+  }
+  await notifyRuntimeStartup({ promptSender, userId, env, sensorMode: config.sensor.mode, logger });
+
+  return {
+    config,
+    repo,
+    state,
+    onboarding: resolvedOnboarding,
+    sensor,
+    inboundAgent,
+    close() {
+      inboundAgent?.close?.();
+      repo.close();
+      state.close();
+    }
+  };
+}
+
+async function notifyRuntimeStartup({
+  promptSender,
+  userId,
+  env,
+  sensorMode,
+  logger
+}: {
+  promptSender: RuntimePromptSender;
+  userId: string;
+  env: Partial<NodeJS.ProcessEnv>;
+  sensorMode: FriendySensorLaunchConfig["mode"];
+  logger: RuntimeLogger;
+}): Promise<void> {
+  if (env.FRIENDY_DISABLE_STARTUP_MESSAGE === "1") {
+    return;
+  }
+
+  const text = composeRuntimeStartupReply();
+  if (sensorMode === "mock" || promptSenderKind(promptSender) === "console") {
+    logger.info(`[friendy:startup_message] ${text}`);
+    return;
+  }
+
+  try {
+    await promptSender.sendPrompt({ userId, text });
+    logger.info("[friendy:startup_message] sent");
+  } catch (error) {
+    logger.warn(`[friendy:startup_message] failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function promptSenderKind(sender: RuntimePromptSender): string {
+  const kind = (sender as Partial<RuntimePromptSenderWithKind>).kind;
+  return kind ?? "custom";
+}
+
+function clearPreviousRunPendingCandidates({
+  repo,
+  userId,
+  logger
+}: {
+  repo: RelationshipRepository;
+  userId: string;
+  logger: RuntimeLogger;
+}): void {
+  const pending = repo.listPendingCandidates(userId);
+  if (pending.length === 0) {
+    return;
+  }
+
+  for (const candidate of pending) {
+    repo.ignoreCandidate(candidate.id);
+  }
+  logger.info(`[friendy] cleared ${pending.length} stale pending contact candidate(s) from previous runtime runs`);
+}
+
+/** Selects console or Spectrum prompt delivery from env and sensor mode. */
+export async function createRuntimePromptSender({
+  env = process.env,
+  sensorMode,
+  logger = console
+}: {
+  env?: Partial<NodeJS.ProcessEnv>;
+  sensorMode: FriendySensorLaunchConfig["mode"];
+  logger?: RuntimeLogger;
+}): Promise<RuntimePromptSenderWithKind> {
+  const mode = env.FRIENDY_PROMPT_TRANSPORT || (sensorMode === "mock" ? "console" : "spectrum");
+
+  if (mode === "console") {
+    return createConsolePromptSender();
+  }
+
+  if (mode === "spectrum") {
+    logger.info("[friendy:prompt_transport] spectrum");
+    return createLiveSpectrumPromptSender({ env });
+  }
+
+  throw new Error(`Unknown FRIENDY_PROMPT_TRANSPORT: ${mode}`);
+}
+
+function resolveSensorLaunchConfig({
+  cwd,
+  env,
+  sensorStateDir
+}: {
+  cwd: string;
+  env: Partial<NodeJS.ProcessEnv>;
+  sensorStateDir: string;
+}): FriendySensorLaunchConfig {
+  if (env.FRIENDY_SENSOR_MOCK === "1") {
+    return {
+      mode: "mock",
+      command: "tsx",
+      args: ["src/relationship/runtime/fakeMacosSensor.ts"]
+    };
+  }
+
+  const appBundlePath = resolveMacosSensorAppBundlePath(cwd, env);
+  const sensorBinaryPath = resolveMacosSensorBinaryPath(cwd, env);
+  if (!existsSync(sensorBinaryPath) && !appBundlePath) {
+    throw new Error(
+      `Missing macOS sensor binary at ${sensorBinaryPath}. Run npm run build:macos-sensor, or set FRIENDY_SENSOR_MOCK=1 for the fake sensor.`
+    );
+  }
+
+  if (shouldLaunchMacosSensorViaAppBundle(cwd, env) && appBundlePath) {
+    const eventLogPath = resolve(sensorStateDir, MACOS_SENSOR_EVENT_LOG_FILENAME);
+    return {
+      mode: "real",
+      kind: "app_bundle",
+      appPath: appBundlePath,
+      args: ["--state-dir", sensorStateDir, "--event-log", eventLogPath],
+      eventLogPath
+    };
+  }
+
+  if (process.platform === "darwin" && appBundlePath) {
+    throw new Error(
+      "Refusing executable macOS sensor launch while Friendy macOS Sensor.app exists. " +
+        "Run npm run build:macos-sensor and leave FRIENDY_SENSOR_LAUNCH_VIA_APP_BUNDLE unset (or =1)."
+    );
+  }
+
+  return {
+    mode: "real",
+    kind: "executable",
+    command: sensorBinaryPath,
+    args: ["--state-dir", sensorStateDir]
+  };
+}
+
+/** CLI entrypoint for `npm run agent:friendy`. */
+export async function main(): Promise<void> {
+  loadFriendyEnv();
+  const started = await startFriendyForegroundRuntime();
+  console.info("[friendy:runtime_config]", JSON.stringify(started.config));
+  console.info("[friendy:runtime_status]", "agent:friendy started foreground sensor runtime.");
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+function defaultStartSensor({
+  launch,
+  runtime
+}: {
+  launch: FriendySensorLaunchConfig;
+  runtime: SensorRuntimeLineProcessor;
+}): StartedSensorProcess {
+  if (launch.mode === "mock") {
+    return startSensorProcess({
+      launch: { kind: "executable", command: launch.command, args: launch.args },
+      runtime
+    });
+  }
+
+  return startSensorProcess({ launch, runtime });
+}
+
+function defaultStartInboundAgent({
+  repo,
+  onboarding,
+  env,
+  logger
+}: {
+  repo: RelationshipRepository;
+  onboarding: OnboardingStateController;
+  env: Partial<NodeJS.ProcessEnv>;
+  logger: RuntimeLogger;
+}): StartedInboundAgent {
+  void startSpectrumFriendyAgent({ repo, onboarding, env }).catch((error) => {
+    logger.error(`[friendy:inbound_agent:error] ${error instanceof Error ? error.message : String(error)}`);
+  });
+
+  return undefined;
+}
+
+function shouldStartInboundAgent(config: FriendyRuntimeConfig, env: Partial<NodeJS.ProcessEnv>): boolean {
+  if (env.FRIENDY_DISABLE_INBOUND_AGENT === "1") {
+    return false;
+  }
+
+  return config.sensor.mode === "real" || env.FRIENDY_START_INBOUND_AGENT === "1";
+}
+
+/** Warns when dogfood routing can silently degrade because strict mode is explicitly off. */
+function warnIfStrictModeDisabledForInboundAgent(
+  config: FriendyRuntimeConfig,
+  env: Partial<NodeJS.ProcessEnv>,
+  logger: RuntimeLogger
+): void {
+  if (!config.strictMode && shouldStartInboundAgent(config, env)) {
+    logger.warn(
+      "[friendy:strict_mode:warning] FRIENDY_STRICT_MODE is off — rule-based fallback and silent routing degradation are allowed. Use FRIENDY_STRICT_MODE=1 for dogfood."
+    );
+  }
+}
+
+function warnIfRuntimePathIsCloudSynced(config: FriendyRuntimeConfig, logger: RuntimeLogger): void {
+  for (const [label, path] of [
+    ["SQLite runtime store", config.sqlitePath],
+    ["macOS sensor state", config.sensorStateDir]
+  ] as const) {
+    if (isCloudSyncedOrNetworkPath(path)) {
+      logger.warn(
+        `[friendy:runtime_store:warning] ${label} is under a common cloud-synced or network folder; SQLite WAL should stay on a local same-host filesystem. Path: ${path}`
+      );
+    }
+  }
+}
+
+function isCloudSyncedOrNetworkPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").toLowerCase();
+  if (normalized.startsWith("//")) {
+    return true;
+  }
+
+  return [
+    "/icloud drive/",
+    "/mobile documents/",
+    "/dropbox/",
+    "/google drive/",
+    "/onedrive/",
+    "/box/",
+    "/volumes/"
+  ].some((marker) => normalized.includes(marker));
+}
+
+function createConsolePromptSender(): RuntimePromptSenderWithKind {
+  return {
+    kind: "console",
+    async sendPrompt(input) {
+      console.info("[friendy:prompt]", JSON.stringify(input));
+      return {};
+    }
+  };
+}
+
+function createFileAckWriter(cwd: string): RuntimeAckWriter {
+  return {
+    async writeAck(path) {
+      const ackPath = isAbsolute(path) ? path : resolve(cwd, path);
+      mkdirSync(dirname(ackPath), { recursive: true });
+      writeFileSync(ackPath, new Date().toISOString());
+    }
+  };
+}

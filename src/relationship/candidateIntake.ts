@@ -1,3 +1,16 @@
+/**
+ * Pending-contact intake and confirmation routing.
+ *
+ * Callers: `agentCore.ts`, `interpretedAgent.ts`, ingestion pipeline after contact detection.
+ *
+ * Returns structured outcomes only — `responseComposer.ts` owns all user-facing wording.
+ *
+ * Candidate selection priority (when multiple pending):
+ * 1. Name mentioned in the reply text.
+ * 2. Single `prompted` candidate in the same Spectrum `spaceId` (ties on `promptedAt` → ambiguous).
+ * 3. Sole pending candidate with an event guess.
+ * 4. Otherwise ambiguous, or fall back to the only remaining candidate.
+ */
 import { resolveCandidateConfirmation } from "./candidateConfirmation";
 import type { createRelationshipTools } from "./tools";
 import type {
@@ -10,11 +23,13 @@ import type {
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 
+/** User and optional messaging space for correlating proactive prompts with replies. */
 export type CandidateIntakeScope = {
   userId: string;
   spaceId?: string;
 };
 
+/** Structured payload for composing a proactive candidate review message. */
 export type CandidateReviewPrompt = {
   kind: "candidate_review";
   candidateId: string;
@@ -27,17 +42,20 @@ export type CandidateReviewPrompt = {
   };
 };
 
+/** Result of ingesting newly detected contacts into the pending review queue. */
 export type CandidateIntakeCreateResult = {
   kind: "reviewable_candidates_created";
   candidates: Array<Pick<ContactCandidate, "id" | "displayName" | "status">>;
   reviewPrompts: CandidateReviewPrompt[];
 };
 
+/** Outcome of resolving a user reply against pending candidates. */
 export type CandidateReplyResult =
   | { kind: "confirmed"; candidateId: string; memory: RelationshipMemory }
   | { kind: "ambiguous"; candidates: Array<Pick<ContactCandidate, "id" | "displayName">> }
   | { kind: "no_pending" };
 
+/** Outcome of ignoring a pending candidate. */
 export type CandidateIgnoreResult =
   | { kind: "ignored"; candidateId: string; displayName: string }
   | { kind: "no_pending" };
@@ -50,6 +68,7 @@ export type CandidateIgnoreResult =
  */
 export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
   return {
+    /** Syncs calendar context, creates candidates, and builds review prompts with event guesses. */
     createReviewableCandidates(input: {
       scope: CandidateIntakeScope;
       detectedContacts: ContactCandidateDetected[];
@@ -69,6 +88,7 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       };
     },
 
+    /** Resolves yes/no/event-correction replies using the selection priority documented above. */
     resolveCandidateReply(input: { scope: CandidateIntakeScope; replyText: string }): CandidateReplyResult {
       const candidates = tools.list_pending_candidates(input.scope.userId);
       if (candidates.length === 0) {
@@ -76,17 +96,20 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       }
 
       const selected = selectCandidate(candidates, input.replyText);
-      const onlyReviewable = selected ? undefined : selectOnlyCandidateWithEventGuess(candidates, input.scope.userId, tools);
-      if (!selected && !onlyReviewable && candidates.length > 1) {
+      const promptedForSpace = selected ? undefined : selectPromptedCandidateForSpace(candidates, input.scope.spaceId);
+      const onlyReviewable =
+        selected || promptedForSpace ? undefined : selectOnlyCandidateWithEventGuess(candidates, input.scope.userId, tools);
+      if (!selected && !promptedForSpace && !onlyReviewable && candidates.length > 1) {
         return {
           kind: "ambiguous",
           candidates: candidates.map(({ id, displayName }) => ({ id, displayName }))
         };
       }
 
-      const candidate = selected ?? onlyReviewable ?? candidates[0];
+      const candidate = selected ?? promptedForSpace ?? onlyReviewable ?? candidates[0];
       const eventMatches = tools.list_candidate_event_matches(input.scope.userId, candidate.id);
-      const confirmation = resolveCandidateConfirmation(stripCandidateSelector(input.replyText, candidate), eventMatches);
+      const contextText = cleanCandidateContextReply(stripCandidateSelector(input.replyText, candidate), candidate);
+      const confirmation = resolveCandidateConfirmation(contextText, eventMatches);
       const memory = tools.confirm_candidate(
         input.scope.userId,
         candidate.id,
@@ -101,6 +124,7 @@ export function createCandidateIntake({ tools }: { tools: RelationshipTools }) {
       return { kind: "confirmed", candidateId: candidate.id, memory };
     },
 
+    /** Marks a pending candidate ignored, optionally selected by id or name fragment. */
     ignoreCandidate(input: {
       scope: CandidateIntakeScope;
       candidateId?: string;
@@ -145,6 +169,37 @@ function selectCandidate(candidates: ContactCandidate[], text: string): ContactC
   });
 }
 
+/**
+ * Prefer the candidate already prompted in this Spectrum space when the user replies "yes"
+ * without repeating the contact name — ties on promptedAt stay ambiguous on purpose.
+ */
+function selectPromptedCandidateForSpace(
+  candidates: ContactCandidate[],
+  spaceId?: string
+): ContactCandidate | undefined {
+  if (!spaceId) {
+    return undefined;
+  }
+
+  const matches = candidates
+    .filter((candidate) => candidate.status === "prompted" && candidate.promptSpaceId === spaceId)
+    .sort((a, b) => comparePromptedAtDesc(a.promptedAt, b.promptedAt));
+
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  if (matches.length > 1 && comparePromptedAtDesc(matches[0].promptedAt, matches[1].promptedAt) === 0) {
+    return undefined;
+  }
+
+  return matches[0];
+}
+
+function comparePromptedAtDesc(left?: string, right?: string): number {
+  return (right ?? "").localeCompare(left ?? "");
+}
+
 function selectOnlyCandidateWithEventGuess(
   candidates: ContactCandidate[],
   userId: string,
@@ -165,6 +220,29 @@ function stripCandidateSelector(replyText: string, candidate: ContactCandidate):
 
   const selectorPattern = new RegExp(`^(yes|yep|yeah)\\s+${escapeRegExp(firstName)}\\b\\s*,?\\s*`, "i");
   return replyText.replace(selectorPattern, "$1, ").replace(/,\s*$/, "").trim();
+}
+
+export function cleanCandidateContextReply(replyText: string, candidate: Pick<ContactCandidate, "displayName">): string {
+  const normalized = replyText.trim().replace(/\s+/g, " ");
+  const firstName = candidate.displayName.split(/\s+/).filter(Boolean)[0] ?? "";
+  const escapedFullName = escapeRegExp(candidate.displayName);
+  const escapedFirstName = escapeRegExp(firstName);
+  const nameAlternatives = [escapedFullName, escapedFirstName].filter(Boolean).join("|");
+
+  if (nameAlternatives.length > 0) {
+    const nameCopula = new RegExp(
+      `^(?:${nameAlternatives})\\s+(?:is|was|are|were)\\s+(?:an?\\s+|the\\s+)?`,
+      "i"
+    );
+    const cleaned = normalized.replace(nameCopula, "").trim();
+    if (cleaned !== normalized && cleaned.length > 0) {
+      return cleaned;
+    }
+  }
+
+  const pronounCopula = /^(?:she|he|they|them|her|him)\s+(?:is|was|are|were)\s+(?:an?\s+|the\s+)?/i;
+  const cleaned = normalized.replace(pronounCopula, "").trim();
+  return cleaned.length > 0 ? cleaned : normalized;
 }
 
 function escapeRegExp(value: string): string {

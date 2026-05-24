@@ -1,21 +1,31 @@
+/**
+ * macOS Contacts and Calendar adapters behind an explicit AppleScript boundary.
+ *
+ * Real provider reads are Darwin-only and must be invoked from user-run CLI commands such as
+ * `npm run ingest:local:check`, never from normal tests, builds, or agent runs.
+ */
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import os from "node:os";
 import type { CalendarEvent } from "../types";
-import type { ContactSnapshot } from "./contactSnapshot";
+import type { ContactSnapshot, ContactSnapshotContact } from "./contactSnapshot";
+import { redactEmailMethod, redactPhoneMethod } from "./contactMethodRedaction";
 
 type ExecFileSync = typeof defaultExecFileSync;
 
+/** Input for parsing Contacts AppleScript stdout into a snapshot. */
 export type ParseMacContactsSnapshotOutputInput = {
   userId: string;
   capturedAt: string;
   output: string;
 };
 
+/** Input for parsing Calendar AppleScript stdout into Friendy events. */
 export type ParseMacCalendarEventsOutputInput = {
   userId: string;
   output: string;
 };
 
+/** Input for reading a live Contacts snapshot via AppleScript on macOS. */
 export type ReadMacContactsSnapshotInput = {
   userId: string;
   capturedAt: string;
@@ -23,6 +33,7 @@ export type ReadMacContactsSnapshotInput = {
   execFileSync?: ExecFileSync;
 };
 
+/** Input for reading Calendar events in a time window via AppleScript on macOS. */
 export type ReadMacCalendarEventsInput = {
   userId: string;
   windowStart: string;
@@ -40,13 +51,32 @@ export function parseMacContactsSnapshotOutput({
   return {
     userId,
     capturedAt,
-    contacts: parseRows(output).map(([stableId, displayName, phoneNumbers, emails, updatedAt]) => ({
-      stableId,
-      displayName,
-      phoneNumbers: splitList(phoneNumbers),
-      emails: splitList(emails),
-      updatedAt: updatedAt || capturedAt
-    }))
+    contacts: parseRows(output).map(([stableId, displayName, phoneNumbers, emails, updatedAt]) =>
+      redactParsedContact({
+        stableId,
+        displayName,
+        phoneNumbers: splitList(phoneNumbers),
+        emails: splitList(emails),
+        updatedAt: updatedAt || capturedAt
+      })
+    )
+  };
+}
+
+function redactParsedContact(contact: ContactSnapshotContact): ContactSnapshotContact {
+  const phoneMethods = contact.phoneNumbers.map(redactPhoneMethod);
+  const emailMethods = contact.emails.map(redactEmailMethod);
+
+  return {
+    stableId: contact.stableId,
+    displayName: contact.displayName,
+    phoneNumbers: phoneMethods.map((method) => method.label),
+    emails: emailMethods.map((method) => method.label),
+    phoneNumberHashes: phoneMethods.map((method) => method.hash),
+    emailHashes: emailMethods.map((method) => method.hash),
+    phoneNumberHints: phoneMethods.map((method) => method.hint),
+    emailHints: emailMethods.map((method) => method.hint),
+    updatedAt: contact.updatedAt
   };
 }
 
@@ -65,7 +95,11 @@ export function parseMacCalendarEventsOutput({ userId, output }: ParseMacCalenda
   }));
 }
 
-/** Reads the user's macOS Contacts into Friendy's snapshot format. */
+/**
+ * Reads the user's macOS Contacts into Friendy's snapshot format.
+ *
+ * Requires darwin and Contacts permission; call only from explicit local-check CLI flows.
+ */
 export function readMacContactsSnapshot({
   userId,
   capturedAt,
@@ -77,7 +111,11 @@ export function readMacContactsSnapshot({
   return parseMacContactsSnapshotOutput({ userId, capturedAt, output });
 }
 
-/** Reads macOS Calendar events overlapping the requested window. */
+/**
+ * Reads macOS Calendar events overlapping the requested window.
+ *
+ * Requires darwin and Calendar permission; call only from explicit local-check CLI flows.
+ */
 export function readMacCalendarEvents({
   userId,
   windowStart,
@@ -91,6 +129,7 @@ export function readMacCalendarEvents({
 }
 
 function ensureDarwin(platform: NodeJS.Platform, appName: "Contacts" | "Calendar"): void {
+  // Real macOS provider access is gated to darwin so tests and CI stay fixture-only.
   if (platform !== "darwin") {
     throw new Error(`macOS ${appName} local check is only available on darwin.`);
   }

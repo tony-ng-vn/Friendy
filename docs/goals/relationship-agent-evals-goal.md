@@ -15,7 +15,7 @@ Friendy’s core risk is not whether individual tools work. The hard part is whe
 - Keep `implementation-notes.html` updated.
 - Keep `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, and `docs/goals/EXPERIMENT_NOTES.md` updated.
 - Do not commit secrets.
-- Keep deterministic fallback evals runnable without OpenRouter credentials.
+- Keep deterministic fallback evals runnable without OpenAI credentials.
 - Do not weaken existing tests or safety behavior to make evals pass.
 - Push `main` only after verification passes on `main`.
 
@@ -46,7 +46,7 @@ Friendy’s core risk is not whether individual tools work. The hard part is whe
   - unsafe mutation count,
   - hallucination count,
   - clarification correctness.
-- If `OPENROUTER_API_KEY` exists, the runner may optionally run stochastic/repeated model-backed evals and report variance. The required eval set must remain deterministic without the key.
+- If `OPENAI_API_KEY` exists, the runner may optionally run stochastic/repeated model-backed evals and report variance. The required eval set must remain deterministic without the key.
 
 ## Test Cases
 
@@ -79,11 +79,11 @@ git diff --check
 ## Completion Criteria
 
 - The eval runner exists and is covered by automated tests.
-- `npm run eval:agent` runs the required deterministic eval set without OpenRouter credentials.
+- `npm run eval:agent` runs the required deterministic eval set without OpenAI credentials.
 - The eval runner has at least 12 named trajectory cases covering every required scenario.
 - Metrics include pass rate, intent accuracy, memory-write correctness, search recall@3, unsafe mutation count, hallucination count, and clarification correctness.
 - Required eval failures cause a nonzero process exit.
-- Optional model-backed repeated runs are gated behind the presence of `OPENROUTER_API_KEY`.
+- Optional model-backed repeated runs are gated behind the presence of `OPENAI_API_KEY`.
 - `README.md`, `REFERENCE.md`, `src/relationship/AGENTS.md`, `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, `docs/goals/EXPERIMENT_NOTES.md`, and `implementation-notes.html` are updated.
 - All verification commands pass on the feature branch and again on `main`.
 - Changes are committed incrementally.

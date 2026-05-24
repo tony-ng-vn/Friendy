@@ -1,5 +1,7 @@
 # Friendy Handoff
 
+> **For coding agents:** use [`docs/agent-handoff.md`](agent-handoff.md) for current Mac MVP status, active goals, and the required handoff update rule. This file is legacy product context from the early web MVP scaffold.
+
 ## Repo
 
 - Local path: `/home/thien/Desktop/Friendy`

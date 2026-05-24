@@ -1,3 +1,10 @@
+/**
+ * CLI entry point for explicit macOS Contacts/Calendar local checks.
+ *
+ * Real provider reads happen only when invoked via `npm run ingest:local:check` without `--mock`.
+ * The first run writes a baseline snapshot file; subsequent runs diff against it. Set
+ * `FRIENDY_LOCAL_CHECK_SEND=1` to deliver review prompts over iMessage.
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { dirname, resolve } from "node:path";
@@ -5,11 +12,10 @@ import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import { loadFriendyEnv, readSpectrumCredentials } from "../env";
 import { resolveConfiguredUserId } from "../identity";
-import { createRuntimeRelationshipRepository } from "../runtimeRepository";
-import type { CalendarEvent, User } from "../types";
+import type { CalendarEvent } from "../types";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEventProvider } from "./ingestionPipeline";
-import { createMockLocalCheckScenario, type LocalPromptSender, runLocalContactCalendarCheck } from "./localCheck";
+import { createMockLocalCheckScenario, createLocalCheckRepository, type LocalPromptSender, runLocalContactCalendarCheck } from "./localCheck";
 import { readMacCalendarEvents, readMacContactsSnapshot } from "./localMacAdapters";
 
 type LocalCheckArgs = {
@@ -40,10 +46,7 @@ async function runMockLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
   const scenario = createMockLocalCheckScenario(args.userId);
   const repo =
     process.env.FRIENDY_RUNTIME_STORE === "sqlite"
-      ? createRuntimeRelationshipRepository({
-          env: process.env,
-          seed: { users: [localUser(scenario.after)] }
-        })
+      ? createLocalCheckRepository(scenario.after, process.env)
       : undefined;
 
   return runLocalContactCalendarCheck({ ...scenario, repo, sender, env: process.env });
@@ -53,6 +56,7 @@ async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
   const capturedAt = new Date().toISOString();
   const after = readMacContactsSnapshot({ userId: args.userId, capturedAt });
   if (!existsSync(args.stateFile)) {
+    // Baseline file seeds the before snapshot for the next explicit CLI run.
     writeSnapshot(args.stateFile, after);
     return {
       candidates: [],
@@ -66,7 +70,7 @@ async function runRealLocalCheck(args: LocalCheckArgs, sender?: LocalPromptSende
 
   const before = readSnapshot(args.stateFile);
   const calendarProvider = createAppleCalendarProvider(args.userId, capturedAt);
-  const repo = createRuntimeRelationshipRepository({ seed: { users: [localUser(after)] } });
+  const repo = createLocalCheckRepository(after, process.env);
   const result = await runLocalContactCalendarCheck({ before, after, calendarProvider, repo, sender, env: process.env });
   writeSnapshot(args.stateFile, after);
   return result;
@@ -93,6 +97,7 @@ function createAppleCalendarProvider(userId: string, nowIso: string): CalendarEv
 }
 
 async function maybeCreateLiveSender(env: NodeJS.ProcessEnv): Promise<LocalPromptSender | undefined> {
+  // FRIENDY_LOCAL_CHECK_SEND gates real Spectrum/iMessage delivery off by default.
   if (env.FRIENDY_LOCAL_CHECK_SEND !== "1") {
     return undefined;
   }
@@ -126,15 +131,6 @@ function readSnapshot(path: string): ContactSnapshot {
 function writeSnapshot(path: string, snapshot: ContactSnapshot): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(snapshot, null, 2)}\n`);
-}
-
-function localUser(snapshot: ContactSnapshot): User {
-  return {
-    id: snapshot.userId,
-    phoneNumber: "",
-    displayName: "Local Friendy User",
-    createdAt: snapshot.capturedAt
-  };
 }
 
 function valueAfter(argv: string[], flag: string): string | undefined {

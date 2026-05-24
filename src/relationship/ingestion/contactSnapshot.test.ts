@@ -98,4 +98,61 @@ describe("contact snapshot diff", () => {
     expect(normalizeContactMethod("phone", "+1 (555) 010-1001")).toBe("+15550101001");
     expect(normalizeContactMethod("email", "  MAYA@Example.COM ")).toBe("maya@example.com");
   });
+
+  it("detects newly added redacted macOS methods by hash", () => {
+    const before = {
+      userId: fixtureUser.id,
+      capturedAt: "2026-05-20T18:00:00.000Z",
+      contacts: [
+        {
+          stableId: "contact_existing",
+          displayName: "Existing Person",
+          phoneNumbers: ["ending in 0000"],
+          emails: [],
+          phoneNumberHashes: ["hash-existing-phone"],
+          updatedAt: "2026-05-20T18:00:00.000Z"
+        }
+      ]
+    };
+    const after = {
+      userId: fixtureUser.id,
+      capturedAt: "2026-05-20T20:00:00.000Z",
+      contacts: [
+        before.contacts[0],
+        {
+          stableId: "contact_friendy_101",
+          displayName: "Friendy-101",
+          phoneNumbers: ["ending in 0101"],
+          emails: ["email at example.com"],
+          phoneNumberHashes: ["hash-new-phone"],
+          emailHashes: ["hash-new-email"],
+          phoneNumberHints: [{ last4: "0101", label: "unknown" }],
+          emailHints: [{ domain: "example.com", label: "unknown" }],
+          updatedAt: "2026-05-20T19:30:00.000Z"
+        }
+      ]
+    };
+
+    const detections = detectNewContactMethods(before, after);
+
+    expect(detections).toEqual([
+      {
+        userId: fixtureUser.id,
+        displayName: "Friendy-101",
+        phoneNumbers: ["ending in 0101"],
+        emails: ["email at example.com"],
+        detectedAt: "2026-05-20T19:30:00.000Z",
+        source: "contacts_delta",
+        contactIdentifier: "contact_friendy_101",
+        contactMethodHashes: {
+          phoneNumberHashes: ["hash-new-phone"],
+          emailHashes: ["hash-new-email"]
+        },
+        contactMethodHints: {
+          phoneNumberHints: [{ last4: "0101", label: "unknown" }],
+          emailHints: [{ domain: "example.com", label: "unknown" }]
+        }
+      }
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 import { fixtureUser } from "../fixtures";
-import { createRuleBasedInterpreter } from "../openRouterInterpreter";
-import { createSpectrumFriendyRuntime, toInboundAgentMessage } from "./spectrumTransport";
+import { createRuleBasedInterpreter } from "../openAIInterpreter";
+import { createSpectrumFriendyRuntime, respondToSpectrumInbound, toInboundAgentMessage } from "./spectrumTransport";
 
 describe("spectrum transport", () => {
   it("normalizes Spectrum message text into an inbound agent message", () => {
@@ -23,7 +23,8 @@ describe("spectrum transport", () => {
   it("routes normalized iMessage text through the interpreted agent and returns a compact log", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),
-      now: () => "2026-05-20T12:00:00.000Z"
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
     });
 
     const result = await runtime.handleInboundText({
@@ -33,19 +34,158 @@ describe("spectrum transport", () => {
       receivedAt: "2026-05-20T12:00:00.000Z"
     });
 
-    expect(result.replyText).toContain("Saved");
+    expect(result.replyText).toContain("Got it, saved Amaya");
     expect(result.log).toMatchObject({
       intent: "capture_memory",
       modelUsed: "rule-based-fallback",
-      toolCalls: ["create_manual_memory"]
+      toolCalls: ["create_manual_memory"],
+      trace: {
+        toolCallCount: 1,
+        hasError: false,
+        strictMode: false,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        modelRequested: undefined
+      }
+    });
+    expect(result.log.trace?.traceId).toMatch(/^trace_/);
+    expect(JSON.stringify(result.log)).not.toContain("Amaya");
+    expect(JSON.stringify(result.log)).not.toContain("Photon Residency II");
+    expect(JSON.stringify(result.log)).not.toContain("sleep on the same bed");
+    expect(result.turnLog).toMatchObject({
+      userId: fixtureUser.id,
+      platform: "imessage",
+      spaceId: "space_123",
+      userText: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :(",
+      agentReply: result.replyText,
+      createdAt: "2026-05-20T12:00:00.000Z"
     });
     expect(runtime.repo.listInteractions(fixtureUser.id)).toHaveLength(1);
+  });
+
+  it("passes expression polishing through the Spectrum runtime without changing tool calls", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" },
+      expression: {
+        async polishOutboundText({ bundle }) {
+          expect(bundle?.kind).toBe("save_confirmation");
+          return {
+            text: "Got it - I'll remember Amaya from Photon Residency II.",
+            expressionUsed: true,
+            validationPassed: true,
+            expressionModel: "test-expression-model"
+          };
+        }
+      }
+    });
+
+    const result = await runtime.handleInboundText({
+      userId: fixtureUser.id,
+      text: "I met Amaya at Photon Residency II, recruiting agents founder",
+      spaceId: "space_expression",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    });
+
+    expect(result.replyText).toBe("Got it - I'll remember Amaya from Photon Residency II.");
+    expect(result.log).toMatchObject({
+      intent: "capture_memory",
+      toolCalls: ["create_manual_memory"]
+    });
+    expect(runtime.repo.listMemories(fixtureUser.id)[0]).toMatchObject({ displayName: "Amaya" });
+  });
+
+  it("passes FRIENDY_STRICT_MODE through to the interpreted agent", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: {
+        FRIENDY_STRICT_MODE: "1"
+      }
+    });
+
+    await expect(
+      runtime.handleInboundText({
+        userId: fixtureUser.id,
+        text: "I met Amaya at Photon Residency II",
+        spaceId: "space_strict",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      })
+    ).rejects.toMatchObject({
+      name: "FriendyStrictModeError",
+      code: "FALLBACK_USED"
+    });
+  });
+
+  it("recovers per inbound message when the model route fails strict schema validation", async () => {
+    const replies: string[] = [];
+    const errors: string[] = [];
+
+    const result = await respondToSpectrumInbound({
+      runtime: {
+        async handleInboundText() {
+          throw new Error("OpenAI returned output that did not match Friendy's interpretation schema.");
+        }
+      },
+      input: {
+        userId: fixtureUser.id,
+        text: "List all people I met",
+        spaceId: "space_strict_error",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      },
+      reply: async (text) => {
+        replies.push(text);
+      },
+      logger: {
+        info() {},
+        error(...args) {
+          errors.push(args.map(String).join(" "));
+        }
+      }
+    });
+
+    expect(result.handled).toBe(false);
+    expect(replies).toEqual(["I had trouble understanding that. Try saying it another way."]);
+    expect(errors.join(" ")).toContain("[friendy:inbound_agent:error]");
+    expect(errors.join(" ")).toContain("OpenAI returned output");
+  });
+
+  it("does not duplicate a manual memory when the same inbound message is retried", async () => {
+    const runtime = createSpectrumFriendyRuntime({
+      interpreter: createRuleBasedInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
+    });
+    const inbound = {
+      userId: fixtureUser.id,
+      interactionId: "spectrum_inbound_retry_1",
+      text: "I met Amaya at Photon Residency II, recruiting agents founder",
+      spaceId: "space_retry",
+      receivedAt: "2026-05-20T12:00:00.000Z"
+    };
+
+    await runtime.handleInboundText(inbound);
+    await runtime.handleInboundText(inbound);
+
+    const memories = runtime.repo.listMemories(fixtureUser.id);
+    expect(memories).toHaveLength(1);
+    expect(memories[0]).toMatchObject({
+      displayName: "Amaya",
+      candidateId: expect.any(String)
+    });
+    expect(runtime.repo.getCandidate(memories[0].candidateId!)).toMatchObject({
+      source: "manual_imessage",
+      manualIdempotencyKey: "manual_imessage:spectrum_inbound_retry_1",
+      createdFromInteractionId: "spectrum_inbound_retry_1"
+    });
   });
 
   it("uses the first inbound Spectrum space as conversation identity when no user exists yet", async () => {
     const runtime = createSpectrumFriendyRuntime({
       interpreter: createRuleBasedInterpreter(),
-      now: () => "2026-05-20T12:00:00.000Z"
+      now: () => "2026-05-20T12:00:00.000Z",
+      env: { FRIENDY_STRICT_MODE: "0" }
     });
 
     await runtime.handleInboundText({
@@ -73,7 +213,8 @@ describe("spectrum transport", () => {
     const dir = mkdtempSync(join(tmpdir(), "friendy-spectrum-runtime-"));
     const env = {
       FRIENDY_RUNTIME_STORE: "sqlite",
-      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite")
+      FRIENDY_SQLITE_PATH: join(dir, "friendy.sqlite"),
+      FRIENDY_STRICT_MODE: "0"
     };
     let first: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;
     let second: ReturnType<typeof createSpectrumFriendyRuntime> | undefined;

@@ -1,3 +1,10 @@
+/**
+ * Deterministic contact-to-calendar event matching at detection time.
+ *
+ * Maps a newly detected contact's `detectedAt` to overlapping calendar windows and
+ * ranks matches so narrow events outrank long background events. Callers: ingestion
+ * pipeline, fixture checks, tests. Does not persist — repository stores matches.
+ */
 import type { CalendarEvent, ContactCandidateDetected, EventContextMatch } from "./types";
 
 // Short events beat long background events because users usually remember the specific dinner or meetup, not the whole residency.
@@ -14,20 +21,31 @@ const EVENT_KIND_RANK = {
 } as const;
 
 /**
- * Creates a stable fixture candidate id from contact identity and detection time.
+ * Creates a stable candidate id from contact identity and detection time.
  *
- * The MVP uses deterministic ids so contact-delta fixtures can be replayed in tests.
- * A real persistence layer can replace this with database ids without changing agent behavior.
+ * Deterministic for fixture replay and idempotent ingestion retries. Real persistence
+ * may replace this with database ids without changing agent behavior.
+ *
+ * @param contact - Display name, detection instant, optional contact identifier, source
  */
-export function createCandidateId(contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt">): string {
-  return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}`;
+export function createCandidateId(
+  contact: Pick<ContactCandidateDetected, "displayName" | "detectedAt" | "contactIdentifier" | "source">
+): string {
+  if (contact.source === "manual_imessage" && contact.contactIdentifier) {
+    return `candidate_${slug(contact.displayName)}_${slug(contact.contactIdentifier)}`;
+  }
+
+  const identity = contact.contactIdentifier ? `_${slug(contact.contactIdentifier)}` : "";
+  return `candidate_${slug(contact.displayName)}_${new Date(contact.detectedAt).getTime()}${identity}`;
 }
 
 /**
- * Maps a newly detected contact to calendar events whose windows contain the detection time.
+ * Maps a newly detected contact to calendar events whose windows contain detection time.
  *
- * Ranking intentionally favors narrow events over long or all-day events so a specific dinner
- * is suggested before a week-long residency when both overlap.
+ * @param candidateId - Id assigned to the pending candidate
+ * @param contact - Detected contact delta including `detectedAt`
+ * @param events - User calendar events to search for overlap
+ * @returns Ranked matches; rank 1 is the preferred event guess for consent prompts
  */
 export function mapCandidateToEvents(
   candidateId: string,

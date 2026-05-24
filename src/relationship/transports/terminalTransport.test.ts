@@ -18,6 +18,6 @@ describe("terminal transport harness", () => {
     const result = harness.send("yes, recruiting agents, played piano");
 
     expect(result.outbound.platform).toBe("terminal");
-    expect(result.outbound.text).toContain("Saved");
+    expect(result.outbound.text).toContain("Got it, saved Maya Chen");
   });
 });

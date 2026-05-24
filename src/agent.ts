@@ -1,3 +1,11 @@
+/**
+ * Legacy Vite demo command router.
+ *
+ * Parses fixed phrases like "yes", "save Maya: ...", and "ignore Alex", then runs
+ * deterministic state transitions. Production agents live in `src/relationship/agentCore.ts`
+ * (deterministic router) and `src/relationship/interpretedAgent.ts` (LLM interpretation +
+ * tools). Domain types are in `src/relationship/types.ts`.
+ */
 import { fixtureContactDelta } from "./mockData";
 import {
   approveSession,
@@ -9,17 +17,24 @@ import {
 } from "./memoryStore";
 import type { RelationshipMemory } from "./types";
 
+/** Updated demo state plus the agent reply shown in the chat UI. */
 export type AgentResult = {
   state: MemoryState;
   reply: string;
 };
 
+/** Ranked memory hit from a fuzzy tag search over saved context notes. */
 export type MemoryMatch = {
   memory: RelationshipMemory;
   score: number;
   reason: string;
 };
 
+/**
+ * Handles one user message in the demo chat.
+ *
+ * Supports event approval, candidate save/ignore commands, and memory search.
+ */
 export function handleAgentMessage(state: MemoryState, rawInput: string): AgentResult {
   const input = rawInput.trim();
   const lower = input.toLowerCase();
@@ -103,6 +118,7 @@ function saveCandidateFromMessage(state: MemoryState, input: string): AgentResul
   };
 }
 
+/** Scores saved memories by tag overlap and returns the top matches. */
 export function searchMemories(state: MemoryState, query: string): MemoryMatch[] {
   const queryTags = extractTags(query);
 

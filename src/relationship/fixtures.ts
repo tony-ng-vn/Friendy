@@ -1,3 +1,10 @@
+/**
+ * Deterministic product-flow fixtures for tests, terminal smoke, and evals.
+ *
+ * Provides a stable user, simulated contact delta, overlapping calendar events,
+ * and an ambiguous memory for clarification paths. Not used in production
+ * ingestion; real deltas come from `ingestion/` and local macOS checkers.
+ */
 import type { CalendarEvent, ContactCandidateDetected, RelationshipMemory, User } from "./types";
 
 /** Stable fixture user for the first Photon/Friendy relationship-agent walkthrough. */

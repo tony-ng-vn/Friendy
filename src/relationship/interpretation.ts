@@ -1,12 +1,43 @@
+/**
+ * LLM interpretation contract: JSON schema, Zod validation, and search-query helpers.
+ *
+ * The model interprets messy inbound text into structured intent; validated output is
+ * consumed by `interpretedAgent` before deterministic tools mutate state. The LLM never
+ * writes memories directly. See docs/ai-system-architecture.md.
+ */
 import { z } from "zod";
 
+/** OpenAI structured-output JSON schema for message interpretation. */
 export const messageInterpretationJsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
     intent: {
       type: "string",
-      enum: ["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"],
+      enum: [
+        "capture_memory",
+        "answer_pending_contact_prompt",
+        "capture_pending_contact_context",
+        "continue_recent_saved_contact",
+        "explain_pending_workflow",
+        "explain_agent_state",
+        "conversation_repair",
+        "duplicate_audit",
+        "delete_memory_request",
+        "list_people",
+        "search_memory",
+        "manual_memory_create",
+        "update_memory",
+        "delete_memory",
+        "draft_message",
+        "request_contact_create",
+        "request_contact_edit",
+        "request_contact_delete",
+        "ignore_candidate",
+        "clarify",
+        "reject",
+        "unknown"
+      ],
       description: "The single action Friendy should take after interpreting the user message."
     },
     confidence: {
@@ -14,6 +45,70 @@ export const messageInterpretationJsonSchema = {
       minimum: 0,
       maximum: 1,
       description: "Model confidence in the interpretation, from 0 to 1."
+    },
+    domain: {
+      type: "string",
+      enum: [
+        "relationship_memory",
+        "relationship_drafting",
+        "contact_management",
+        "lifecycle_control",
+        "general_assistant",
+        "unsafe_or_adversarial"
+      ],
+      description: "High-level route domain for policy validation."
+    },
+    conversationRelation: {
+      type: "string",
+      enum: [
+        "answers_open_workflow",
+        "asks_about_open_workflow",
+        "continues_recent_saved_contact",
+        "continues_previous_search",
+        "starts_new_relationship_task",
+        "starts_new_contact_management_task",
+        "starts_new_out_of_scope_task",
+        "unclear"
+      ]
+    },
+    target: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        frameId: { type: "string" },
+        candidateId: { type: "string" },
+        memoryId: { type: "string" },
+        displayName: { type: "string" }
+      }
+    },
+    extractedContext: {
+      type: "string"
+    },
+    search: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["lookup_person", "list_people", "list_related_people", "event_recall", "semantic_recall"]
+        },
+        semanticQuery: { type: "string" },
+        exactTerms: { type: "array", items: { type: "string" } },
+        filters: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            personName: { type: "string" },
+            eventName: { type: "string" },
+            topic: { type: "string" },
+            companyOrSchool: { type: "string" },
+            dateText: { type: "string" },
+            tags: { type: "array", items: { type: "string" } }
+          }
+        },
+        topK: { type: "number", minimum: 1, maximum: 20 }
+      },
+      required: ["mode", "semanticQuery", "exactTerms"]
     },
     people: {
       type: "array",
@@ -109,10 +204,90 @@ const eventInterpretationSchema = z
   })
   .strict();
 
+const routeDomainSchema = z.enum([
+  "relationship_memory",
+  "relationship_drafting",
+  "contact_management",
+  "lifecycle_control",
+  "general_assistant",
+  "unsafe_or_adversarial"
+]);
+
+const routeIntentSchema = z.enum([
+  "capture_memory",
+  "answer_pending_contact_prompt",
+  "capture_pending_contact_context",
+  "continue_recent_saved_contact",
+  "explain_pending_workflow",
+  "explain_agent_state",
+  "conversation_repair",
+  "duplicate_audit",
+  "delete_memory_request",
+  "list_people",
+  "search_memory",
+  "manual_memory_create",
+  "update_memory",
+  "delete_memory",
+  "draft_message",
+  "request_contact_create",
+  "request_contact_edit",
+  "request_contact_delete",
+  "ignore_candidate",
+  "clarify",
+  "reject",
+  "unknown"
+]);
+
+const conversationRelationSchema = z.enum([
+  "answers_open_workflow",
+  "asks_about_open_workflow",
+  "continues_recent_saved_contact",
+  "continues_previous_search",
+  "starts_new_relationship_task",
+  "starts_new_contact_management_task",
+  "starts_new_out_of_scope_task",
+  "unclear"
+]);
+
+const searchPlanSchema = z
+  .object({
+    mode: z.enum(["lookup_person", "list_people", "list_related_people", "event_recall", "semantic_recall"]),
+    semanticQuery: z.string().default(""),
+    exactTerms: z.array(z.string()).default([]),
+    filters: z
+      .object({
+        personName: z.string().optional(),
+        eventName: z.string().optional(),
+        topic: z.string().optional(),
+        companyOrSchool: z.string().optional(),
+        dateText: z.string().optional(),
+        tags: z.array(z.string()).optional()
+      })
+      .strict()
+      .optional(),
+    topK: z.number().int().positive().max(20).optional()
+  })
+  .strict();
+
+/** Zod schema mirroring `messageInterpretationJsonSchema` for runtime validation. */
 export const messageInterpretationSchema = z
   .object({
-    intent: z.enum(["capture_memory", "search_memory", "ignore_candidate", "clarify", "unknown"]),
+    intent: routeIntentSchema,
     confidence: z.number().min(0).max(1),
+    domain: routeDomainSchema.optional(),
+    conversationRelation: conversationRelationSchema.optional(),
+    target: z
+      .object({
+        frameId: z.string().optional(),
+        candidateId: z.string().optional(),
+        memoryId: z.string().optional(),
+        displayName: z.string().optional()
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    extractedContext: z.string().optional(),
+    search: searchPlanSchema.nullable().optional(),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),
     dateContext: z
@@ -149,10 +324,18 @@ export const messageInterpretationSchema = z
     }
   });
 
+/** Runtime-validated interpretation produced by the LLM layer or deterministic fallback. */
 export type MessageInterpretation = z.infer<typeof messageInterpretationSchema>;
+export type RouteDomain = z.infer<typeof routeDomainSchema>;
+export type SearchPlan = z.infer<typeof searchPlanSchema>;
 
+/**
+ * Parses and validates raw model output against `messageInterpretationSchema`.
+ *
+ * @throws When shape or intent-specific invariants fail (e.g. capture without people)
+ */
 export function validateMessageInterpretation(value: unknown): MessageInterpretation {
-  const parsed = messageInterpretationSchema.safeParse(value);
+  const parsed = messageInterpretationSchema.safeParse(normalizeRawMessageInterpretation(value));
   if (!parsed.success) {
     throw new Error(`Invalid message interpretation: ${parsed.error.message}`);
   }
@@ -160,10 +343,42 @@ export function validateMessageInterpretation(value: unknown): MessageInterpreta
   return parsed.data;
 }
 
+function normalizeRawMessageInterpretation(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  if (input.intent !== "search_memory" || typeof input.query !== "string" || input.query.trim().length > 0) {
+    return value;
+  }
+
+  const search = input.search;
+  if (typeof search !== "object" || search === null || Array.isArray(search)) {
+    return value;
+  }
+
+  const semanticQuery = (search as { semanticQuery?: unknown }).semanticQuery;
+  if (typeof semanticQuery !== "string" || semanticQuery.trim().length === 0) {
+    return value;
+  }
+
+  return {
+    ...input,
+    query: semanticQuery
+  };
+}
+
+/**
+ * Builds a deduplicated search query from interpretation fields for `search_memories`.
+ *
+ * Combines explicit query, event name, and tags; lowercases for deduplication only.
+ */
 export function buildSearchQueryFromInterpretation(interpretation: MessageInterpretation): string {
   const seen = new Set<string>();
 
-  return [interpretation.query, interpretation.event.name, ...interpretation.tags]
+  return [interpretation.search?.exactTerms ?? [], interpretation.query, interpretation.event.name, ...interpretation.tags]
+    .flat()
     .map((part) => part.trim())
     .filter((part) => {
       if (part.length === 0) {

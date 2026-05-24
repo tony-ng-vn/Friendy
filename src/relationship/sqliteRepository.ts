@@ -1,29 +1,82 @@
+/**
+ * SQLite-backed relationship and sensor-runtime persistence.
+ *
+ * Callers: `createRuntimeRelationshipRepository` when `FRIENDY_RUNTIME_STORE=sqlite`, local
+ * macOS sensor runtime, and integration tests that need durable state across restarts.
+ *
+ * Design choices:
+ * - WAL plus busy_timeout lets the sensor process and agent loop share one file.
+ * - raw_json columns keep indexed columns queryable while JSON remains the round-trip source.
+ * - SQL triggers enforce one-memory-per-confirmed-candidate if TypeScript guards are bypassed.
+ * - Runtime tables colocate relationship memory with sensor idempotency in one file.
+ */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 import {
+  computeMethodFingerprint,
+  normalizeDisplayNameForIdentity,
+  type AppleContactLink,
+  type PersonIdentity
+} from "./personIdentity";
+import {
+  buildMemorySearchDocument,
+  scoreMemorySearchDocument,
+  type MemorySearchDocument,
+  type RetrievalCandidate
+} from "./memorySearchDocument";
+import type {
+  ProcessedSensorEvent,
+  RuntimeSensorState,
+  RuntimeStateStore,
+  RuntimeWarningState
+} from "./runtime/friendyRuntime";
+import {
+  calculateCandidateExpiresAt,
+  candidateMethodFingerprint,
+  computeLegacyMemoryMethodFingerprint,
+  expireCandidateIfStale,
   extractTags,
   type ConfirmCandidateOptions,
+  type CreatePersonIdentityInput,
+  type DeleteMemoryInput,
+  type LinkAppleContactInput,
+  type MarkCandidatePromptedOptions,
   type RelationshipRepository,
-  type RepositorySeed
+  type ResolveDuplicateCandidateInput,
+  type RepositorySeed,
+  type UpdateMemoryInput
 } from "./repository";
 import type {
   AgentInteraction,
   CalendarEvent,
+  CandidatePromptAttempt,
   ContactCandidate,
   ContactCandidateDetected,
   EventContextMatch,
+  MemoryRevision,
+  MemoryRevisionReason,
   RelationshipMemory,
+  DuplicateResolutionStatus,
   User
 } from "./types";
 
+/** Connection options for a file-backed relationship repository. */
 export type SqliteRelationshipRepositoryOptions = {
   path: string;
   seed?: RepositorySeed;
+  busyTimeoutMs?: number;
 };
 
+/** SQLite implementation of {@link RelationshipRepository} with an explicit close hook. */
 export type SqliteRelationshipRepository = RelationshipRepository & {
+  close(): void;
+};
+
+/** SQLite implementation of sensor-runtime idempotency and warning deduplication state. */
+export type SqliteRuntimeStateStore = RuntimeStateStore & {
   close(): void;
 };
 
@@ -31,16 +84,37 @@ type RawJsonRow = {
   raw_json: string;
 };
 
-type InsertOrderedTable = "calendar_events" | "candidates" | "event_matches" | "memories" | "interactions";
+type InsertOrderedTable =
+  | "calendar_events"
+  | "candidates"
+  | "event_matches"
+  | "candidate_prompt_attempts"
+  | "memories"
+  | "interactions";
 
+/** Retryable lock error surfaced when SQLite returns `SQLITE_BUSY` under concurrent access. */
+export class SqliteRepositoryBusyError extends Error {
+  readonly code = "SQLITE_BUSY";
+  readonly retryable = true;
+  readonly cause: unknown;
+
+  constructor(operation: string, cause: unknown) {
+    super(`SQLite database is busy during ${operation}`);
+    this.name = "SqliteRepositoryBusyError";
+    this.cause = cause;
+  }
+}
+
+/**
+ * Creates a durable {@link RelationshipRepository} backed by a single SQLite file.
+ *
+ * Multi-step writes (confirm candidate + insert memory, create candidate + event matches) run
+ * inside `BEGIN IMMEDIATE` transactions so partial state cannot leak on crash.
+ */
 export function createSqliteRelationshipRepository(options: SqliteRelationshipRepositoryOptions): SqliteRelationshipRepository {
-  mkdirSync(dirname(options.path), { recursive: true });
-
   const seed = options.seed;
-  const db = new DatabaseSync(options.path);
+  const db = openSqliteRuntimeDatabase(options.path, { busyTimeoutMs: options.busyTimeoutMs });
   try {
-    setupSchema(db);
-
     if (seed) {
       runTransaction(db, () => seedRepository(db, seed));
     }
@@ -76,15 +150,24 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
     createCandidateFromDetectedContact(contact: ContactCandidateDetected): ContactCandidate {
       return runTransaction(db, () => {
+        const candidateId = createCandidateId(contact);
+        const existingCandidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (existingCandidate) {
+          return existingCandidate;
+        }
+
         const candidate: ContactCandidate = {
           ...contact,
-          id: createCandidateId(contact),
-          status: "pending"
+          id: candidateId,
+          status: "pending",
+          expiresAt: calculateCandidateExpiresAt(contact.detectedAt)
         };
 
         upsertCandidate(db, candidate);
 
-        const eventMatches = mapCandidateToEvents(candidate.id, contact, listCalendarEvents(contact.userId));
+        const eventMatches = mapCandidateToEvents(candidate.id, eventMatchContact(contact), listCalendarEvents(contact.userId));
         for (const match of eventMatches) {
           upsertEventMatch(db, match);
         }
@@ -94,9 +177,12 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     listPendingCandidates(userId: string): ContactCandidate[] {
+      expireStaleCandidates(db, userId);
       return readRows<ContactCandidate>(
         db
-          .prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status = 'pending' ORDER BY insert_order, id")
+          .prepare(
+            "SELECT raw_json FROM candidates WHERE user_id = ? AND status IN ('pending', 'prompted') ORDER BY insert_order, id"
+          )
           .all(userId)
       );
     },
@@ -108,6 +194,73 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
     },
 
     listEventMatches,
+
+    recordPromptAttempt(attempt: CandidatePromptAttempt): CandidatePromptAttempt {
+      upsertPromptAttempt(db, attempt);
+      return attempt;
+    },
+
+    listCandidatePromptAttempts(candidateId: string): CandidatePromptAttempt[] {
+      return readRows<CandidatePromptAttempt>(
+        db
+          .prepare(
+            "SELECT raw_json FROM candidate_prompt_attempts WHERE candidate_id = ? ORDER BY created_at, insert_order, id"
+          )
+          .all(candidateId)
+      );
+    },
+
+    markCandidatePrompted(
+      candidateId: string,
+      interactionId: string,
+      options: MarkCandidatePromptedOptions = {}
+    ): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (currentCandidate.status !== "pending") {
+          throw new Error(`Candidate is not promptable: ${candidateId}`);
+        }
+
+        const promptedCandidate: ContactCandidate = {
+          ...currentCandidate,
+          status: "prompted",
+          promptInteractionId: interactionId,
+          promptSpaceId: options.spaceId,
+          promptedAt: options.promptedAt,
+          statusReason: undefined
+        };
+        upsertCandidate(db, promptedCandidate);
+        return promptedCandidate;
+      });
+    },
+
+    markCandidatePromptFailed(candidateId: string, reason: string): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (currentCandidate.status !== "pending") {
+          throw new Error(`Candidate is not pending: ${candidateId}`);
+        }
+
+        const failedCandidate: ContactCandidate = {
+          ...currentCandidate,
+          statusReason: reason
+        };
+        upsertCandidate(db, failedCandidate);
+        return failedCandidate;
+      });
+    },
 
     confirmCandidate(
       candidateId: string,
@@ -122,29 +275,39 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
         if (!candidate) {
           throw new Error(`Candidate not found: ${candidateId}`);
         }
+        const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+        if (!isReviewableCandidateStatus(currentCandidate.status)) {
+          throw new Error(`Candidate is not confirmable: ${candidateId}`);
+        }
 
-        const confirmedCandidate: ContactCandidate = { ...candidate, status: "confirmed" };
-        upsertCandidate(db, confirmedCandidate);
+        const confirmedCandidate: ContactCandidate = { ...currentCandidate, status: "confirmed" };
+        const confirmedAt = options.confirmedAt ?? new Date().toISOString();
+        const personId = ensureSqliteCandidatePersonId(db, currentCandidate, confirmedAt);
+        upsertCandidate(db, { ...confirmedCandidate, personId });
 
         const selectedMatch =
           options.eventTitle && !eventId ? undefined : selectEventMatch(listEventMatches(candidateId), eventId);
         const memory: RelationshipMemory = {
-          id: `memory_${candidate.id}`,
-          userId: candidate.userId,
-          candidateId: candidate.id,
-          displayName: candidate.displayName,
-          primaryContactLabel: candidate.phoneNumbers[0] ?? candidate.emails[0] ?? "contact saved",
+          id: `memory_${currentCandidate.id}`,
+          userId: currentCandidate.userId,
+          candidateId: currentCandidate.id,
+          personId,
+          displayName: currentCandidate.displayName,
+          primaryContactLabel: currentCandidate.phoneNumbers[0] ?? currentCandidate.emails[0] ?? "contact saved",
           eventId: selectedMatch?.calendarEventId,
           eventTitle: options.eventTitle ?? selectedMatch?.eventTitle,
+          dateContext: options.dateContext,
           contextNote,
           relationshipContext: options.relationshipContext,
           tags: extractTags(contextNote),
           confidence: selectedMatch?.confidence ?? 0.5,
-          createdAt: "2026-05-20T12:00:00.000Z",
-          updatedAt: "2026-05-20T12:00:00.000Z"
+          createdAt: confirmedAt,
+          updatedAt: confirmedAt
         };
 
         insertMemory(db, memory);
+        upsertMemorySearchDocument(db, memory);
+        insertMemoryRevision(db, createCreatedMemoryRevision(memory));
         return memory;
       });
     },
@@ -156,23 +319,108 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       if (!candidate) {
         throw new Error(`Candidate not found: ${candidateId}`);
       }
+      const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+      if (!isReviewableCandidateStatus(currentCandidate.status)) {
+        throw new Error(`Candidate is not ignorable: ${candidateId}`);
+      }
 
-      upsertCandidate(db, { ...candidate, status: "ignored" });
+      upsertCandidate(db, { ...currentCandidate, status: "ignored" });
     },
 
     listMemories(userId?: string): RelationshipMemory[] {
       if (userId) {
         return readRows<RelationshipMemory>(
           db.prepare("SELECT raw_json FROM memories WHERE user_id = ? ORDER BY insert_order, id").all(userId)
+        ).filter((memory) => !memory.deletedAt);
+      }
+
+      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all()).filter(
+        (memory) => !memory.deletedAt
+      );
+    },
+
+    listMemorySearchDocuments(userId?: string): MemorySearchDocument[] {
+      if (userId) {
+        return readRows<MemorySearchDocument>(
+          db.prepare("SELECT raw_json FROM memory_search_documents WHERE user_id = ? ORDER BY updated_at, memory_id").all(userId)
         );
       }
 
-      return readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+      return readRows<MemorySearchDocument>(
+        db.prepare("SELECT raw_json FROM memory_search_documents ORDER BY updated_at, memory_id").all()
+      );
+    },
+
+    searchMemoryDocuments(userId: string, query: string, terms: string[]): RetrievalCandidate[] {
+      return searchSqliteMemoryDocuments(db, userId, query, terms);
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
-      insertMemory(db, memory);
-      return memory;
+      return runTransaction(db, () => {
+        assertSqliteMemoryHasConfirmedCandidate(db, memory);
+        insertMemory(db, memory);
+        upsertMemorySearchDocument(db, memory);
+        insertMemoryRevision(db, createCreatedMemoryRevision(memory));
+        return memory;
+      });
+    },
+
+    updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory {
+      return runTransaction(db, () => {
+        const previous = readOptionalRow<RelationshipMemory>(
+          db.prepare("SELECT raw_json FROM memories WHERE id = ?").get(memoryId)
+        );
+        if (!previous) {
+          throw new Error(`Memory not found: ${memoryId}`);
+        }
+        if (previous.deletedAt) {
+          throw new Error(`Memory is deleted: ${memoryId}`);
+        }
+
+        const updated: RelationshipMemory = {
+          ...previous,
+          contextNote: updates.contextNote,
+          relationshipContext: updates.relationshipContext ?? previous.relationshipContext,
+          tags: extractTags([updates.contextNote, updates.relationshipContext ?? ""].join(" ")),
+          updatedAt: updates.updatedAt
+        };
+        updateMemoryRow(db, updated);
+        upsertMemorySearchDocument(db, updated);
+        insertMemoryRevision(db, createUpdatedMemoryRevision(previous, updated, updates, countMemoryRevisions(db, memoryId) + 1));
+        return updated;
+      });
+    },
+
+    deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory {
+      return runTransaction(db, () => {
+        const previous = readOptionalRow<RelationshipMemory>(
+          db.prepare("SELECT raw_json FROM memories WHERE id = ?").get(memoryId)
+        );
+        if (!previous) {
+          throw new Error(`Memory not found: ${memoryId}`);
+        }
+        if (previous.deletedAt) {
+          return previous;
+        }
+
+        const deleted: RelationshipMemory = {
+          ...previous,
+          deletedAt: input.deletedAt,
+          updatedAt: input.deletedAt
+        };
+        updateMemoryRow(db, deleted);
+        deleteMemorySearchDocument(db, deleted.id);
+        insertMemoryRevision(db, createDeletedMemoryRevision(previous, deleted, input, countMemoryRevisions(db, memoryId) + 1));
+        return deleted;
+      });
+    },
+
+    listMemoryRevisions(memoryId: string): MemoryRevision[] {
+      return readRows<MemoryRevision>(
+        db
+          .prepare("SELECT raw_json FROM memory_revisions WHERE memory_id = ? ORDER BY created_at, revision_id")
+          .all(memoryId)
+      );
     },
 
     addInteraction(interaction: AgentInteraction): AgentInteraction {
@@ -190,6 +438,357 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       return readRows<AgentInteraction>(db.prepare("SELECT raw_json FROM interactions ORDER BY insert_order, id").all());
     },
 
+    createPersonIdentity(input: CreatePersonIdentityInput): PersonIdentity {
+      return runTransaction(db, () => {
+        const timestamp = input.createdAt ?? new Date().toISOString();
+        const person: PersonIdentity = {
+          id: `person_${randomUUID()}`,
+          userId: input.userId,
+          canonicalDisplayName: input.canonicalDisplayName,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        upsertPersonIdentity(db, person);
+        return person;
+      });
+    },
+
+    linkAppleContact(input: LinkAppleContactInput): AppleContactLink {
+      return runTransaction(db, () => {
+        const person = readOptionalRow<PersonIdentity>(
+          db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(input.personId)
+        );
+        if (!person || person.userId !== input.userId) {
+          throw new Error(`Person not found: ${input.personId}`);
+        }
+
+        const linkedAt = input.linkedAt ?? new Date().toISOString();
+        const link: AppleContactLink = {
+          id: `apple_contact_link_${randomUUID()}`,
+          personId: input.personId,
+          userId: input.userId,
+          contactIdentifier: input.contactIdentifier,
+          unifiedContactIdentifier: input.unifiedContactIdentifier,
+          containerIdentifier: input.containerIdentifier,
+          methodFingerprint: input.methodFingerprint,
+          displayNameSnapshot: input.displayNameSnapshot,
+          sensorEventId: input.sensorEventId,
+          linkedAt
+        };
+        upsertAppleContactLink(db, link);
+        return link;
+      });
+    },
+
+    findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined {
+      const link = readOptionalRow<AppleContactLink>(
+        db
+          .prepare("SELECT raw_json FROM apple_contact_links WHERE user_id = ? AND method_fingerprint = ?")
+          .get(userId, methodFingerprint)
+      );
+      if (!link) {
+        return undefined;
+      }
+
+      const person = readOptionalRow<PersonIdentity>(
+        db.prepare("SELECT raw_json FROM person_identities WHERE id = ? AND user_id = ?").get(link.personId, userId)
+      );
+      if (!person || person.mergedIntoPersonId) {
+        return undefined;
+      }
+
+      return person;
+    },
+
+    findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[] {
+      const normalizedDisplayName = normalizeDisplayNameForIdentity(displayName);
+      if (!normalizedDisplayName) {
+        return [];
+      }
+
+      return readRows<PersonIdentity>(
+        db.prepare("SELECT raw_json FROM person_identities WHERE user_id = ? ORDER BY created_at, id").all(userId)
+      ).filter(
+        (person) =>
+          !person.mergedIntoPersonId &&
+          normalizeDisplayNameForIdentity(person.canonicalDisplayName) === normalizedDisplayName
+      );
+    },
+
+    attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+
+        const person = readOptionalRow<PersonIdentity>(
+          db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(personId)
+        );
+        if (!person || person.userId !== candidate.userId) {
+          throw new Error(`Person not found: ${personId}`);
+        }
+
+        const attachedCandidate: ContactCandidate = { ...candidate, personId };
+        upsertCandidate(db, attachedCandidate);
+        return attachedCandidate;
+      });
+    },
+
+    resolveDuplicateCandidate(candidateId: string, input: ResolveDuplicateCandidateInput): ContactCandidate {
+      return runTransaction(db, () => {
+        const candidate = readOptionalRow<ContactCandidate>(
+          db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+        );
+        if (!candidate) {
+          throw new Error(`Candidate not found: ${candidateId}`);
+        }
+
+        if (input.personId) {
+          const person = readOptionalRow<PersonIdentity>(
+            db.prepare("SELECT raw_json FROM person_identities WHERE id = ?").get(input.personId)
+          );
+          if (!person || person.userId !== candidate.userId) {
+            throw new Error(`Person not found: ${input.personId}`);
+          }
+        }
+
+        const resolvedCandidate: ContactCandidate = {
+          ...candidate,
+          personId: input.personId ?? candidate.personId,
+          suspectedDuplicatePersonId: input.suspectedDuplicatePersonId,
+          duplicateResolutionStatus: input.resolution as DuplicateResolutionStatus,
+          status: input.resolution === "ignored" ? "ignored" : candidate.status
+        };
+        upsertCandidate(db, resolvedCandidate);
+        return resolvedCandidate;
+      });
+    },
+
+    close(): void {
+      db.close();
+    }
+  };
+}
+
+/**
+ * Opens (or creates) the shared Friendy runtime database with production-oriented pragmas.
+ *
+ * - `journal_mode=WAL`: readers do not block writers — required when sensors write while the
+ *   agent reads pending candidates.
+ * - `synchronous=NORMAL`: safe with WAL while avoiding full fsync on every row for local MVP.
+ * - `busy_timeout`: converts lock contention into waits instead of immediate failures.
+ */
+export function openSqliteRuntimeDatabase(
+  path: string,
+  options: { busyTimeoutMs?: number } = {}
+): DatabaseSync {
+  mkdirSync(dirname(path), { recursive: true });
+  const busyTimeoutMs = options.busyTimeoutMs ?? 5000;
+  const db = new DatabaseSync(path, {
+    timeout: busyTimeoutMs,
+    enableForeignKeyConstraints: true
+  });
+
+  try {
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = ${busyTimeoutMs};
+      PRAGMA foreign_keys = ON;
+      PRAGMA synchronous = NORMAL;
+    `);
+    setupSchema(db);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}
+
+/** Creates the sensor-runtime store using the same schema file as relationship data. */
+export function createSqliteRuntimeStateStore({ path }: { path: string }): SqliteRuntimeStateStore {
+  const db = openSqliteRuntimeDatabase(path);
+
+  return {
+    getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined {
+      return readProcessedEvent(
+        db.prepare("SELECT * FROM processed_sensor_events WHERE idempotency_key = ?").get(idempotencyKey)
+      );
+    },
+
+    getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined {
+      return readProcessedEvent(
+        db.prepare("SELECT * FROM processed_sensor_events WHERE sensor_event_id = ? ORDER BY processed_at DESC LIMIT 1").get(sensorEventId)
+      );
+    },
+
+    recordProcessedEvent(event: ProcessedSensorEvent): void {
+      db.prepare(
+        `
+          INSERT INTO processed_sensor_events (
+            idempotency_key, sensor_event_id, sensor_name, event_type, status,
+            candidate_id, warning_code, processed_at, raw_json
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(idempotency_key) DO UPDATE SET
+            sensor_event_id = excluded.sensor_event_id,
+            sensor_name = excluded.sensor_name,
+            event_type = excluded.event_type,
+            status = excluded.status,
+            candidate_id = excluded.candidate_id,
+            warning_code = excluded.warning_code,
+            processed_at = excluded.processed_at,
+            raw_json = excluded.raw_json
+        `
+      ).run(
+        event.idempotencyKey,
+        event.sensorEventId ?? null,
+        event.sensorName,
+        event.eventType,
+        event.status,
+        event.candidateId ?? null,
+        event.warningCode ?? null,
+        event.processedAt,
+        stringify(event)
+      );
+    },
+
+    getSensorState(userId: string, sensorName: string, deviceId: string): RuntimeSensorState | undefined {
+      return readSensorState(
+        db
+          .prepare("SELECT * FROM sensor_state WHERE user_id = ? AND sensor_name = ? AND device_id = ?")
+          .get(userId, sensorName, deviceId)
+      );
+    },
+
+    upsertSensorState(input: {
+      userId: string;
+      sensorName: string;
+      deviceId: string;
+      stateJson: Record<string, unknown>;
+      historyTokenBlob?: Uint8Array;
+      baselineCompletedAt?: string;
+      lastSuccessAt?: string;
+      lastErrorCode?: string;
+      lastPermissionStatus?: string;
+      now: string;
+    }): RuntimeSensorState {
+      const existing = this.getSensorState(input.userId, input.sensorName, input.deviceId);
+      const sensorState: RuntimeSensorState = {
+        userId: input.userId,
+        sensorName: input.sensorName,
+        deviceId: input.deviceId,
+        stateJson: input.stateJson,
+        historyTokenBlob: input.historyTokenBlob ?? existing?.historyTokenBlob,
+        baselineCompletedAt: input.baselineCompletedAt ?? existing?.baselineCompletedAt,
+        lastSuccessAt: input.lastSuccessAt ?? existing?.lastSuccessAt,
+        lastErrorCode: input.lastErrorCode ?? existing?.lastErrorCode,
+        lastPermissionStatus: input.lastPermissionStatus ?? existing?.lastPermissionStatus,
+        createdAt: existing?.createdAt ?? input.now,
+        updatedAt: input.now
+      };
+
+      db.prepare(
+        `
+          INSERT INTO sensor_state (
+            user_id, sensor_name, device_id, state_json, history_token_blob,
+            baseline_completed_at, last_success_at, last_error_code, last_permission_status,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, sensor_name, device_id) DO UPDATE SET
+            state_json = excluded.state_json,
+            history_token_blob = excluded.history_token_blob,
+            baseline_completed_at = excluded.baseline_completed_at,
+            last_success_at = excluded.last_success_at,
+            last_error_code = excluded.last_error_code,
+            last_permission_status = excluded.last_permission_status,
+            updated_at = excluded.updated_at
+        `
+      ).run(
+        sensorState.userId,
+        sensorState.sensorName,
+        sensorState.deviceId,
+        stringify(sensorState.stateJson),
+        sensorState.historyTokenBlob ?? null,
+        sensorState.baselineCompletedAt ?? null,
+        sensorState.lastSuccessAt ?? null,
+        sensorState.lastErrorCode ?? null,
+        sensorState.lastPermissionStatus ?? null,
+        sensorState.createdAt,
+        sensorState.updatedAt
+      );
+
+      return sensorState;
+    },
+
+    getWarning(userId: string, sensorName: string, warningCode: string): RuntimeWarningState | undefined {
+      return readRuntimeWarning(
+        db
+          .prepare("SELECT * FROM runtime_warnings WHERE user_id = ? AND sensor_name = ? AND warning_code = ?")
+          .get(userId, sensorName, warningCode)
+      );
+    },
+
+    upsertWarning(input: {
+      userId: string;
+      sensorName: string;
+      warningCode: string;
+      permissionStatus?: string;
+      now: string;
+      notified: boolean;
+    }): RuntimeWarningState {
+      const existing = this.getWarning(input.userId, input.sensorName, input.warningCode);
+      const warning: RuntimeWarningState = existing
+        ? {
+            ...existing,
+            permissionStatus: input.permissionStatus,
+            lastSeenAt: input.now,
+            lastNotifiedAt: input.notified ? input.now : existing.lastNotifiedAt,
+            notificationCount: existing.notificationCount + (input.notified ? 1 : 0)
+          }
+        : {
+            userId: input.userId,
+            sensorName: input.sensorName,
+            warningCode: input.warningCode,
+            permissionStatus: input.permissionStatus,
+            firstSeenAt: input.now,
+            lastSeenAt: input.now,
+            lastNotifiedAt: input.notified ? input.now : undefined,
+            notificationCount: input.notified ? 1 : 0
+          };
+
+      db.prepare(
+        `
+          INSERT INTO runtime_warnings (
+            user_id, sensor_name, warning_code, permission_status, first_seen_at,
+            last_seen_at, last_notified_at, notification_count, raw_json
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, sensor_name, warning_code) DO UPDATE SET
+            permission_status = excluded.permission_status,
+            last_seen_at = excluded.last_seen_at,
+            last_notified_at = excluded.last_notified_at,
+            notification_count = excluded.notification_count,
+            raw_json = excluded.raw_json
+        `
+      ).run(
+        warning.userId,
+        warning.sensorName,
+        warning.warningCode,
+        warning.permissionStatus ?? null,
+        warning.firstSeenAt,
+        warning.lastSeenAt,
+        warning.lastNotifiedAt ?? null,
+        warning.notificationCount,
+        stringify(warning)
+      );
+
+      return warning;
+    },
+
     close(): void {
       db.close();
     }
@@ -198,6 +797,12 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
 
 function setupSchema(db: DatabaseSync): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       phone_number TEXT NOT NULL,
@@ -250,6 +855,21 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS event_matches_candidate_rank_idx
       ON event_matches(candidate_id, rank);
 
+    CREATE TABLE IF NOT EXISTS candidate_prompt_attempts (
+      id TEXT PRIMARY KEY,
+      insert_order INTEGER NOT NULL,
+      candidate_id TEXT NOT NULL,
+      interaction_id TEXT,
+      spectrum_space_id TEXT,
+      status TEXT NOT NULL,
+      error_code TEXT,
+      created_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS prompt_attempts_candidate_created_idx
+      ON candidate_prompt_attempts(candidate_id, created_at);
+
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
       insert_order INTEGER NOT NULL,
@@ -266,6 +886,50 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS memories_user_created_idx
       ON memories(user_id, created_at);
 
+    CREATE UNIQUE INDEX IF NOT EXISTS memories_candidate_unique_idx
+      ON memories(candidate_id)
+      WHERE candidate_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS memory_search_documents (
+      memory_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(memory_id) REFERENCES memories(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS memory_search_documents_user_updated_idx
+      ON memory_search_documents(user_id, updated_at, memory_id);
+
+    CREATE TABLE IF NOT EXISTS memory_revisions (
+      revision_id TEXT PRIMARY KEY,
+      memory_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(memory_id) REFERENCES memories(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS memory_revisions_memory_created_idx
+      ON memory_revisions(memory_id, created_at, revision_id);
+
+    -- Belt-and-suspenders guard: memories must point at a confirmed candidate for the same user.
+    -- The app layer also checks this, but the trigger prevents duplicate or premature inserts if
+    -- a future tool bypasses TypeScript helpers.
+    CREATE TRIGGER IF NOT EXISTS memory_requires_confirmed_candidate
+    BEFORE INSERT ON memories
+    FOR EACH ROW
+    WHEN NEW.candidate_id IS NULL OR NOT EXISTS (
+      SELECT 1
+      FROM candidates
+      WHERE id = NEW.candidate_id
+        AND user_id = NEW.user_id
+        AND status = 'confirmed'
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'Memory requires a confirmed candidate');
+    END;
+
     CREATE TABLE IF NOT EXISTS interactions (
       id TEXT PRIMARY KEY,
       insert_order INTEGER NOT NULL,
@@ -279,8 +943,479 @@ function setupSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS interactions_user_created_idx
       ON interactions(user_id, created_at);
 
-    PRAGMA user_version = 1;
+    CREATE TABLE IF NOT EXISTS sensor_state (
+      user_id TEXT NOT NULL,
+      sensor_name TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      history_token_blob BLOB,
+      baseline_completed_at TEXT,
+      last_success_at TEXT,
+      last_error_code TEXT,
+      last_permission_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, sensor_name, device_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS runtime_warnings (
+      user_id TEXT NOT NULL,
+      sensor_name TEXT NOT NULL,
+      warning_code TEXT NOT NULL,
+      permission_status TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      last_notified_at TEXT,
+      suppressed_until TEXT,
+      acknowledged_at TEXT,
+      notification_count INTEGER NOT NULL DEFAULT 0,
+      raw_json TEXT,
+      PRIMARY KEY (user_id, sensor_name, warning_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS processed_sensor_events (
+      idempotency_key TEXT PRIMARY KEY,
+      sensor_event_id TEXT,
+      sensor_name TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (
+        status IN ('candidate_created', 'duplicate', 'ignored', 'baselined', 'warning', 'failed')
+      ),
+      candidate_id TEXT,
+      warning_code TEXT,
+      processed_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS processed_sensor_events_sensor_event_idx
+      ON processed_sensor_events(sensor_event_id);
+
+    INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+    VALUES (1, '1_initial_runtime_store', '2026-05-21T00:00:00.000Z');
+
+    INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+    VALUES (2, '2_memory_search_documents', '2026-05-22T00:00:00.000Z');
+
+    PRAGMA user_version = 2;
   `);
+  setupMemorySearchFts(db);
+  backfillMemorySearchDocuments(db);
+  runPersonIdentityMigration(db);
+  if (sqliteTableHasColumn(db, "memories", "person_id")) {
+    backfillMemoryPersonIdentities(db);
+    repairEmptyMethodFingerprintPersonCollisions(db);
+  }
+}
+
+function runPersonIdentityMigration(db: DatabaseSync): void {
+  const currentVersion = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+  if (currentVersion >= 3) {
+    return;
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS person_identities (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      canonical_display_name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      merged_into_person_id TEXT,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS person_identities_user_name_idx
+      ON person_identities(user_id, canonical_display_name);
+
+    CREATE TABLE IF NOT EXISTS apple_contact_links (
+      id TEXT PRIMARY KEY,
+      person_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      method_fingerprint TEXT NOT NULL,
+      display_name_snapshot TEXT NOT NULL,
+      linked_at TEXT NOT NULL,
+      raw_json TEXT NOT NULL,
+      FOREIGN KEY(person_id) REFERENCES person_identities(id)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS apple_contact_links_user_fingerprint_idx
+      ON apple_contact_links(user_id, method_fingerprint);
+  `);
+
+  if (!sqliteTableHasColumn(db, "memories", "person_id")) {
+    db.exec("ALTER TABLE memories ADD COLUMN person_id TEXT");
+  }
+
+  backfillMemoryPersonIdentities(db);
+
+  db.prepare(
+    `
+      INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
+      VALUES (3, '3_person_identity_resolution', ?)
+    `
+  ).run(new Date().toISOString());
+  db.exec("PRAGMA user_version = 3");
+}
+
+function sqliteTableHasColumn(db: DatabaseSync, table: string, column: string): boolean {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return columns.some((item) => item.name === column);
+}
+
+function backfillMemoryPersonIdentities(db: DatabaseSync): void {
+  const memories = readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+
+  for (const memory of memories) {
+    if (memory.personId) {
+      continue;
+    }
+
+    const candidate = memory.candidateId
+      ? readOptionalRow<ContactCandidate>(db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(memory.candidateId))
+      : undefined;
+    const timestamp = memory.updatedAt ?? memory.createdAt;
+    let personId: string;
+
+    if (candidate) {
+      personId = ensureSqliteCandidatePersonId(db, candidate, timestamp);
+    } else {
+      const methodFingerprint = computeLegacyMemoryMethodFingerprint(memory.displayName, memory.id);
+      const existingPerson = readOptionalRow<PersonIdentity>(
+        db
+          .prepare(
+            `
+              SELECT p.raw_json
+              FROM apple_contact_links l
+              JOIN person_identities p ON p.id = l.person_id
+              WHERE l.user_id = ? AND l.method_fingerprint = ?
+            `
+          )
+          .get(memory.userId, methodFingerprint)
+      );
+
+      if (existingPerson) {
+        personId = existingPerson.id;
+      } else {
+        const person: PersonIdentity = {
+          id: `person_${randomUUID()}`,
+          userId: memory.userId,
+          canonicalDisplayName: memory.displayName,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        upsertPersonIdentity(db, person);
+        upsertAppleContactLink(db, {
+          id: `apple_contact_link_${randomUUID()}`,
+          personId: person.id,
+          userId: memory.userId,
+          methodFingerprint,
+          displayNameSnapshot: memory.displayName,
+          linkedAt: timestamp
+        });
+        personId = person.id;
+      }
+    }
+
+    const updatedMemory: RelationshipMemory = { ...memory, personId };
+    updateMemoryRow(db, updatedMemory);
+  }
+}
+
+function repairEmptyMethodFingerprintPersonCollisions(db: DatabaseSync): void {
+  const emptyFingerprint = computeMethodFingerprint({});
+  const candidates = readRows<ContactCandidate>(db.prepare("SELECT raw_json FROM candidates ORDER BY insert_order, id").all());
+
+  for (const candidate of candidates) {
+    if (!candidate.personId) {
+      continue;
+    }
+
+    const legacyEmptyLink = readOptionalRow<AppleContactLink>(
+      db
+        .prepare(
+          "SELECT raw_json FROM apple_contact_links WHERE person_id = ? AND user_id = ? AND method_fingerprint = ?"
+        )
+        .get(candidate.personId, candidate.userId, emptyFingerprint)
+    );
+    if (!legacyEmptyLink) {
+      continue;
+    }
+
+    const repairedFingerprint = candidateMethodFingerprint(candidate);
+    if (repairedFingerprint === emptyFingerprint) {
+      continue;
+    }
+
+    let person = readOptionalRow<PersonIdentity>(
+      db
+        .prepare(
+          `
+            SELECT p.raw_json
+            FROM apple_contact_links l
+            JOIN person_identities p ON p.id = l.person_id
+            WHERE l.user_id = ? AND l.method_fingerprint = ?
+          `
+        )
+        .get(candidate.userId, repairedFingerprint)
+    );
+
+    if (!person || person.mergedIntoPersonId) {
+      const timestamp = candidate.detectedAt;
+      person = {
+        id: `person_${randomUUID()}`,
+        userId: candidate.userId,
+        canonicalDisplayName: candidate.displayName,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      upsertPersonIdentity(db, person);
+    }
+
+    upsertAppleContactLink(db, {
+      id: `apple_contact_link_${randomUUID()}`,
+      personId: person.id,
+      userId: candidate.userId,
+      contactIdentifier: candidate.contactIdentifier,
+      unifiedContactIdentifier: candidate.unifiedContactIdentifier,
+      containerIdentifier: candidate.containerIdentifier,
+      methodFingerprint: repairedFingerprint,
+      displayNameSnapshot: candidate.displayName,
+      sensorEventId: candidate.sensorEventId,
+      linkedAt: candidate.detectedAt
+    });
+
+    const updatedCandidate = { ...candidate, personId: person.id };
+    upsertCandidate(db, updatedCandidate);
+
+    const memories = readRows<RelationshipMemory>(
+      db.prepare("SELECT raw_json FROM memories WHERE candidate_id = ? ORDER BY insert_order, id").all(candidate.id)
+    );
+    for (const memory of memories) {
+      updateMemoryRow(db, { ...memory, personId: person.id });
+    }
+  }
+}
+
+function ensureSqliteCandidatePersonId(db: DatabaseSync, candidate: ContactCandidate, now: string): string {
+  if (candidate.personId) {
+    return candidate.personId;
+  }
+
+  const methodFingerprint = candidateMethodFingerprint(candidate);
+  const existingLink = readOptionalRow<AppleContactLink>(
+    db
+      .prepare("SELECT raw_json FROM apple_contact_links WHERE user_id = ? AND method_fingerprint = ?")
+      .get(candidate.userId, methodFingerprint)
+  );
+  if (existingLink) {
+    const existingPerson = readOptionalRow<PersonIdentity>(
+      db.prepare("SELECT raw_json FROM person_identities WHERE id = ? AND user_id = ?").get(existingLink.personId, candidate.userId)
+    );
+    if (existingPerson && !existingPerson.mergedIntoPersonId) {
+      return existingPerson.id;
+    }
+  }
+
+  const person: PersonIdentity = {
+    id: `person_${randomUUID()}`,
+    userId: candidate.userId,
+    canonicalDisplayName: candidate.displayName,
+    createdAt: now,
+    updatedAt: now
+  };
+  upsertPersonIdentity(db, person);
+  upsertAppleContactLink(db, {
+    id: `apple_contact_link_${randomUUID()}`,
+    personId: person.id,
+    userId: candidate.userId,
+    contactIdentifier: candidate.contactIdentifier,
+    unifiedContactIdentifier: candidate.unifiedContactIdentifier,
+    containerIdentifier: candidate.containerIdentifier,
+    methodFingerprint,
+    displayNameSnapshot: candidate.displayName,
+    sensorEventId: candidate.sensorEventId,
+    linkedAt: now
+  });
+  return person.id;
+}
+
+function upsertPersonIdentity(db: DatabaseSync, person: PersonIdentity): void {
+  db.prepare(
+    `
+      INSERT INTO person_identities (
+        id, user_id, canonical_display_name, created_at, updated_at, merged_into_person_id, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        user_id = excluded.user_id,
+        canonical_display_name = excluded.canonical_display_name,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        merged_into_person_id = excluded.merged_into_person_id,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    person.id,
+    person.userId,
+    person.canonicalDisplayName,
+    person.createdAt,
+    person.updatedAt,
+    person.mergedIntoPersonId ?? null,
+    stringify(person)
+  );
+}
+
+function upsertAppleContactLink(db: DatabaseSync, link: AppleContactLink): void {
+  db.prepare(
+    `
+      INSERT INTO apple_contact_links (
+        id, person_id, user_id, method_fingerprint, display_name_snapshot, linked_at, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        person_id = excluded.person_id,
+        user_id = excluded.user_id,
+        method_fingerprint = excluded.method_fingerprint,
+        display_name_snapshot = excluded.display_name_snapshot,
+        linked_at = excluded.linked_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    link.id,
+    link.personId,
+    link.userId,
+    link.methodFingerprint,
+    link.displayNameSnapshot,
+    link.linkedAt,
+    stringify(link)
+  );
+}
+
+function setupMemorySearchFts(db: DatabaseSync): void {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_search_fts USING fts5(
+        memory_id UNINDEXED,
+        user_id UNINDEXED,
+        display_name,
+        event_title,
+        context_note,
+        relationship_context,
+        tags,
+        search_text
+      );
+    `);
+  } catch {
+    // FTS5 is optional. Derived document rows still keep lexical search usable.
+  }
+}
+
+function backfillMemorySearchDocuments(db: DatabaseSync): void {
+  const memories = readRows<RelationshipMemory>(db.prepare("SELECT raw_json FROM memories ORDER BY insert_order, id").all());
+  const liveMemoryIds = new Set<string>();
+
+  for (const memory of memories) {
+    if (memory.deletedAt) {
+      deleteMemorySearchDocument(db, memory.id);
+      continue;
+    }
+
+    liveMemoryIds.add(memory.id);
+    upsertMemorySearchDocument(db, memory);
+  }
+
+  const documents = readRows<MemorySearchDocument>(db.prepare("SELECT raw_json FROM memory_search_documents").all());
+  for (const document of documents) {
+    if (!liveMemoryIds.has(document.memoryId)) {
+      deleteMemorySearchDocument(db, document.memoryId);
+    }
+  }
+}
+
+function searchSqliteMemoryDocuments(
+  db: DatabaseSync,
+  userId: string,
+  query: string,
+  terms: string[]
+): RetrievalCandidate[] {
+  if (!memorySearchFtsAvailable(db)) {
+    return [];
+  }
+
+  const ftsQuery = buildFtsQuery(terms.length > 0 ? terms : extractTags(query));
+  if (!ftsQuery) {
+    return [];
+  }
+
+  const rows = db
+    .prepare(
+      `
+        SELECT d.raw_json, bm25(memory_search_fts) AS rank
+        FROM memory_search_fts
+        JOIN memory_search_documents d ON d.memory_id = memory_search_fts.memory_id
+        WHERE memory_search_fts MATCH ?
+          AND memory_search_fts.user_id = ?
+        ORDER BY rank, d.updated_at DESC, d.memory_id
+        LIMIT 20
+      `
+    )
+    .all(ftsQuery, userId) as Array<RawJsonRow & { rank: number }>;
+
+  return rows.map((row) => {
+    const document = parseJson<MemorySearchDocument>(row.raw_json);
+    const documentCandidate = scoreMemorySearchDocument(document, terms);
+    return {
+      memoryId: document.memoryId,
+      source: "fts",
+      score: Math.max(1, documentCandidate?.score ?? 1),
+      matchedTerms: documentCandidate?.matchedTerms ?? terms
+    };
+  });
+}
+
+function buildFtsQuery(terms: string[]): string {
+  return terms
+    .map((term) => term.replace(/[^\p{L}\p{N}_-]/gu, "").trim())
+    .filter(Boolean)
+    .map((term) => `"${term.replace(/"/g, "\"\"")}"`)
+    .join(" ");
+}
+
+function memorySearchFtsAvailable(db: DatabaseSync): boolean {
+  return Boolean(
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_search_fts'").get()
+  );
+}
+
+function expireStaleCandidates(db: DatabaseSync, userId: string): void {
+  const candidates = readRows<ContactCandidate>(
+    db.prepare("SELECT raw_json FROM candidates WHERE user_id = ? AND status IN ('pending', 'prompted')").all(userId)
+  );
+
+  for (const candidate of candidates) {
+    expireSqliteCandidateIfStale(db, candidate);
+  }
+}
+
+function expireSqliteCandidateIfStale(db: DatabaseSync, candidate: ContactCandidate): ContactCandidate {
+  const originalStatus = candidate.status;
+  const updatedCandidate = expireCandidateIfStale(candidate);
+  if (updatedCandidate.status !== originalStatus) {
+    upsertCandidate(db, updatedCandidate);
+  }
+
+  return updatedCandidate;
+}
+
+function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
+  return status === "pending" || status === "prompted";
+}
+
+function eventMatchContact(contact: ContactCandidateDetected): ContactCandidateDetected {
+  return {
+    ...contact,
+    detectedAt: contact.eventMatchAnchorAt ?? contact.observedAt ?? contact.detectedAt
+  };
 }
 
 function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
@@ -296,8 +1431,19 @@ function seedRepository(db: DatabaseSync, seed: RepositorySeed): void {
   for (const match of seed.eventMatches ?? []) {
     upsertEventMatch(db, match);
   }
+  for (const attempt of seed.promptAttempts ?? []) {
+    upsertPromptAttempt(db, attempt);
+  }
   for (const memory of seed.memories ?? []) {
     insertMemory(db, memory);
+    upsertMemorySearchDocument(db, memory);
+    insertMemoryRevision(db, createCreatedMemoryRevision(memory));
+  }
+  for (const person of seed.personIdentities ?? []) {
+    upsertPersonIdentity(db, person);
+  }
+  for (const link of seed.appleContactLinks ?? []) {
+    upsertAppleContactLink(db, link);
   }
   for (const interaction of seed.interactions ?? []) {
     insertInteraction(db, interaction);
@@ -401,19 +1547,49 @@ function upsertEventMatch(db: DatabaseSync, match: EventContextMatch): void {
   );
 }
 
+function upsertPromptAttempt(db: DatabaseSync, attempt: CandidatePromptAttempt): void {
+  db.prepare(
+    `
+      INSERT INTO candidate_prompt_attempts (
+        id, insert_order, candidate_id, interaction_id, spectrum_space_id, status, error_code, created_at, raw_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        candidate_id = excluded.candidate_id,
+        interaction_id = excluded.interaction_id,
+        spectrum_space_id = excluded.spectrum_space_id,
+        status = excluded.status,
+        error_code = excluded.error_code,
+        created_at = excluded.created_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(
+    attempt.id,
+    nextInsertOrder(db, "candidate_prompt_attempts"),
+    attempt.candidateId,
+    attempt.interactionId ?? null,
+    attempt.spectrumSpaceId ?? null,
+    attempt.status,
+    attempt.errorCode ?? null,
+    attempt.createdAt,
+    stringify(attempt)
+  );
+}
+
 function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
   db.prepare(
     `
       INSERT INTO memories (
-        id, insert_order, user_id, candidate_id, display_name, event_id, event_title, created_at, updated_at, raw_json
+        id, insert_order, user_id, candidate_id, person_id, display_name, event_id, event_title, created_at, updated_at, raw_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
   ).run(
     memory.id,
     nextInsertOrder(db, "memories"),
     memory.userId,
     memory.candidateId ?? null,
+    memory.personId ?? null,
     memory.displayName,
     memory.eventId ?? null,
     memory.eventTitle ?? null,
@@ -421,6 +1597,171 @@ function insertMemory(db: DatabaseSync, memory: RelationshipMemory): void {
     memory.updatedAt,
     stringify(memory)
   );
+}
+
+function updateMemoryRow(db: DatabaseSync, memory: RelationshipMemory): void {
+  db.prepare(
+    `
+      UPDATE memories
+      SET person_id = ?, display_name = ?, event_id = ?, event_title = ?, updated_at = ?, raw_json = ?
+      WHERE id = ?
+    `
+  ).run(
+    memory.personId ?? null,
+    memory.displayName,
+    memory.eventId ?? null,
+    memory.eventTitle ?? null,
+    memory.updatedAt,
+    stringify(memory),
+    memory.id
+  );
+}
+
+function upsertMemorySearchDocument(db: DatabaseSync, memory: RelationshipMemory): void {
+  if (memory.deletedAt) {
+    deleteMemorySearchDocument(db, memory.id);
+    return;
+  }
+
+  const document = buildMemorySearchDocument(memory);
+  db.prepare(
+    `
+      INSERT INTO memory_search_documents (memory_id, user_id, updated_at, raw_json)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(memory_id) DO UPDATE SET
+        user_id = excluded.user_id,
+        updated_at = excluded.updated_at,
+        raw_json = excluded.raw_json
+    `
+  ).run(document.memoryId, document.userId, document.updatedAt, stringify(document));
+  upsertMemorySearchFts(db, document);
+}
+
+function deleteMemorySearchDocument(db: DatabaseSync, memoryId: string): void {
+  db.prepare("DELETE FROM memory_search_documents WHERE memory_id = ?").run(memoryId);
+  if (memorySearchFtsAvailable(db)) {
+    db.prepare("DELETE FROM memory_search_fts WHERE memory_id = ?").run(memoryId);
+  }
+}
+
+function upsertMemorySearchFts(db: DatabaseSync, document: MemorySearchDocument): void {
+  if (!memorySearchFtsAvailable(db)) {
+    return;
+  }
+
+  db.prepare("DELETE FROM memory_search_fts WHERE memory_id = ?").run(document.memoryId);
+  db.prepare(
+    `
+      INSERT INTO memory_search_fts (
+        memory_id, user_id, display_name, event_title, context_note, relationship_context, tags, search_text
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `
+  ).run(
+    document.memoryId,
+    document.userId,
+    document.fields.displayName,
+    document.fields.eventTitle ?? "",
+    document.fields.contextNote,
+    document.fields.relationshipContext ?? "",
+    document.fields.tags.join(" "),
+    document.text
+  );
+}
+
+function insertMemoryRevision(db: DatabaseSync, revision: MemoryRevision): void {
+  db.prepare(
+    `
+      INSERT INTO memory_revisions (revision_id, memory_id, reason, created_at, raw_json)
+      VALUES (?, ?, ?, ?, ?)
+    `
+  ).run(revision.revisionId, revision.memoryId, revision.reason, revision.createdAt, stringify(revision));
+}
+
+function countMemoryRevisions(db: DatabaseSync, memoryId: string): number {
+  return (db.prepare("SELECT COUNT(*) AS count FROM memory_revisions WHERE memory_id = ?").get(memoryId) as { count: number })
+    .count;
+}
+
+function createCreatedMemoryRevision(memory: RelationshipMemory): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(memory.id, "created", memory.createdAt, 1),
+    memoryId: memory.id,
+    createdAt: memory.createdAt,
+    reason: "created",
+    nextValue: memoryRevisionValue(memory)
+  };
+}
+
+function createUpdatedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  updates: UpdateMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, updates.reason, updates.updatedAt, sequence),
+    memoryId: next.id,
+    createdAt: updates.updatedAt,
+    reason: updates.reason,
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: updates.userText
+  };
+}
+
+function createDeletedMemoryRevision(
+  previous: RelationshipMemory,
+  next: RelationshipMemory,
+  input: DeleteMemoryInput,
+  sequence: number
+): MemoryRevision {
+  return {
+    revisionId: createMemoryRevisionId(next.id, "deleted", input.deletedAt, sequence),
+    memoryId: next.id,
+    createdAt: input.deletedAt,
+    reason: "deleted",
+    previousValue: memoryRevisionValue(previous),
+    nextValue: memoryRevisionValue(next),
+    userText: input.userText
+  };
+}
+
+function memoryRevisionValue(memory: RelationshipMemory): Partial<RelationshipMemory> {
+  return {
+    displayName: memory.displayName,
+    primaryContactLabel: memory.primaryContactLabel,
+    eventId: memory.eventId,
+    eventTitle: memory.eventTitle,
+    contextNote: memory.contextNote,
+    relationshipContext: memory.relationshipContext,
+    tags: memory.tags,
+    confidence: memory.confidence,
+    updatedAt: memory.updatedAt,
+    deletedAt: memory.deletedAt
+  };
+}
+
+function createMemoryRevisionId(memoryId: string, reason: MemoryRevisionReason, createdAt: string, sequence: number): string {
+  return `memory_revision_${memoryId}_${reason}_${createdAt.replace(/[^0-9a-z]/gi, "")}_${sequence}`;
+}
+
+function assertSqliteMemoryHasConfirmedCandidate(db: DatabaseSync, memory: RelationshipMemory): void {
+  if (!memory.candidateId) {
+    throw new Error("Memory requires a confirmed candidate");
+  }
+
+  const row = db
+    .prepare("SELECT id FROM candidates WHERE id = ? AND user_id = ? AND status = 'confirmed'")
+    .get(memory.candidateId, memory.userId);
+  if (!row) {
+    throw new Error("Memory requires a confirmed candidate");
+  }
+
+  const existingMemory = db.prepare("SELECT id FROM memories WHERE candidate_id = ?").get(memory.candidateId);
+  if (existingMemory) {
+    throw new Error("Memory already exists for candidate");
+  }
 }
 
 function insertInteraction(db: DatabaseSync, interaction: AgentInteraction): void {
@@ -441,15 +1782,44 @@ function insertInteraction(db: DatabaseSync, interaction: AgentInteraction): voi
 }
 
 function runTransaction<T>(db: DatabaseSync, callback: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+  } catch (error) {
+    throw normalizeSqliteError(error, "begin transaction");
+  }
+
   try {
     const result = callback();
     db.exec("COMMIT");
     return result;
   } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // If BEGIN failed or SQLite already unwound the transaction, preserve the original error.
+    }
+    throw normalizeSqliteError(error, "transaction");
   }
+}
+
+function normalizeSqliteError(error: unknown, operation: string): unknown {
+  if (isSqliteBusyError(error)) {
+    return new SqliteRepositoryBusyError(operation, error);
+  }
+  return error;
+}
+
+function isSqliteBusyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown };
+  return (
+    candidate.code === "SQLITE_BUSY" ||
+    (typeof candidate.message === "string" &&
+      (candidate.message.includes("SQLITE_BUSY") || candidate.message.includes("database is locked")))
+  );
 }
 
 function nextInsertOrder(db: DatabaseSync, table: InsertOrderedTable): number {
@@ -469,6 +1839,96 @@ function readOptionalRow<T>(row: unknown): T | undefined {
   }
 
   return parseJson<T>((row as RawJsonRow).raw_json);
+}
+
+function readProcessedEvent(row: unknown): ProcessedSensorEvent | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    idempotency_key: string;
+    sensor_event_id: string | null;
+    sensor_name: string;
+    event_type: string;
+    status: ProcessedSensorEvent["status"];
+    candidate_id: string | null;
+    warning_code: string | null;
+    processed_at: string;
+  };
+
+  return {
+    idempotencyKey: value.idempotency_key,
+    sensorEventId: value.sensor_event_id ?? undefined,
+    sensorName: value.sensor_name,
+    eventType: value.event_type,
+    status: value.status,
+    candidateId: value.candidate_id ?? undefined,
+    warningCode: value.warning_code ?? undefined,
+    processedAt: value.processed_at
+  };
+}
+
+function readSensorState(row: unknown): RuntimeSensorState | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    user_id: string;
+    sensor_name: string;
+    device_id: string;
+    state_json: string;
+    history_token_blob: Uint8Array | null;
+    baseline_completed_at: string | null;
+    last_success_at: string | null;
+    last_error_code: string | null;
+    last_permission_status: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+
+  return {
+    userId: value.user_id,
+    sensorName: value.sensor_name,
+    deviceId: value.device_id,
+    stateJson: parseJson<Record<string, unknown>>(value.state_json),
+    historyTokenBlob: value.history_token_blob ?? undefined,
+    baselineCompletedAt: value.baseline_completed_at ?? undefined,
+    lastSuccessAt: value.last_success_at ?? undefined,
+    lastErrorCode: value.last_error_code ?? undefined,
+    lastPermissionStatus: value.last_permission_status ?? undefined,
+    createdAt: value.created_at,
+    updatedAt: value.updated_at
+  };
+}
+
+function readRuntimeWarning(row: unknown): RuntimeWarningState | undefined {
+  if (!row) {
+    return undefined;
+  }
+
+  const value = row as {
+    user_id: string;
+    sensor_name: string;
+    warning_code: string;
+    permission_status: string | null;
+    first_seen_at: string;
+    last_seen_at: string;
+    last_notified_at: string | null;
+    notification_count: number;
+  };
+
+  return {
+    userId: value.user_id,
+    sensorName: value.sensor_name,
+    warningCode: value.warning_code,
+    permissionStatus: value.permission_status ?? undefined,
+    firstSeenAt: value.first_seen_at,
+    lastSeenAt: value.last_seen_at,
+    lastNotifiedAt: value.last_notified_at ?? undefined,
+    notificationCount: value.notification_count
+  };
 }
 
 function selectEventMatch(matches: EventContextMatch[], eventId?: string): EventContextMatch | undefined {

@@ -1,0 +1,32 @@
+{
+  "files": {
+    "data": 14,
+    "config": 5,
+    "docs": 81,
+    "markup": 2,
+    "script": 1,
+    "code": 121
+  },
+  "nodes": {
+    "file": 138,
+    "config": 5,
+    "document": 81,
+    "function": 563,
+    "class": 2
+  },
+  "edges": {
+    "contains": 565,
+    "imports": 298,
+    "tested_by": 49
+  },
+  "layers": [
+    "Product Docs",
+    "Relationship Agent",
+    "Ingestion And Runtime",
+    "Transports",
+    "Legacy Web Shell",
+    "Project Tooling"
+  ],
+  "tourSteps": 5,
+  "extractedFilesSkipped": []
+}

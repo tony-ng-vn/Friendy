@@ -1,4 +1,11 @@
-import { createRuleBasedInterpreter } from "../openRouterInterpreter";
+/**
+ * Fixture-only end-to-end iMessage flow harness for tests and demos.
+ *
+ * Wires ingestion, Spectrum transport, and the interpreted agent with deterministic fixtures.
+ * It does not read real macOS Contacts or calendars; live provider access belongs in explicit
+ * CLI commands such as `npm run ingest:local:check`.
+ */
+import { createRuleBasedInterpreter } from "../openAIInterpreter";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { CalendarEvent, RelationshipMemory } from "../types";
@@ -11,12 +18,19 @@ const messyConfirmationReply =
   "yes, met abc at Photon Residency II after havent met him since high school in minnesota";
 const laterSearch = "who did I run into from high school at Photon?";
 
+/** Narrated transcript and persisted state from the fixture contact-confirmation flow. */
 export type ImessageContactConfirmationFlow = {
   lines: string[];
   memories: RelationshipMemory[];
   searchReply: string;
 };
 
+/**
+ * Runs the fixture contact-detection → confirmation → memory-search path through Spectrum transport.
+ *
+ * Product logic (diffing, event matching, memory writes) stays in ingestion and agent modules;
+ * this harness only orchestrates them for verification output.
+ */
 export async function runImessageContactConfirmationFlow(): Promise<ImessageContactConfirmationFlow> {
   const repo = createRelationshipRepository({ users: [fixtureUser] });
   const tools = createRelationshipTools(repo);
@@ -33,7 +47,8 @@ export async function runImessageContactConfirmationFlow(): Promise<ImessageCont
     repo,
     tools,
     interpreter: createRuleBasedInterpreter(),
-    now: () => "2026-05-20T12:00:00.000Z"
+    now: () => "2026-05-20T12:00:00.000Z",
+    env: { FRIENDY_STRICT_MODE: "0" }
   });
 
   await runtime.handleInboundText({

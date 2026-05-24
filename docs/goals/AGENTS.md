@@ -11,3 +11,4 @@ Goal files should be optimized for long-running agents that need a measurable fi
   - `docs/goals/EXPERIMENT_NOTES.md`
 - Do not store secrets or provider keys in goal docs.
 - If a goal changes architecture, require updates to `implementation-notes.html` and `REFERENCE.md`.
+- When a goal completes or materially advances, update `docs/agent-handoff.md` (current status, blockers, last E2E evidence) per `docs/agent-handoff.md`.

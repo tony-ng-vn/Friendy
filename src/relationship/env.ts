@@ -1,9 +1,17 @@
-import { existsSync } from "node:fs";
+/**
+ * Local environment loading for standalone Node/tsx scripts.
+ *
+ * Browser/Vite commands auto-load `.env.local`; Spectrum and ingestion CLIs
+ * call `loadFriendyEnv()` first. Does not define product identity — see `identity.ts`.
+ */
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { config } from "dotenv";
+import { config, parse } from "dotenv";
 
 const FRIENDY_ENV_FILES = [".env.local", ".env"] as const;
+const MODEL_PROVIDER_ENV_KEYS = ["OPENAI_API_KEY", "OPENAI_MODEL"] as const;
 
+/** Spectrum project credentials read after env files are loaded. */
 export type SpectrumCredentials = {
   projectId: string;
   projectSecret: string;
@@ -12,9 +20,8 @@ export type SpectrumCredentials = {
 /**
  * Loads local env files for standalone Node/tsx agent scripts.
  *
- * Vite loads `.env.local` automatically for browser/dev commands, but `tsx` does not.
- * Loading `.env.local` before `.env` mirrors the intended local override behavior while
- * preserving credentials already exported in the shell.
+ * @param cwd - Directory to search for `.env.local` then `.env`
+ * @returns Filenames that were found and loaded. Shell exports are preserved except OpenAI model-provider vars from `.env.local`.
  */
 export function loadFriendyEnv(cwd = process.cwd()): string[] {
   const loaded: string[] = [];
@@ -26,13 +33,29 @@ export function loadFriendyEnv(cwd = process.cwd()): string[] {
     }
 
     config({ path, override: false, quiet: true });
+    if (filename === ".env.local") {
+      applyLocalModelProviderOverrides(path);
+    }
     loaded.push(filename);
   }
 
   return loaded;
 }
 
-/** Reads the Spectrum credentials after environment files have been loaded. */
+function applyLocalModelProviderOverrides(path: string): void {
+  const values = parse(readFileSync(path));
+  for (const key of MODEL_PROVIDER_ENV_KEYS) {
+    if (values[key] !== undefined) {
+      process.env[key] = values[key];
+    }
+  }
+}
+
+/**
+ * Reads Spectrum credentials after environment files have been loaded.
+ *
+ * @throws When `SPECTRUM_PROJECT_ID` or `SPECTRUM_PROJECT_SECRET` is missing
+ */
 export function readSpectrumCredentials(env: NodeJS.ProcessEnv = process.env): SpectrumCredentials {
   const projectId = env.SPECTRUM_PROJECT_ID;
   const projectSecret = env.SPECTRUM_PROJECT_SECRET;

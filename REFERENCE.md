@@ -28,10 +28,18 @@ Transport message
 ## Start Here By Task
 
 - Product understanding: `docs/product-spec.md`, `docs/product-flow-plan.md`, `docs/handoff.md`
+- **Agent session handoff (read first on new session):** `docs/agent-handoff.md`
+- **Developer workflow preferences:** `docs/friendy-dev-preferences.md`
+- **Project agent skills:** `.agents/skills/README.md`
+- Agent repo graph index: `.understand-anything/knowledge-graph.json` (`project`, `layers`, and `tour` are the fastest entry points; use targeted searches rather than loading the full file)
 - AI system architecture: `docs/ai-system-architecture.md`
 - Agent navigation structure: `docs/agent-navigation.md`
 - Goal queue: `docs/goals/README.md`
 - Goal-writing rules: `docs/goals/goal-writing-guide.md`
+- Current Mac-only MVP behavior spec: `docs/superpowers/specs/friendy-mac-only-mvp-onboarding-agent-behavior-design-finished.md`
+- Current Mac-only MVP implementation plan: `docs/superpowers/plans/2026-05-22-mac-only-mvp-final-implementation.md`
+- Current Mac-only MVP goal prompts: `docs/goals/mac-mvp-final-goal-runbook.md`
+- Mac MVP live E2E (Option B) goal: `docs/goals/mac-mvp-e2e-contact-detection-goal.md`
 - Completed iMessage contact confirmation goal: `docs/goals/imessage-contact-confirmation-loop-goal.md`
 - Completed local macOS checker goal: `docs/goals/local-macos-contact-calendar-checker-goal.md`
 - Current system audit: `docs/reviews/current-system-audit.md`
@@ -56,13 +64,17 @@ Transport message
 - `src/relationship/interpretation.ts`: LLM interpretation contract.
 - `src/relationship/interpretedAgent.ts`: interpreted execution wrapper with conversation-context carryover.
 - `src/relationship/temporalContext.ts`: chrono-node natural-language date parsing.
-- `src/relationship/openRouterInterpreter.ts`: OpenRouter structured-output interpreter and deterministic fallback.
+- `src/relationship/openAIInterpreter.ts`: OpenAI structured-output interpreter and deterministic fallback.
 - `src/relationship/ingestion/`: fixture contact snapshot diffing, fixture calendar provider, and ingestion product flow pipeline.
 - `src/relationship/ingestion/localMacAdapters.ts`: explicit macOS Contacts/Calendar adapters, parser helpers, and non-macOS guards.
 - `src/relationship/ingestion/localCheck.ts`: provider-neutral local contact/calendar checker that creates candidates and confirmation prompts.
 - `src/relationship/ingestion/localCheckCli.ts`: `npm run ingest:local:check` entry point, state file handling, dry-run default, and guarded live Spectrum sender.
 - `src/relationship/contacts/`: explicit macOS Contacts smoke command for `Friendy-<number>` test contacts only.
 - `src/relationship/evals/`: trajectory eval runner and CLI for deterministic agent behavior checks.
+- `src/relationship/evals/macMvpDemoCheck.ts`: deterministic Mac MVP demo check for phone-verified/start/contact-prompt/save/recall/update.
+- `src/relationship/evals/macMvpE2eStateCheck.ts`: read-only live Mac artifact checker for sensor events, ack files, candidates, and saved memories after manual E2E runs.
+- `src/relationship/runtime/friendyDoctor.ts`: structured local runtime readiness check for Node, env, SQLite, sensor state, prompt transport, sensor binary/mock mode, and native permission availability.
+- `src/relationship/runtime/friendyRuntimeCli.ts`: canonical foreground Mac MVP runtime entry point.
 - `src/relationship/transports/`: communication adapters and deterministic iMessage E2E product flow; product logic should live above this layer.
 
 ## Commands
@@ -72,11 +84,26 @@ npm test
 npm run build
 npm run agent:terminal -- "yes, recruiting agents, played piano"
 npm run eval:agent
+npm run check:mac-mvp-demo
+npm run check:mac-mvp-e2e-state
 npm run check:imessage-e2e
 npm run ingest:check
 npm run ingest:local:check -- --mock
+npm run doctor:friendy
+npm run friendy:stack-status
+npm run agent:friendy
 npm run agent:spectrum
 ```
+
+Strict-mode dogfood commands:
+
+```bash
+npm run doctor:friendy
+FRIENDY_STRICT_MODE=1 npm run agent:friendy
+FRIENDY_STRICT_MODE=1 npm run agent:spectrum
+```
+
+Use strict mode for manual routing validation. With strict mode enabled, missing model-provider config, invalid model route JSON, and fallback routing fail loudly instead of being hidden by the rule-based fallback.
 
 Optional macOS Contacts smoke command:
 
@@ -104,6 +131,7 @@ npm test -- src/relationship/responseComposer.test.ts
 npm test -- src/relationship/interpretation.test.ts
 npm test -- src/relationship/temporalContext.test.ts
 npm test -- src/relationship/evals/agentEvalRunner.test.ts
+npm test -- src/relationship/evals/macMvpDemoCheck.test.ts
 npm test -- src/relationship/transports/spectrumTransport.test.ts
 npm test -- src/relationship/transports/imessageE2eFlow.test.ts
 npm test -- src/relationship/candidateConfirmation.test.ts
@@ -126,11 +154,11 @@ SPECTRUM_PROJECT_SECRET=
 FRIENDY_AGENT_NUMBER=+14156056081
 ```
 
-OpenRouter interpreter:
+Model interpreter:
 
 ```bash
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 Local checker:

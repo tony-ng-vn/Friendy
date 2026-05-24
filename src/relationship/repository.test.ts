@@ -1,4 +1,6 @@
+import { vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
+import { computeMethodFingerprint } from "./personIdentity";
 import { createRelationshipRepository } from "./repository";
 import type { CalendarEvent } from "./types";
 
@@ -15,6 +17,88 @@ describe("relationship repository", () => {
     expect(candidate.status).toBe("pending");
     expect(candidate.displayName).toBe("Maya Chen");
     expect(matches[0].eventTitle).toBe("Photon Residency Dinner");
+  });
+
+  it("stores explicit candidate timing fields and uses the event match anchor for calendar context", () => {
+    const anchorEvent: CalendarEvent = {
+      id: "event_anchor_dinner",
+      userId: fixtureUser.id,
+      title: "Anchor Dinner",
+      startsAt: "2026-05-22T09:30:00.000Z",
+      endsAt: "2026-05-22T10:30:00.000Z",
+      timezone: "UTC",
+      calendarSource: "simulated",
+      eventKind: "short"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [anchorEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      detectedAt: "2026-05-22T12:00:00.000Z",
+      observedAt: "2026-05-22T10:00:00.000Z",
+      contactUpdatedAt: "2026-05-22T09:58:00.000Z",
+      eventMatchAnchorAt: "2026-05-22T10:00:00.000Z"
+    });
+
+    expect(candidate.detectedAt).toBe("2026-05-22T12:00:00.000Z");
+    expect(candidate.observedAt).toBe("2026-05-22T10:00:00.000Z");
+    expect(candidate.contactUpdatedAt).toBe("2026-05-22T09:58:00.000Z");
+    expect(candidate.eventMatchAnchorAt).toBe("2026-05-22T10:00:00.000Z");
+    expect(repo.listEventMatches(candidate.id)[0]).toMatchObject({
+      eventTitle: "Anchor Dinner",
+      rank: 1
+    });
+  });
+
+  it("sets candidate expiration and expires stale candidates on pending lookup", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+
+    expect(candidate).toMatchObject({
+      status: "pending",
+      expiresAt: "2026-05-30T04:42:00.000Z"
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-31T00:00:00.000Z"));
+
+      expect(repo.listPendingCandidates(fixtureUser.id)).toEqual([]);
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+      expect(() => repo.confirmCandidate(candidate.id, "late reply", fixtureShortEvent.id)).toThrow(
+        "Candidate is not confirmable"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("expires candidates exactly at their expiration timestamp", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(candidate.expiresAt ?? ""));
+
+      expect(repo.listPendingCandidates(fixtureUser.id)).toEqual([]);
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("creates a pending contact candidate during one clear event", () => {
@@ -69,12 +153,188 @@ describe("relationship repository", () => {
     });
 
     const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
-    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id, {
+      confirmedAt: "2026-05-21T15:04:00.000Z"
+    });
 
     expect(repo.getCandidate(candidate.id)?.status).toBe("confirmed");
     expect(memory.displayName).toBe("Maya Chen");
     expect(memory.eventTitle).toBe("Photon Residency Dinner");
     expect(memory.tags).toContain("piano");
+    expect(memory.createdAt).toBe("2026-05-21T15:04:00.000Z");
+    expect(memory.updatedAt).toBe("2026-05-21T15:04:00.000Z");
+  });
+
+  it("records append-only revisions when a memory changes", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    const updated = repo.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    const revisions = repo.listMemoryRevisions(memory.id);
+    expect(updated.contextNote).toBe("working on hiring workflows");
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("working on hiring workflows");
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({
+      reason: "created",
+      memoryId: memory.id,
+      nextValue: {
+        contextNote: "building recruiting agents"
+      }
+    });
+    expect(revisions[1]).toMatchObject({
+      reason: "user_correction",
+      memoryId: memory.id,
+      previousValue: {
+        contextNote: "building recruiting agents"
+      },
+      nextValue: {
+        contextNote: "working on hiring workflows"
+      },
+      userText: "Actually Maya was working on hiring workflows."
+    });
+  });
+
+  it("soft deletes memories while preserving an audit revision", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    const deleted = repo.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(deleted.deletedAt).toBe("2026-05-22T12:00:00.000Z");
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "deleted",
+      userText: "delete Maya memory"
+    });
+  });
+
+  it("derives search documents from visible memories after create, update, and delete", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser], calendarEvents: [fixtureLongEvent] });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const memory = repo.confirmCandidate(candidate.id, "building recruiting agents", fixtureLongEvent.id);
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id).map((document) => document.memoryId)).toEqual([memory.id]);
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)[0].text).toContain("building recruiting agents");
+
+    repo.updateMemory(memory.id, {
+      contextNote: "working on hiring workflows",
+      reason: "user_correction",
+      userText: "Actually Maya was working on hiring workflows.",
+      updatedAt: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)[0].text).toContain("working on hiring workflows");
+
+    repo.deleteMemory(memory.id, {
+      userText: "delete Maya memory",
+      deletedAt: "2026-05-22T12:30:00.000Z"
+    });
+
+    expect(repo.listMemorySearchDocuments(fixtureUser.id)).toEqual([]);
+  });
+
+  it("rejects direct memory writes without a confirmed candidate", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+
+    expect(() =>
+      repo.addMemory({
+        id: "memory_without_candidate",
+        userId: fixtureUser.id,
+        displayName: "Unconfirmed Person",
+        primaryContactLabel: "manual contact",
+        contextNote: "should not bypass candidate confirmation",
+        tags: ["bypass"],
+        confidence: 0.5,
+        createdAt: "2026-05-21T06:00:00.000Z",
+        updatedAt: "2026-05-21T06:00:00.000Z"
+      })
+    ).toThrow("Memory requires a confirmed candidate");
+  });
+
+  it("rejects a second memory for the same confirmed candidate", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(() =>
+      repo.addMemory({
+        id: "memory_duplicate_candidate",
+        userId: fixtureUser.id,
+        candidateId: candidate.id,
+        displayName: "Duplicate Candidate Memory",
+        primaryContactLabel: "manual contact",
+        contextNote: "should not create another memory for this candidate",
+        tags: ["duplicate"],
+        confidence: 0.5,
+        createdAt: "2026-05-21T06:00:00.000Z",
+        updatedAt: "2026-05-21T06:00:00.000Z"
+      })
+    ).toThrow("Memory already exists for candidate");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
+  it("marks a prompted candidate while keeping it reviewable for replies", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const prompted = repo.markCandidatePrompted(candidate.id, "interaction_prompt_1", {
+      spaceId: "imessage_space_prompt_1",
+      promptedAt: "2026-05-21T18:36:51.000Z"
+    });
+
+    expect(prompted).toMatchObject({
+      id: candidate.id,
+      status: "prompted",
+      promptInteractionId: "interaction_prompt_1",
+      promptSpaceId: "imessage_space_prompt_1",
+      promptedAt: "2026-05-21T18:36:51.000Z"
+    });
+    expect(repo.listPendingCandidates(fixtureUser.id).map((item) => item.id)).toEqual([candidate.id]);
+  });
+
+  it("rejects confirming ignored or already confirmed candidates", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const ignored = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const confirmed = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      phoneNumbers: ["+15550101021"],
+      detectedAt: "2026-05-15T21:44:00-07:00"
+    });
+
+    repo.ignoreCandidate(ignored.id);
+    repo.confirmCandidate(confirmed.id, "designer building notes", fixtureShortEvent.id);
+
+    expect(() => repo.confirmCandidate(ignored.id, "should not save", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(() => repo.confirmCandidate(confirmed.id, "should not save twice", fixtureShortEvent.id)).toThrow(
+      "Candidate is not confirmable"
+    );
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Nina Park"]);
   });
 
   it("stores a corrected event title when confirmation chooses another event", () => {
@@ -138,5 +398,113 @@ describe("relationship repository", () => {
         latencyMs: 42
       })
     ]);
+  });
+
+  it("creates and finds person identities by method fingerprint and normalized display name", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: ["+15550101020"] });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    repo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      methodFingerprint: fingerprint,
+      displayNameSnapshot: "Testing 3",
+      linkedAt: "2026-05-23T12:00:00.000Z"
+    });
+
+    expect(repo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)).toEqual(person);
+    expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "  testing   3 ")).toEqual([person]);
+  });
+
+  it("attaches a candidate to an existing person", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 3"
+    });
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101099"]
+    });
+
+    const attached = repo.attachCandidateToPerson(candidate.id, person.id);
+
+    expect(attached.personId).toBe(person.id);
+    expect(repo.getCandidate(candidate.id)?.personId).toBe(person.id);
+  });
+
+  it("sets personId on new memories during confirm, reusing attached person ids", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Maya Chen"
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.attachCandidateToPerson(candidate.id, person.id);
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(memory.personId).toBe(person.id);
+    expect(repo.getCandidate(candidate.id)?.personId).toBe(person.id);
+  });
+
+  it("creates a person identity and link when confirming a candidate without personId", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    const fingerprint = computeMethodFingerprint({ phoneNumbers: candidate.phoneNumbers, emails: candidate.emails });
+
+    const memory = repo.confirmCandidate(candidate.id, "recruiting agents, played piano", fixtureShortEvent.id);
+
+    expect(memory.personId).toMatch(/^person_/);
+    expect(repo.findPersonByMethodFingerprint(fixtureUser.id, fingerprint)?.id).toBe(memory.personId);
+    expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "Maya Chen")).toEqual([
+      expect.objectContaining({
+        id: memory.personId,
+        canonicalDisplayName: "Maya Chen"
+      })
+    ]);
+  });
+
+  it("does not merge contacts with no visible methods when contact identifiers differ", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const first = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z3",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z3"
+    });
+    const second = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z4",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z4"
+    });
+
+    const firstMemory = repo.confirmCandidate(first.id, "I met them at AI dinner", undefined, { eventTitle: "AI dinner" });
+    const secondMemory = repo.confirmCandidate(second.id, "At AI dinner", undefined, { eventTitle: "AI dinner" });
+
+    expect(firstMemory.personId).toMatch(/^person_/);
+    expect(secondMemory.personId).toMatch(/^person_/);
+    expect(secondMemory.personId).not.toBe(firstMemory.personId);
   });
 });

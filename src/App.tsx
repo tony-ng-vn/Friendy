@@ -1,3 +1,10 @@
+/**
+ * Legacy Vite demo chat UI.
+ *
+ * Wires the in-browser mock store and demo agent into a single-page chat experience.
+ * Production relationship flows live in `src/relationship/`; see `src/relationship/types.ts`
+ * and `src/relationship/agentCore.ts` / `src/relationship/interpretedAgent.ts`.
+ */
 import { useMemo, useState } from "react";
 import { handleAgentMessage } from "./agent";
 import { fixtureCalendarEvent, fixtureUser } from "./mockData";
@@ -9,6 +16,7 @@ type ChatMessage = {
   text: string;
 };
 
+/** Root demo screen: chat composer plus event, candidate, and memory side panels. */
 export function App() {
   const initialState = useMemo(() => createInitialState(fixtureUser, fixtureCalendarEvent), []);
   const [state, setState] = useState<MemoryState>(initialState);

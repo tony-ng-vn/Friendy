@@ -1,3 +1,7 @@
+/**
+ * macOS Contacts smoke helpers for explicit local verification.
+ * Contact names must match `Friendy-<number>` only (for example `Friendy-001`); no other names are accepted.
+ */
 import { execFileSync as defaultExecFileSync } from "node:child_process";
 import os from "node:os";
 
@@ -19,6 +23,7 @@ export type ContactsSmokeResult = {
   phoneNumber?: string;
 };
 
+/** Returns ok when `name` matches `Friendy-<digits>` (Friendy-1, Friendy-001, etc.). */
 export function validateFriendySmokeContactName(name: string): { ok: true } | { ok: false; reason: string } {
   if (/^Friendy-\d+$/.test(name)) {
     return { ok: true };
@@ -30,6 +35,7 @@ export function validateFriendySmokeContactName(name: string): { ok: true } | { 
   };
 }
 
+/** Parses `--name Friendy-<n>` from argv and derives a deterministic +1555… test phone. */
 export function parseContactsSmokeArgs(argv: string[]): SmokeContactInput {
   const nameIndex = argv.indexOf("--name");
   const name = nameIndex >= 0 ? argv[nameIndex + 1] : "";
@@ -45,6 +51,7 @@ export function parseContactsSmokeArgs(argv: string[]): SmokeContactInput {
   };
 }
 
+/** Runs the smoke flow: validates name, requires darwin, then creates or reuses the contact via AppleScript. */
 export function runContactsSmoke({
   argv,
   platform = os.platform(),
@@ -80,6 +87,7 @@ export function runContactsSmoke({
   };
 }
 
+/** Builds AppleScript that idempotently creates or updates a single Friendy smoke contact. */
 export function buildMacContactsAppleScript({ name, phoneNumber }: SmokeContactInput): string {
   const safeName = appleScriptString(name);
   const safePhone = appleScriptString(phoneNumber);

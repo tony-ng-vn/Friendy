@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "./fixtures";
 import { createRelationshipRepository } from "./repository";
 import { createRelationshipTools } from "./tools";
@@ -124,6 +124,26 @@ describe("candidate intake interface spec", () => {
     expect(result).not.toHaveProperty("replyText");
   });
 
+  it("maps a numbered event-option reply to the matching candidate event", async () => {
+    const { intake, tools } = await createSubject({ calendarEvents: [fixtureLongEvent, fixtureShortEvent] });
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+
+    const result = intake.resolveCandidateReply({
+      scope: scope(),
+      replyText: "1"
+    });
+
+    expect(result).toMatchObject({
+      kind: "confirmed",
+      candidateId: candidate.id,
+      memory: {
+        displayName: "Maya Chen",
+        eventTitle: "Photon Residency Dinner",
+        contextNote: "met at Photon Residency Dinner"
+      }
+    });
+  });
+
   it("returns an ambiguous outcome for a bare yes with multiple pending candidates", async () => {
     const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
     const maya = tools.create_contact_candidate(fixtureDetectedContact);
@@ -148,6 +168,69 @@ describe("candidate intake interface spec", () => {
       ]
     });
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("treats stale prompted candidates as no longer pending for reply resolution", async () => {
+    const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
+    const candidate = tools.create_contact_candidate(fixtureDetectedContact);
+    repo.markCandidatePrompted(candidate.id, "interaction_stale_prompt", {
+      spaceId: "imessage_space_candidate_intake",
+      promptedAt: "2026-05-15T21:45:00.000Z"
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-31T00:00:00.000Z"));
+
+      expect(intake.resolveCandidateReply({ scope: scope(), replyText: "yes" })).toEqual({ kind: "no_pending" });
+      expect(repo.getCandidate(candidate.id)).toMatchObject({
+        status: "expired"
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the inbound space to resolve numbered replies against the matching prompted candidate", async () => {
+    const { intake, tools, repo } = await createSubject({ calendarEvents: [fixtureShortEvent] });
+    const maya = tools.create_contact_candidate(fixtureDetectedContact);
+    const nina = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      detectedAt: "2026-05-15T21:44:00-07:00",
+      phoneNumbers: ["+15550101021"],
+      emails: []
+    });
+    repo.markCandidatePrompted(maya.id, "interaction_maya_prompt", {
+      spaceId: "imessage_space_maya",
+      promptedAt: "2026-05-15T21:45:00.000Z"
+    });
+    repo.markCandidatePrompted(nina.id, "interaction_nina_prompt", {
+      spaceId: "imessage_space_nina",
+      promptedAt: "2026-05-15T21:46:00.000Z"
+    });
+
+    const result = intake.resolveCandidateReply({
+      scope: {
+        userId: fixtureUser.id,
+        spaceId: "imessage_space_nina"
+      },
+      replyText: "1"
+    });
+
+    expect(result).toMatchObject({
+      kind: "confirmed",
+      candidateId: nina.id,
+      memory: {
+        displayName: "Nina Park",
+        eventTitle: "Photon Residency Dinner",
+        contextNote: "met at Photon Residency Dinner"
+      }
+    });
+    expect(repo.getCandidate(maya.id)).toMatchObject({
+      status: "prompted",
+      promptSpaceId: "imessage_space_maya"
+    });
   });
 
   it("uses a name fragment reply to select the matching pending candidate", async () => {

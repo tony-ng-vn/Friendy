@@ -1,11 +1,67 @@
-# Candidate Intake Interface Spec Goal Notes
+# Friendy List People Tool Notes
 
-- 2026-05-21: This is intentionally a red/spec pass. Production behavior should not change in this goal.
-- 2026-05-21: Candidate Intake scope is detected-contact candidates only. Manual memory capture, durable state, UI, and Spectrum transport behavior are out of scope.
-- 2026-05-21: The red spec requires structured outcomes, not user-facing copy. `responseComposer` remains responsible for wording.
-- 2026-05-21: `candidateConfirmation.ts` should remain the later implementation's event-correction helper instead of redesigning event correction in the first refactor.
-- 2026-05-21: Verification matched the intended red state: focused Candidate Intake tests fail because the future module does not exist, while all pre-existing test files still pass under `npm test`.
-- 2026-05-21: Candidate Intake is now the single confirm/ignore decision module for queued contact candidates. The module still delegates actual mutation to relationship tools.
-- 2026-05-21: Ambiguity handling is intentionally stricter when there are multiple plausible reviewable candidates. The one exception is ingestion compatibility: if exactly one pending candidate has event guesses, a bare confirmation can resolve that candidate.
-- 2026-05-21: User-facing copy remains outside Candidate Intake. Agents translate structured Candidate Intake outcomes through `responseComposer`.
-- 2026-05-21: Verification is green across focused tests, full tests, build, deterministic agent evals, iMessage product flow, fixture ingestion, and local checker mock mode.
+- 2026-05-23: `list_people` is Friendy-memory-first. `apple_contacts` and `both` mark Apple Contacts listing unsupported in this PR.
+- 2026-05-23: List requests no longer call `search_memories` when the structured route is `intent: list_people`; this preserves the boundary between inventory/listing and clue-based recall.
+- 2026-05-23: Duplicate grouping is conservative and non-destructive.
+- 2026-05-23: Production routing should not rely on the rule-based fallback. Strict mode is now default-on, so missing API keys, invalid schema, model failures, and fallback use fail loudly unless a test/local fixture explicitly sets `FRIENDY_STRICT_MODE=0`.
+- 2026-05-23: No new regex/keyword fallback was added for list routing. Deterministic tests use explicit structured routes where needed; general human-language understanding belongs in the structured model router.
+
+# Friendy Regression Freeze Tests Notes
+
+- 2026-05-23: This task is tests-only. The new eval cases are intentionally RED because they freeze live failures before behavior changes.
+- 2026-05-23: Do not make production changes in the regression-freeze task. The next implementation goal should make the RED cases pass.
+- 2026-05-23: Current RED summary is 36/41 eval cases passing. Failures are the five new regression-freeze cases only.
+
+# Strict Mode and Trace Envelope Notes
+
+- 2026-05-23: Strict mode started as opt-in, then was changed to default-on after live routing review. Non-strict local/runtime flows must now opt out explicitly with `FRIENDY_STRICT_MODE=0`; every turn still records whether fallback was used.
+- 2026-05-23: The trace envelope is sanitized before runtime logging. It may include ids and route shape, but not raw notes, message text, phone numbers, emails, or full contact payloads.
+- 2026-05-23: The OpenAI interpreter owns model/schema/fallback boundary errors. The interpreted agent owns strict rejection of fallback interpreters, unsupported routes, missing tools, and deterministic ambiguity after route resolution.
+- 2026-05-23: Unsupported Apple Contacts create/edit/delete remains a blocker, not an implementation. Friendy can save/update/delete Friendy memory, but Apple Contacts mutation is still outside this goal.
+- 2026-05-23: The eval catalog now reports `fallbackUsageCount` and includes a required strict-mode fallback rejection case. This makes fallback visible without requiring normal deterministic evals to run model-backed.
+- 2026-05-23: Full verification passed for the strict-mode trace envelope goal: `npm test` 52 files/340 tests, `npm run build`, `npm run eval:agent` 36/36 with `Fallback usage count: 31`, and `git diff --check`.
+
+# State-Aware Relationship Agent Routing Notes
+
+- 2026-05-23: The first implementation slice treats the active pending-contact prompt as reconstructable durable state instead of adding a new table immediately. The source of truth is existing candidate prompt fields persisted by both repositories: `status=prompted`, `promptSpaceId`, `promptedAt`, and `promptInteractionId`.
+- 2026-05-23: Previous-search follow-up remains process-local for now, but it no longer preempts active pending-contact context. Pronoun facts like `She is...` are routed to candidate confirmation first when a pending-contact frame is active.
+- 2026-05-23: The pending prompt copy still says `Where did you meet them?`, but routing now treats the expected input as `any_useful_relationship_context`; role, project, follow-up, relationship, and meeting-place facts are valid.
+- 2026-05-23: Saved note cleanup intentionally strips only copula wrappers (`She is a...`, `Sarah Fan is a...`) in this slice. Other predicates such as `works at`, `knows`, or `we talked about` are left as predicates so response wording can remain natural.
+- 2026-05-23: Manual `add/save/remember Person as/is/from/at context` creates Friendy memory through `create_manual_memory` only. It does not mutate Apple Contacts.
+- 2026-05-23: The eval catalog now has 35 required cases, adding pending-contact pronoun context, event recall not list-all, and manual add-as memory.
+- 2026-05-23: Removed the old generic user-facing fallback copy from `scopeBoundary.ts`. Out-of-scope and adversarial paths now explain the exact blocker instead of saying `I am here to help...`.
+- 2026-05-23: Full verification passed: `npm test` 51 files/322 tests, `npm run build`, `npm run eval:agent` 35/35, and `git diff --check`.
+- 2026-05-23: Implementation commit `1f2bdb1` was pushed to `main`.
+
+# Mac-Only MVP Final Goal Notes
+
+- 2026-05-22: The runbook contains 13 task goals. They should mostly run sequentially because later tasks build on repository, runtime, prompt, and eval surfaces changed by earlier tasks.
+- 2026-05-22: Started with Task 1 because Node/CI is the least coupled reliability foundation and does not depend on future behavior work.
+- 2026-05-22: Task 1 updates `package-lock.json` as well as `package.json` so `npm ci` and package metadata stay aligned.
+- 2026-05-22: Task 2 keeps `doctor:friendy` structured internally through `FriendyDoctorCheck[]`, then renders stable human-readable lines so future UI/setup surfaces do not need to scrape ad hoc text.
+- 2026-05-22: Task 3 logs prompt transport as `custom` when tests inject a sender without a `kind`, while normal runtime-created senders still report `console` or `spectrum`.
+- 2026-05-22: Task 4 keeps behavior rules and structured-output instructions as separate builders so adding product rules does not weaken the OpenAI JSON-schema constraint.
+- 2026-05-22: Task 5 treats weak calendar guesses as suggestions rather than confirmations, so a user can correct the event/place without fighting the calendar guess.
+- 2026-05-22: Task 6 intentionally does not rename `detectedAt`; it keeps it for candidate identity/expiry compatibility and adds `eventMatchAnchorAt` for the calendar-matching decision.
+- 2026-05-22: Task 7 keeps start/pause/resume as a per-process gate for the foreground MVP runtime. Held contact events are not marked processed or acked, so the native outbox can replay them after the user starts or resumes Friendy.
+- 2026-05-22: Task 8 stores memory revision snapshots as partial memory projections rather than raw inbound text. User correction text is kept only when explicitly provided to `updateMemory`.
+- 2026-05-22: Task 9 treats delete as a soft delete on the current projection, not physical removal. Search and normal memory lists hide deleted rows, while revisions remain available for audit.
+- 2026-05-22: Task 10 stores only the top prior ambiguous search memory ids for 15 minutes. Follow-up clues narrow that bounded set instead of starting a broad new search, and stale follow-ups ask for context instead of reusing old candidates.
+- 2026-05-22: Task 11 redacted traces intentionally keep only decision shape: hashed text markers, intent/confidence, tool result names, touched id counts, search outcome, and `present` error markers. Raw names, contact routes, notes, event titles, raw interpreted JSON, and provider error text stay out of traces/log summaries.
+- 2026-05-22: Task 12 keeps the demo check deterministic and local. It uses fixture identity/calendar/contact data plus the real repository, tools, onboarding gate, and interpreted agent, but does not require live Spectrum, real Contacts, or real Calendar.
+- 2026-05-22: Task 13 treats `agent:friendy`, `doctor:friendy`, and `check:mac-mvp-demo` as the canonical Mac MVP operator path in docs. Real macOS TCC validation and packaging remain explicitly separate.
+- 2026-05-22: Live E2E edge cases (Contacts Notes vs Friendy memory, add-only sensor, pre-start ignored contacts, unnamed-contact name race, outbox replay noise) are documented in `implementation-notes.html` under **Known MVP Edge Cases (2026-05-22, live E2E)**.
+- 2026-05-22: Formal next-agent goal: `docs/goals/mac-mvp-e2e-contact-detection-goal.md` (Option B E2E). Landed on `main`: `1098345` (sensor app bundle + agent fixes), `de48f03` (gitignore `.build/` and `tmp-macos-sensor-*`). Blocker: Testing 6+ produced no `contact_added` in terminal after `start` — debug pending queue / `isReadyForFriendyPrompt`.
+- 2026-05-22: Option B follow-up source slice adds `contact_pending` NDJSON diagnostics for queued/waiting native Contacts changes. During the next Mac reproduce, tail `.friendy/macos-sensor-state/sensor-events.ndjson`; `contact_pending` means the app bundle saw the change but is waiting for a saved, prompt-ready card, while no `contact_pending` after add points lower in Contacts history/TCC delivery.
+- 2026-05-22: Pending prompt routing is intentionally not “everything confirms.” `Who did I add...` stays in candidate inquiry, short meeting-context replies stay candidate confirmation, but real recall questions search existing memories and person-comment statements such as `Maya was cool from dinner` do not save.
+- 2026-05-22: Automated Option B follow-up verification passed on Linux (`npm test`, `npm run build`, `npm run eval:agent`, `npm run agent:friendy:check`, `npm run check:mac-mvp-demo`, `npm run check:macos-sensor-fixture` skip, `git diff --check`). `npm run build:macos-sensor` could not run here because Swift is missing; pull on the Mac, rebuild the sensor, then run the manual E2E and record contact name/timestamps/batch id/memory count.
+- 2026-05-22: Latest user Mac log proves the rebuilt runtime now launches `bin/Friendy macOS Sensor.app` as an app bundle, sends the startup iMessage, receives `macOS sensor ready`, and acks a pre-start contact history batch (`history_batch_D3857812-1A54-4DB8-B546-9319B6ACC277`). The contact event arrived before the `start` interaction at `2026-05-22T08:54:23.751Z`, so it correctly did not prompt. Next manual evidence needed: text `start`, then add a brand-new contact and verify named prompt → confirm reply → memory row → recall.
+- 2026-05-22: Runtime operator log now distinguishes pre-start ignored contacts from paused held contacts. This is intentionally a log-only behavior correction: pre-start contacts are still ignored so the native history batch can ack and avoid replay spam, while post-start E2E remains the completion gate.
+- 2026-05-22: User reproduced a silent post-start add: app bundle ready and `start` processed at `2026-05-22T09:03:04.548Z`, but no terminal line after adding a new contact. Added throttled native `sensor_diagnostic` events for `contacts_history_poll_no_changes`; on the next Mac run, seeing this diagnostic means the app/event-log path is alive but Contacts history is not surfacing the new card, while seeing no diagnostic after ready means the app bundle/event-log tail is the next boundary.
+- 2026-05-22: Silent-add diagnostic verification passed on Linux except the native Swift build, which failed as expected with `spawnSync swift ENOENT`. Because Swift changed, the next Mac action is mandatory: `git pull`, `npm run build:macos-sensor`, restart `agent:friendy`, text `start`, add a brand-new contact, then interpret `sensor_diagnostic` / `contact_pending` / `contact_added` lines.
+- 2026-05-22: Added `npm run check:mac-mvp-e2e-state` so the next Mac run can summarize live artifacts in one place: latest `contact_added`, referenced ack file, recent candidates, memory count, and latest pending/diagnostic events. This does not replace the manual iMessage prompt/recall proof, but it gives stronger evidence than ad hoc pasted SQL.
+- 2026-05-22: On the Linux workspace, `npm run check:mac-mvp-e2e-state` currently exits incomplete as expected: no live Mac `contact_added`, no ack, and zero memories. On the user's Mac after the next live run, the same command should become the artifact proof to paste alongside the iMessage prompt/recall result.
+- 2026-05-22: Hardened `check:mac-mvp-e2e-state` so it no longer accepts any old memory as proof. It now requires a memory whose display name matches the latest `contact_added` contact, which keeps the manual E2E completion evidence tied to the fresh post-start add.
+- 2026-05-22: Live-state checker hardening verification passed: `npm test` 49 files/291 tests, `npm run build`, `npm run eval:agent` 29/29, `npm run agent:friendy:check`, `npm run check:mac-mvp-demo`, and `git diff --check`.
+- 2026-05-22: Further hardened `check:mac-mvp-e2e-state` to follow the actual candidate/memory linkage: latest sensor contact stable id → confirmed candidate `contactIdentifier` → memory `candidateId`. This prevents same-name stale memories from counting as proof for the fresh contact.
+- 2026-05-22: Linked-evidence hardening verification passed: `npm test` 49 files/291 tests, `npm run build`, `npm run eval:agent` 29/29, `npm run agent:friendy:check`, `npm run check:mac-mvp-demo`, and `git diff --check`.

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>friendy-macos-sensor</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.friendy.macos-sensor</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Friendy macOS Sensor</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>0.1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSContactsUsageDescription</key>
+  <string>Friendy watches for newly added contacts so it can ask where you met them.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Friendy reads nearby calendar events to suggest meeting context for newly added contacts.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Friendy reads nearby calendar events to suggest meeting context for newly added contacts.</string>
+</dict>
+</plist>

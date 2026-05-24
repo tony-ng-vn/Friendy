@@ -1,12 +1,19 @@
+/**
+ * Single-owner runtime identity for local sensors and iMessage.
+ *
+ * Bridges local contact ingestion and Spectrum transport under one user id until
+ * a signup identity table exists. Callers: `ingestion/localCheck`, Spectrum adapter.
+ */
 export type FriendyIdentityEnv = Partial<
   Pick<NodeJS.ProcessEnv, "FRIENDY_LOCAL_USER_ID" | "FRIENDY_OWNER_PHONE">
 >;
 
 /**
- * Resolves the single-owner runtime identity shared by local sensors and iMessage.
+ * Resolves the configured owner user id shared by ingestion and transports.
  *
- * The MVP has no signup identity table yet, so configured owner identity is the seam that lets a
- * local contact check write candidates under the same user id that Spectrum later uses to confirm.
+ * Prefers `FRIENDY_LOCAL_USER_ID`, then `FRIENDY_OWNER_PHONE`, then optional fallback.
+ *
+ * @returns Trimmed id when configured; otherwise `fallback` or undefined
  */
 export function resolveConfiguredUserId(env: FriendyIdentityEnv, fallback?: string): string | undefined {
   return firstNonEmpty(env.FRIENDY_LOCAL_USER_ID, env.FRIENDY_OWNER_PHONE) ?? fallback;

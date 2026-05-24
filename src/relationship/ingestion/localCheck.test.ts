@@ -4,13 +4,23 @@ import { createFixtureCalendarEventProvider } from "./ingestionPipeline";
 import type { ContactSnapshot } from "./contactSnapshot";
 import type { CalendarEvent } from "../types";
 import type { SqliteRelationshipRepository } from "../sqliteRepository";
-import { runLocalContactCalendarCheck } from "./localCheck";
+import { createLocalCheckRepository, runLocalContactCalendarCheck } from "./localCheck";
 
 const userId = "user_local";
 
 describe("local contact/calendar checker", () => {
   it("exposes the local checker as an explicit npm script", () => {
     expect(packageJson.scripts["ingest:local:check"]).toBe("tsx src/relationship/ingestion/localCheckCli.ts");
+  });
+
+  it("createLocalCheckRepository respects FRIENDY_RUNTIME_STORE=sqlite", () => {
+    const snapshot = afterSnapshot("Friendy-101", "2026-05-20T19:30:00.000Z");
+    const repo = createLocalCheckRepository(snapshot, {
+      FRIENDY_RUNTIME_STORE: "sqlite",
+      FRIENDY_SQLITE_PATH: "/tmp/friendy-local-check.sqlite"
+    });
+
+    expect(repo.listMemories(snapshot.userId)).toEqual([]);
   });
 
   it("creates a pending candidate and dry-run prompt for the best calendar event", async () => {
@@ -82,7 +92,7 @@ describe("local contact/calendar checker", () => {
     const { join } = await import("node:path");
     const { createSqliteRelationshipRepository } = await import("../sqliteRepository");
     const { createRelationshipTools } = await import("../tools");
-    const { createRuleBasedInterpreter } = await import("../openRouterInterpreter");
+    const { createRuleBasedInterpreter } = await import("../openAIInterpreter");
     const { createInterpretedRelationshipAgent } = await import("../interpretedAgent");
 
     const dir = mkdtempSync(join(tmpdir(), "friendy-local-check-"));
