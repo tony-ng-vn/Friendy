@@ -93,6 +93,10 @@ export type LookupMemoryTargetOptions = {
 
 export type { MemoryTargetLookupResult };
 
+export type MemorySearchOptions = {
+  contactId?: string;
+};
+
 type SearchQueryAnalysis = {
   terms: string[];
   isEventWide: boolean;
@@ -167,22 +171,22 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return { duplicateGroups: result.duplicateGroups };
     },
 
-    search_memories(userId: string, query: string): MemorySearchResult[] {
+    search_memories(userId: string, query: string, options: MemorySearchOptions = {}): MemorySearchResult[] {
       const queryAnalysis = analyzeSearchQuery(query);
       if (queryAnalysis.isListAll) {
-        return repo.listMemories(userId).map((memory) => ({
+        return listSearchableMemories(repo, userId, options.contactId).map((memory) => ({
           memory,
           score: 1,
           reason: "list-all relationship recall"
         }));
       }
 
-      const repositoryCandidates = groupRetrievalCandidates(
-        repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
-      );
+      const repositoryRetrievalCandidates = options.contactId
+        ? repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms, options)
+        : repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms);
+      const repositoryCandidates = groupRetrievalCandidates(repositoryRetrievalCandidates ?? []);
 
-      const scored = repo
-        .listMemories(userId)
+      const scored = listSearchableMemories(repo, userId, options.contactId)
         .map((memory) => mergeRepositoryCandidates(scoreMemory(memory, queryAnalysis), repositoryCandidates.get(memory.id) ?? [], queryAnalysis))
         .filter((result) => result.score > 0)
         .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
@@ -372,6 +376,11 @@ function requireDuplicatePersonId(personId: string | undefined): string {
   }
 
   return personId;
+}
+
+function listSearchableMemories(repo: RelationshipRepository, userId: string, contactId?: string): RelationshipMemory[] {
+  const memories = repo.listMemories(userId);
+  return contactId ? memories.filter((memory) => memory.candidateId === contactId) : memories;
 }
 
 function listPeopleFromRepository(

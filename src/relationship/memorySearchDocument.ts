@@ -3,6 +3,7 @@ import type { RelationshipMemory } from "./types";
 export type MemorySearchDocument = {
   memoryId: string;
   userId: string;
+  contactId?: string;
   text: string;
   fields: {
     displayName: string;
@@ -35,6 +36,7 @@ export function buildMemorySearchDocument(memory: RelationshipMemory): MemorySea
   return {
     memoryId: memory.id,
     userId: memory.userId,
+    contactId: memory.candidateId,
     text: [
       ["Name", fields.displayName],
       ["Event", fields.eventTitle],

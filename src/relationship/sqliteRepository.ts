@@ -351,8 +351,8 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       );
     },
 
-    searchMemoryDocuments(userId: string, query: string, terms: string[]): RetrievalCandidate[] {
-      return searchSqliteMemoryDocuments(db, userId, query, terms);
+    searchMemoryDocuments(userId: string, query: string, terms: string[], options?: { contactId?: string }): RetrievalCandidate[] {
+      return searchSqliteMemoryDocuments(db, userId, query, terms, options);
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {
@@ -893,6 +893,7 @@ function setupSchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS memory_search_documents (
       memory_id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      contact_id TEXT,
       updated_at TEXT NOT NULL,
       raw_json TEXT NOT NULL,
       FOREIGN KEY(memory_id) REFERENCES memories(id)
@@ -900,6 +901,9 @@ function setupSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS memory_search_documents_user_updated_idx
       ON memory_search_documents(user_id, updated_at, memory_id);
+
+    CREATE INDEX IF NOT EXISTS memory_search_documents_user_contact_idx
+      ON memory_search_documents(user_id, contact_id, updated_at, memory_id);
 
     CREATE TABLE IF NOT EXISTS memory_revisions (
       revision_id TEXT PRIMARY KEY,
@@ -998,6 +1002,9 @@ function setupSchema(db: DatabaseSync): void {
 
     PRAGMA user_version = 2;
   `);
+  if (!sqliteTableHasColumn(db, "memory_search_documents", "contact_id")) {
+    db.exec("ALTER TABLE memory_search_documents ADD COLUMN contact_id TEXT");
+  }
   setupMemorySearchFts(db);
   backfillMemorySearchDocuments(db);
   runPersonIdentityMigration(db);
@@ -1336,7 +1343,8 @@ function searchSqliteMemoryDocuments(
   db: DatabaseSync,
   userId: string,
   query: string,
-  terms: string[]
+  terms: string[],
+  options: { contactId?: string } = {}
 ): RetrievalCandidate[] {
   if (!memorySearchFtsAvailable(db)) {
     return [];
@@ -1355,11 +1363,12 @@ function searchSqliteMemoryDocuments(
         JOIN memory_search_documents d ON d.memory_id = memory_search_fts.memory_id
         WHERE memory_search_fts MATCH ?
           AND memory_search_fts.user_id = ?
+          AND (? IS NULL OR d.contact_id = ?)
         ORDER BY rank, d.updated_at DESC, d.memory_id
         LIMIT 20
       `
     )
-    .all(ftsQuery, userId) as Array<RawJsonRow & { rank: number }>;
+    .all(ftsQuery, userId, options.contactId ?? null, options.contactId ?? null) as Array<RawJsonRow & { rank: number }>;
 
   return rows.map((row) => {
     const document = parseJson<MemorySearchDocument>(row.raw_json);
@@ -1626,14 +1635,15 @@ function upsertMemorySearchDocument(db: DatabaseSync, memory: RelationshipMemory
   const document = buildMemorySearchDocument(memory);
   db.prepare(
     `
-      INSERT INTO memory_search_documents (memory_id, user_id, updated_at, raw_json)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO memory_search_documents (memory_id, user_id, contact_id, updated_at, raw_json)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(memory_id) DO UPDATE SET
         user_id = excluded.user_id,
+        contact_id = excluded.contact_id,
         updated_at = excluded.updated_at,
         raw_json = excluded.raw_json
     `
-  ).run(document.memoryId, document.userId, document.updatedAt, stringify(document));
+  ).run(document.memoryId, document.userId, document.contactId ?? null, document.updatedAt, stringify(document));
   upsertMemorySearchFts(db, document);
 }
 

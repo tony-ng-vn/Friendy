@@ -104,6 +104,32 @@ describe("relationship tools", () => {
     expect(results[0].reason).toContain("piano");
   });
 
+  it("filters memory search to an exact contact id when provided", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const maya = tools.create_contact_candidate(fixtureDetectedContact);
+    const nina = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Nina Park",
+      contactIdentifier: "contact_nina",
+      detectedAt: "2026-05-20T19:35:00.000Z"
+    });
+
+    tools.confirm_candidate(fixtureUser.id, maya.id, "recruiting agents founder", fixtureShortEvent.id);
+    tools.confirm_candidate(fixtureUser.id, nina.id, "recruiting agents investor", fixtureShortEvent.id);
+
+    expect(tools.search_memories(fixtureUser.id, "recruiting agents", { contactId: nina.id }).map((hit) => hit.memory.displayName)).toEqual([
+      "Nina Park"
+    ]);
+    expect(tools.search_memories(fixtureUser.id, "recruiting agents").map((hit) => hit.memory.displayName)).toEqual([
+      "Maya Chen",
+      "Nina Park"
+    ]);
+  });
+
   it("normalizes broad relationship recall queries to useful clues", () => {
     expect(normalizeMemorySearchQuery("Anyone in my contacts related to friendy?")).toBe("friendy");
     expect(normalizeMemorySearchQuery("Anyone in my contact that related to Friendy?")).toBe("friendy");
