@@ -20,17 +20,17 @@ describe("createFriendyTrace", () => {
     expect(trace.modelErrorCode).toBeUndefined();
   });
 
-  it("records OpenRouter model metadata on llm routes", () => {
+  it("records OpenAI model metadata on llm routes", () => {
     const trace = createFriendyTrace({
       strictMode: true,
       routeSource: "llm",
-      modelRequested: "openrouter/google/gemini-2.5-flash-preview",
+      modelRequested: "gpt-4o-mini",
       modelResponseSchemaValid: true,
       selectedTool: "list_people",
       toolCalls: ["list_people"]
     });
 
-    expect(trace.modelRequested).toBe("openrouter/google/gemini-2.5-flash-preview");
+    expect(trace.modelRequested).toBe("gpt-4o-mini");
     expect(trace.modelResponseSchemaValid).toBe(true);
     expect(trace.selectedTool).toBe("list_people");
     expect(trace.fallbackUsed).toBe(false);
@@ -42,7 +42,7 @@ describe("createFriendyTrace", () => {
       routeSource: "fallback",
       fallbackUsed: true,
       fallbackReason: "invalid_route_schema",
-      modelRequested: "openrouter/google/gemini-2.5-flash-preview",
+      modelRequested: "gpt-4o-mini",
       modelResponseSchemaValid: false,
       modelErrorCode: "INVALID_ROUTE_SCHEMA",
       toolCalls: []

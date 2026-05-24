@@ -9,11 +9,11 @@ import { createRelationshipAgent } from "../agentCore";
 import { fixtureDetectedContact, fixtureLongEvent, fixtureShortEvent, fixtureUser } from "../fixtures";
 import { createInterpretedRelationshipAgent } from "../interpretedAgent";
 import {
-  createOpenRouterInterpreter,
+  createOpenAIInterpreter,
   createRuleBasedInterpreter,
-  readOpenRouterConfig,
+  readOpenAIConfig,
   type MessageInterpreter
-} from "../openRouterInterpreter";
+} from "../openAIInterpreter";
 import { createRelationshipRepository } from "../repository";
 import { runFriendyDoctor } from "../runtime/friendyDoctor";
 import { planCandidatePrompt } from "../runtime/promptPlanner";
@@ -208,6 +208,7 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   ]),
   evalCase("list-all-contact-recall", "interpreted", [
     "list-all contact recall calls list_people",
+    "list-all contact recall bypasses model",
     "list-all contact recall returns saved people",
     "list-all contact recall includes pending contact",
     "list-all contact recall leaves pending candidate pending",
@@ -291,6 +292,16 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("pending-reminder-list-never-footer", "interpreted", [
     "list_people never appends pending reminder footer",
     "list_people trace records suppression"
+  ]),
+  evalCase("strict-ambiguous-delete-clarifies-regression", "interpreted", [
+    "strict ambiguous delete asks disambiguation",
+    "strict ambiguous delete does not mutate before selection",
+    "strict ambiguous delete trace records clarification"
+  ]),
+  evalCase("delete-everyone-confirmation-regression", "interpreted", [
+    "delete everyone opens confirmation",
+    "delete everyone does not mutate before confirmation",
+    "delete everyone removes all memories after yes"
   ])
 ];
 
@@ -977,10 +988,11 @@ const executableEvalCases: ExecutableEvalCase[] = [
         emails: []
       });
       const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
-      const result = await agent.handleMessage(interpretedInbound("Just give me all the people in my contact so far"));
+      const result = await agent.handleMessage(interpretedInbound("What people do you know yet in my contact?"));
 
       return [
         assertion("list-all contact recall calls list_people", "intent", toolCallsInclude(result.toolCalls, "list_people")),
+        assertion("list-all contact recall bypasses model", "intent", result.trace.routeSource === "deterministic"),
         assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
         assertion(
           "list-all contact recall includes pending contact",
@@ -1482,6 +1494,93 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[46],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_sarah", "Sarah", "met at Photon dinner", "Photon dinner"),
+          memory("memory_sara_kim", "Sara Kim", "met at recruiting meetup", "recruiting meetup")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        strictMode: true,
+        now,
+        timezone
+      });
+      const result = await agent.handleMessage(interpretedInbound("delete Srah memory"));
+
+      return [
+        assertion(
+          "strict ambiguous delete asks disambiguation",
+          "clarification",
+          toolCallsInclude(result.toolCalls, "lookup_memory_target") &&
+            includesAll(result.outbound.text, ["Srah", "Sarah", "Sara Kim"]) &&
+            includesAny(result.outbound.text, ["Reply 1", "Which"])
+        ),
+        assertion(
+          "strict ambiguous delete does not mutate before selection",
+          "unsafeMutation",
+          !result.toolCalls.includes("delete_memory") &&
+            repo.listMemories(fixtureUser.id).map((item) => item.displayName).join(",") === "Sarah,Sara Kim"
+        ),
+        assertion(
+          "strict ambiguous delete trace records clarification",
+          "intent",
+          result.trace.strictMode === true &&
+            result.trace.route?.intent === "delete_memory_request" &&
+            result.trace.policyDecision === "clarify"
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[47],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_testing_12", "Testing 12", "met at AI dinner", "AI dinner"),
+          memory("memory_sarah_fan", "Sarah Fan", "community lead at Photon Residency II", "Photon Residency II")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        now,
+        timezone
+      });
+      const requested = await agent.handleMessage(interpretedInbound("Can you delete everyone for me?"));
+      const memoryCountAfterRequest = repo.listMemories(fixtureUser.id).length;
+      const confirmed = await agent.handleMessage(interpretedInbound("yes"));
+
+      return [
+        assertion(
+          "delete everyone opens confirmation",
+          "clarification",
+          requested.trace.route?.intent === "delete_memory_request" &&
+            includesAll(requested.outbound.text, ["Delete everyone", "Reply yes"])
+        ),
+        assertion(
+          "delete everyone does not mutate before confirmation",
+          "unsafeMutation",
+          requested.toolCalls.length === 0 && memoryCountAfterRequest === 2
+        ),
+        assertion(
+          "delete everyone removes all memories after yes",
+          "memoryWrite",
+          toolCallsInclude(confirmed.toolCalls, "clear_memories") && repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
   }
 ];
 
@@ -1501,9 +1600,9 @@ export function getEvalExitCode(summary: Pick<RelationshipAgentEvalSummary, "req
   return summary.requiredFailed > 0 ? 1 : 0;
 }
 
-/** True when OpenRouter is configured and `FRIENDY_EVAL_RUN_MODEL=1`. */
+/** True when a model provider is configured and `FRIENDY_EVAL_RUN_MODEL=1`. */
 export function shouldRunModelBackedEvals(env: Partial<NodeJS.ProcessEnv>): boolean {
-  return Boolean(env.OPENROUTER_API_KEY?.trim() && env.FRIENDY_EVAL_RUN_MODEL === "1");
+  return Boolean(hasModelProviderApiKey(env) && env.FRIENDY_EVAL_RUN_MODEL === "1");
 }
 
 /** Human-readable PASS/FAIL report for `npm run eval:agent`. */
@@ -1668,7 +1767,7 @@ async function maybeRunModelBackedEvals(
   now: () => string
 ): Promise<RelationshipAgentEvalSummary["optionalModelBacked"]> {
   const env = options.env ?? process.env;
-  const available = Boolean(env.OPENROUTER_API_KEY?.trim());
+  const available = hasModelProviderApiKey(env);
 
   if (!options.runModelBackedEvals) {
     return {
@@ -1680,8 +1779,8 @@ async function maybeRunModelBackedEvals(
     };
   }
 
-  const config = readOpenRouterConfig(env);
-  const modelInterpreter = createOpenRouterInterpreter(config);
+  const config = readOpenAIConfig(env);
+  const modelInterpreter = createOpenAIInterpreter(config);
   const interpretedCases = executableEvalCases.filter((evalCase) => evalCase.agentMode === "interpreted");
   const samplesPerCase = 3;
   const samplePassRates: number[] = [];
@@ -1701,6 +1800,10 @@ async function maybeRunModelBackedEvals(
     variance: variance(samplePassRates),
     note: `ran ${samplesPerCase} model-backed samples across ${interpretedCases.length} interpreted cases`
   };
+}
+
+function hasModelProviderApiKey(env: Partial<NodeJS.ProcessEnv>): boolean {
+  return Boolean(env.OPENAI_API_KEY?.trim());
 }
 
 function createInterpretedHarness({ interpreter, now }: Required<Pick<RunOptions, "interpreter" | "now">>) {

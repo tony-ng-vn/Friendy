@@ -479,4 +479,32 @@ describe("relationship repository", () => {
       })
     ]);
   });
+
+  it("does not merge contacts with no visible methods when contact identifiers differ", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const first = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z3",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z3"
+    });
+    const second = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z4",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z4"
+    });
+
+    const firstMemory = repo.confirmCandidate(first.id, "I met them at AI dinner", undefined, { eventTitle: "AI dinner" });
+    const secondMemory = repo.confirmCandidate(second.id, "At AI dinner", undefined, { eventTitle: "AI dinner" });
+
+    expect(firstMemory.personId).toMatch(/^person_/);
+    expect(secondMemory.personId).toMatch(/^person_/);
+    expect(secondMemory.personId).not.toBe(firstMemory.personId);
+  });
 });

@@ -8,7 +8,7 @@ This PR is **not** a greenfield strict-mode implementation. It adds:
 
 - documented dogfood commands and runtime warnings;
 - trace fields still missing from the baseline envelope;
-- scope-boundary visibility when routing never reaches OpenRouter;
+- scope-boundary visibility when routing never reaches OpenAI;
 - joint acceptance criteria with PR 4 so the May 23 log cannot silently fall back.
 
 When `FRIENDY_STRICT_MODE=1`, fallback, schema failure, unknown executable routes, missing tools, and unexpected ambiguity must **fail loudly** — not degrade to rule-based routing that looks like success.
@@ -41,7 +41,7 @@ That is not a model-quality failure. Engineers ran without strict dogfood discip
 ### Already fixed (do not redo in PR 9)
 
 - `readFriendyStrictMode()` and `FriendyStrictModeError` codes
-- Strict-mode throw on fallback when strict is on (`openRouterInterpreter.ts`, `interpretedAgent.ts`)
+- Strict-mode throw on fallback when strict is on (`openAIInterpreter.ts`, `interpretedAgent.ts`)
 - Base `FriendyTrace` with `routeSource`, `fallbackUsed`, `fallbackReason`, `toolCalls`
 - `friendyRuntimeCli.ts` reads `FRIENDY_STRICT_MODE` into runtime config
 - Eval case `strict-mode-fallback-rejection`
@@ -51,9 +51,9 @@ That is not a model-quality failure. Engineers ran without strict dogfood discip
 - Dogfood docs/commands that **require** strict mode for manual validation
 - Runtime startup warning when strict is explicitly disabled during dogfood
 - Trace fields: `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode`, `activeWorkflowKind`, `selectedTool`
-- Trace when **`decideMessageScope`** rejects before OpenRouter (deterministic out-of-scope at ~5ms)
-- Doctor hint when strict on but `OPENROUTER_API_KEY` missing
-- Joint transcript test with PR 4: May 23 turns must not use fallback when strict on + OpenRouter configured
+- Trace when **`decideMessageScope`** rejects before OpenAI (deterministic out-of-scope at ~5ms)
+- Doctor hint when strict on but `OPENAI_API_KEY` missing
+- Joint transcript test with PR 4: May 23 turns must not use fallback when strict on + OpenAI configured
 
 ## Goals
 
@@ -83,7 +83,7 @@ npm run doctor:friendy
 
 - Log one-line runtime warning when `FRIENDY_STRICT_MODE=0` (or `false`/`off`) and interpreted inbound agent is enabled — dogfood may hide routing failures.
 - Ensure strict failures surface in: stderr/logger, `interpretedIntentJson.trace`, and `runtimeTrace.ts`.
-- Add doctor check: strict enabled + missing OpenRouter key → warn before first message.
+- Add doctor check: strict enabled + missing OpenAI key → warn before first message.
 - Add integration coverage with PR 4 envelope: May 23 transcript routes without `routeSource: "fallback"`.
 
 ## Non-Goals
@@ -150,9 +150,9 @@ Population rules (new or clarified):
 | Field | Source |
 |-------|--------|
 | `routeSource: "scope_boundary"` | `decideMessageScope` returned out-of-scope/clarify before interpreter |
-| `modelRequested` | OpenRouter config model id for the turn |
+| `modelRequested` | OpenAI config model id for the turn |
 | `modelResponseSchemaValid` | `true` after successful route JSON parse; `false` before strict throw on invalid schema |
-| `modelErrorCode` | `FriendyStrictModeError.code` or mapped OpenRouter failure |
+| `modelErrorCode` | `FriendyStrictModeError.code` or mapped OpenAI failure |
 | `activeWorkflowKind` | Active session/frame: pending contact (now), duplicate (PR 6), delete/update confirm (PR 7) |
 | `selectedTool` | Primary tool executed or policy-mandated next tool (`lookup_memory_target`, etc.) |
 
@@ -162,7 +162,7 @@ Redaction unchanged: no raw contact methods; model id allowed.
 
 | Condition | strictMode=true | strictMode=false |
 |-----------|-----------------|------------------|
-| Missing OpenRouter key | throw `FALLBACK_USED` | rule-based fallback |
+| Missing OpenAI key | throw `FALLBACK_USED` | rule-based fallback |
 | Invalid model JSON schema | throw `INVALID_ROUTE_SCHEMA` | fallback interpreter |
 | Model HTTP failure | throw `MODEL_INTERPRETATION_FAILED` | fallback |
 | Unknown executable intent | throw `UNKNOWN_ROUTE` | clarify reply |
@@ -173,7 +173,7 @@ PR 9 adds tracing for scope-boundary and pre-interpreter deterministic paths wit
 
 ## Scope-boundary tracing
 
-When `scopeBoundary.ts` returns out-of-scope before OpenRouter:
+When `scopeBoundary.ts` returns out-of-scope before OpenAI:
 
 - set `routeSource: "scope_boundary"`
 - set `scopeDecision: "out_of_scope"` (or `"clarify"`)
@@ -209,8 +209,8 @@ WARN: FRIENDY_STRICT_MODE is off — rule-based fallback and silent routing degr
 
 When strict mode is enabled:
 
-- warn if `OPENROUTER_API_KEY` is missing;
-- print effective `OPENROUTER_MODEL`;
+- warn if `OPENAI_API_KEY` is missing;
+- print effective `OPENAI_MODEL`;
 - print resolved `strictMode: true`.
 
 ## Joint acceptance with PR 4
@@ -218,7 +218,7 @@ When strict mode is enabled:
 After PR 4 lands, add one integration test (or eval fixture) replaying May 23 user turns with:
 
 - `FRIENDY_STRICT_MODE=1`
-- mocked OpenRouter returning correct structured intents
+- mocked OpenAI returning correct structured intents
 - assertions per turn:
 
 | User message | Must NOT see | Must see |
@@ -240,7 +240,7 @@ Unit:
 
 Integration:
 
-- `openRouterInterpreter.test.ts` — `modelResponseSchemaValid: false` on schema reject
+- `openAIInterpreter.test.ts` — `modelResponseSchemaValid: false` on schema reject
 - `interpretedAgent.test.ts` — scope-boundary trace shape
 - `spectrumTransport.test.ts` — strict flag + delta fields in compact log
 - Keep eval `strict-mode-fallback-rejection` green
@@ -251,7 +251,7 @@ Commands:
 npm test -- src/relationship/strictMode.test.ts
 npm test -- src/relationship/trace.test.ts
 npm test -- src/relationship/interpretedAgent.test.ts
-npm test -- src/relationship/openRouterInterpreter.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts
 npm run eval:agent
 ```
 
@@ -270,16 +270,16 @@ npm run eval:agent
 ## Success criteria (delta only)
 
 - [ ] `FriendyTrace` includes `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode`, `activeWorkflowKind`, `selectedTool`, and `scopeDecision` where applicable.
-- [ ] `routeSource: "scope_boundary"` recorded when `decideMessageScope` blocks before OpenRouter.
+- [ ] `routeSource: "scope_boundary"` recorded when `decideMessageScope` blocks before OpenAI.
 - [ ] Runtime logs warning when strict is explicitly off and inbound interpreted agent runs.
-- [ ] Doctor warns when strict on + missing `OPENROUTER_API_KEY`.
+- [ ] Doctor warns when strict on + missing `OPENAI_API_KEY`.
 - [ ] `REFERENCE.md` and handoff doc list `FRIENDY_STRICT_MODE=1` dogfood commands.
 - [ ] Joint May 23 transcript test passes with PR 4 + strict on (no fallback on listed turns).
 - [ ] Existing eval `strict-mode-fallback-rejection` still passes (no regression).
 
 ## Dependencies
 
-- Merged: `src/relationship/strictMode.ts`, `src/relationship/trace.ts`, `openRouterInterpreter.ts`, `interpretedAgent.ts`, `runtimeTrace.ts`, `friendyRuntimeCli.ts`
+- Merged: `src/relationship/strictMode.ts`, `src/relationship/trace.ts`, `openAIInterpreter.ts`, `interpretedAgent.ts`, `runtimeTrace.ts`, `friendyRuntimeCli.ts`
 - In flight: `docs/superpowers/specs/2026-05-23-pass-state-into-llm-router-design.md` (PR 4)
 - Future trace consumers: PR 5 (`pendingReminderDecision`), PR 6/7 (`activeWorkflowKind` values)
 

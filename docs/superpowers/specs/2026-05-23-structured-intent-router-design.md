@@ -174,7 +174,7 @@ Map existing `MessageInterpretation` values during one release window:
 | `request_contact_*`, `draft_message` | `unsupported` with specific copy |
 | `reject`, `unknown` | `unsupported` or `clarify` (policy decides) |
 
-Implementation should update `interpretation.ts`, OpenRouter schema, rule-based fallback in `openRouterInterpreter.ts`, and eval assertions to use `FriendyIntent` names consistently.
+Implementation should update `interpretation.ts`, OpenAI schema, rule-based fallback in `openAIInterpreter.ts`, and eval assertions to use `FriendyIntent` names consistently.
 
 ## Hard Safety Block (Pre-Router Only)
 
@@ -535,7 +535,7 @@ These cases come from PR 1 and define acceptance for the router change.
 | `src/relationship/hardSafetyBlock.ts` | **New** — narrow pre-router checks |
 | `src/relationship/routePolicyValidator.ts` | **New** — post-router policy + reminder suppression flags |
 | `src/relationship/interpretation.ts` | `FriendyIntent` enum + route schema |
-| `src/relationship/openRouterInterpreter.ts` | Schema + fallback mapping to new intents |
+| `src/relationship/openAIInterpreter.ts` | Schema + fallback mapping to new intents |
 | `src/relationship/interpretedAgent.ts` | Reorder gate; wire policy validator; reminder suppression |
 | `src/relationship/agentCore.ts` | Use hard safety block only (deterministic path parity) |
 | `src/relationship/tools.ts` | Add `find_duplicate_people` |
@@ -550,7 +550,7 @@ These cases come from PR 1 and define acceptance for the router change.
 ## Implementation Staging (within PR 3)
 
 1. **Split scope boundary** — extract `hardSafetyBlock.ts`; keep tests green with compatibility shim.
-2. **Add `FriendyIntent` schema** — update interpretation types + OpenRouter schema.
+2. **Add `FriendyIntent` schema** — update interpretation types + OpenAI schema.
 3. **Add `routePolicyValidator.ts`** — intent policy table + suppression flags.
 4. **Rewire `interpretedAgent.ts`** — hard safety → interpreter → policy → tools; remove broad pre-model block.
 5. **Add `find_duplicate_people` tool** — minimal deterministic grouping.

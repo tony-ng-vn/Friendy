@@ -35,7 +35,7 @@ Independent read-only review agents confirmed the same baseline and did not edit
 
 - PR 4 is merged into `main`; HEAD is now `4565305`, not the PR 4 merge commit itself.
 - `buildRouterInputEnvelope` is wired in `src/relationship/interpretedAgent.ts`: import near line 50, call near line 630, and `interpreter.interpret({ message, routerContext })`.
-- `src/relationship/openRouterInterpreter.ts` already accepts the interpreter input envelope shape.
+- `src/relationship/openAIInterpreter.ts` already accepts the interpreter input envelope shape.
 - PR 5 prep exists:
   - `src/relationship/pendingReminderPolicy.ts` exports `decidePendingReminder`.
   - `src/relationship/pendingReminderPolicy.test.ts` covers the pure policy.
@@ -82,12 +82,12 @@ Independent read-only review agents confirmed the same baseline and did not edit
 | 1 | Regression freeze | Done | Evals include the regression cases and full eval passes 42/42. |
 | 2 | `list_people` tool | Done | `tools.list_people` and list evals are present; full eval passes. |
 | 3 | Structured intent router | Done | `routePolicyValidator.ts`, structured intents, and suppress-compat path are present. |
-| 4 | Pass state into LLM router | Done | `buildRouterInputEnvelope` is wired into `interpretedAgent.ts` and OpenRouter. |
+| 4 | Pass state into LLM router | Done | `buildRouterInputEnvelope` is wired into `interpretedAgent.ts` and OpenAI. |
 | 5 | Pending reminder policy | Prep, integration not started | Policy + footer composer exist, but trace fields and agent wiring are missing; legacy inline reminder append remains. |
 | 6 | Identity resolution | Prep/repo partial, agent workflow not started | Types/repo/parser exist; no `resolve_duplicate_person` tool; no active duplicate workflow in `interpretedAgent.ts`. |
 | 7 | Robust delete/update | Prep/tool partial, agent workflow not started | `lookup_memory_target` exists; agent still has legacy `pendingDelete`, inline `rankDisplayNameMatches`, and direct mutation paths. |
 | 8 | Sensor normalization ack | Done | Runtime files and tests are present; no Phase 1 work planned here. |
-| 9 | Strict-mode dogfooding trace | Partial | Trace fields exist; OpenRouter model metadata and real-turn trace population are incomplete. |
+| 9 | Strict-mode dogfooding trace | Partial | Trace fields exist; OpenAI model metadata and real-turn trace population are incomplete. |
 | 10 | Durable conversation session | Prep only | Session types and in-memory store exist; no SQLite `conversation_sessions`, no agent session-store option, no runtime wiring. |
 
 ## PR 5 Task Matrix
@@ -130,7 +130,7 @@ Independent read-only review agents confirmed the same baseline and did not edit
 | Task | Corrected status | Evidence |
 | --- | --- | --- |
 | T1 trace type extensions | Done | Types exist in `trace.ts`. |
-| T2 OpenRouter metadata | Not started | Interpreter result type does not carry model metadata fields on all paths. |
+| T2 OpenAI metadata | Not started | Interpreter result type does not carry model metadata fields on all paths. |
 | T3 agent scope/workflow trace | Partial | Types exist; real-turn trace population is incomplete. |
 | T4 runtime warning/doctor | Partial | Runtime strict-off warning exists; doctor not fully audited. |
 | T5 docs | Partial/unknown | Handoff says partial; no complete proof. |

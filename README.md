@@ -114,11 +114,11 @@ FRIENDY_OWNER_PHONE=+15550100000
 Optional model-backed interpretation:
 
 ```bash
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-If `OPENROUTER_API_KEY` is missing, Friendy uses the deterministic fallback interpreter so local checks still run.
+If `OPENAI_API_KEY` is missing, Friendy uses the deterministic fallback interpreter only when strict mode is disabled, so local checks can still run.
 
 Start the Spectrum/iMessage agent:
 
@@ -291,8 +291,8 @@ src/relationship/ingestion/
   contact snapshot diffing, fixture ingestion, and explicit local macOS checker
 
 src/relationship/interpretation.ts
-src/relationship/openRouterInterpreter.ts
-  structured intent schema and optional OpenRouter interpreter
+src/relationship/openAIInterpreter.ts
+  structured intent schema and optional OpenAI interpreter
 
 src/relationship/interpretedAgent.ts
   conversation context carryover and interpreted execution
@@ -316,7 +316,7 @@ src/relationship/evals/
 
 ## Evaluation
 
-The required eval suite is deterministic and runs without OpenRouter credentials:
+The required eval suite is deterministic and runs without OpenAI credentials:
 
 ```bash
 npm run eval:agent
@@ -342,7 +342,7 @@ Metrics include pass rate, intent accuracy, memory-write correctness, search rec
 Optional repeated model-backed evals require:
 
 ```bash
-OPENROUTER_API_KEY=
+OPENAI_API_KEY=
 FRIENDY_EVAL_RUN_MODEL=1
 ```
 

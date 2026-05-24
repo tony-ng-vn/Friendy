@@ -135,7 +135,7 @@ describe("message interpretation contract", () => {
     ).toThrow("Invalid message interpretation");
   });
 
-  it("exports a strict JSON schema for OpenRouter structured outputs", () => {
+  it("exports a strict JSON schema for OpenAI structured outputs", () => {
     expect(messageInterpretationJsonSchema).toMatchObject({
       type: "object",
       additionalProperties: false,
@@ -152,5 +152,40 @@ describe("message interpretation contract", () => {
         "clarificationQuestion"
       ]
     });
+  });
+
+  it("accepts search semantic query when top-level query is empty", () => {
+    const result = validateMessageInterpretation({
+      intent: "search_memory",
+      confidence: 0.9,
+      domain: "relationship_memory",
+      conversationRelation: "starts_new_relationship_task",
+      target: null,
+      extractedContext: "",
+      search: {
+        mode: "event_recall",
+        semanticQuery: "AI dinner",
+        exactTerms: [],
+        filters: {
+          personName: "",
+          eventName: "AI dinner",
+          topic: "",
+          companyOrSchool: "",
+          dateText: "",
+          tags: []
+        },
+        topK: 10
+      },
+      people: [],
+      event: { name: "AI dinner", dateText: "", location: "" },
+      dateContext: null,
+      contextNote: "",
+      query: "",
+      tags: [],
+      needsClarification: false,
+      clarificationQuestion: ""
+    });
+
+    expect(result.query).toBe("AI dinner");
   });
 });

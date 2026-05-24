@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createCandidateId, mapCandidateToEvents } from "./eventMapper";
 import {
+  computeMethodFingerprint,
   normalizeDisplayNameForIdentity,
   type AppleContactLink,
   type PersonIdentity
@@ -1002,6 +1003,7 @@ function setupSchema(db: DatabaseSync): void {
   runPersonIdentityMigration(db);
   if (sqliteTableHasColumn(db, "memories", "person_id")) {
     backfillMemoryPersonIdentities(db);
+    repairEmptyMethodFingerprintPersonCollisions(db);
   }
 }
 
@@ -1116,6 +1118,81 @@ function backfillMemoryPersonIdentities(db: DatabaseSync): void {
 
     const updatedMemory: RelationshipMemory = { ...memory, personId };
     updateMemoryRow(db, updatedMemory);
+  }
+}
+
+function repairEmptyMethodFingerprintPersonCollisions(db: DatabaseSync): void {
+  const emptyFingerprint = computeMethodFingerprint({});
+  const candidates = readRows<ContactCandidate>(db.prepare("SELECT raw_json FROM candidates ORDER BY insert_order, id").all());
+
+  for (const candidate of candidates) {
+    if (!candidate.personId) {
+      continue;
+    }
+
+    const legacyEmptyLink = readOptionalRow<AppleContactLink>(
+      db
+        .prepare(
+          "SELECT raw_json FROM apple_contact_links WHERE person_id = ? AND user_id = ? AND method_fingerprint = ?"
+        )
+        .get(candidate.personId, candidate.userId, emptyFingerprint)
+    );
+    if (!legacyEmptyLink) {
+      continue;
+    }
+
+    const repairedFingerprint = candidateMethodFingerprint(candidate);
+    if (repairedFingerprint === emptyFingerprint) {
+      continue;
+    }
+
+    let person = readOptionalRow<PersonIdentity>(
+      db
+        .prepare(
+          `
+            SELECT p.raw_json
+            FROM apple_contact_links l
+            JOIN person_identities p ON p.id = l.person_id
+            WHERE l.user_id = ? AND l.method_fingerprint = ?
+          `
+        )
+        .get(candidate.userId, repairedFingerprint)
+    );
+
+    if (!person || person.mergedIntoPersonId) {
+      const timestamp = candidate.detectedAt;
+      person = {
+        id: `person_${randomUUID()}`,
+        userId: candidate.userId,
+        canonicalDisplayName: candidate.displayName,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      upsertPersonIdentity(db, person);
+    }
+
+    upsertAppleContactLink(db, {
+      id: `apple_contact_link_${randomUUID()}`,
+      personId: person.id,
+      userId: candidate.userId,
+      contactIdentifier: candidate.contactIdentifier,
+      unifiedContactIdentifier: candidate.unifiedContactIdentifier,
+      containerIdentifier: candidate.containerIdentifier,
+      methodFingerprint: repairedFingerprint,
+      displayNameSnapshot: candidate.displayName,
+      sensorEventId: candidate.sensorEventId,
+      linkedAt: candidate.detectedAt
+    });
+
+    const updatedCandidate = { ...candidate, personId: person.id };
+    upsertCandidate(db, updatedCandidate);
+
+    const memories = readRows<RelationshipMemory>(
+      db.prepare("SELECT raw_json FROM memories WHERE candidate_id = ? ORDER BY insert_order, id").all(candidate.id)
+    );
+    for (const memory of memories) {
+      updateMemoryRow(db, { ...memory, personId: person.id });
+    }
   }
 }
 

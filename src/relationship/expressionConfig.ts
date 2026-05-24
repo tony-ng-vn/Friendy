@@ -1,7 +1,8 @@
-import { DEFAULT_OPENROUTER_MODEL } from "./openRouterInterpreter";
+import { DEFAULT_OPENAI_MODEL, type ModelProvider } from "./openAIInterpreter";
 
 export type ExpressionConfig = {
   enabled: boolean;
+  provider: ModelProvider;
   model: string;
   maxLength: number;
   apiKey: string;
@@ -12,17 +13,23 @@ export function readExpressionConfig(
   env: Partial<
     Pick<
       NodeJS.ProcessEnv,
-      "FRIENDY_EXPRESSION_LLM" | "FRIENDY_EXPRESSION_MODEL" | "FRIENDY_EXPRESSION_MAX_LENGTH" | "OPENROUTER_API_KEY" | "OPENROUTER_MODEL"
+      | "FRIENDY_EXPRESSION_LLM"
+      | "FRIENDY_EXPRESSION_MODEL"
+      | "FRIENDY_EXPRESSION_MAX_LENGTH"
+      | "OPENAI_API_KEY"
+      | "OPENAI_MODEL"
     >
   > = process.env
 ): ExpressionConfig {
   const enabled = env.FRIENDY_EXPRESSION_LLM === "1" || env.FRIENDY_EXPRESSION_LLM === "true";
   const maxLength = Number.parseInt(env.FRIENDY_EXPRESSION_MAX_LENGTH ?? "280", 10);
+  const provider: ModelProvider = "openai";
 
   return {
     enabled,
-    model: env.FRIENDY_EXPRESSION_MODEL || env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+    provider,
+    model: env.FRIENDY_EXPRESSION_MODEL || env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
     maxLength: Number.isFinite(maxLength) ? maxLength : 280,
-    apiKey: env.OPENROUTER_API_KEY ?? ""
+    apiKey: env.OPENAI_API_KEY ?? ""
   };
 }

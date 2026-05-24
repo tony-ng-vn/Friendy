@@ -4,7 +4,7 @@
 
 PR 5 replaces Friendy's blunt post-response pending reminder hook with a deterministic **pending reminder policy**. When the user asks a list, search, duplicate audit, delete, or repair question while a contact confirmation prompt is open, Friendy must answer the question first — without appending a confusing inline sentence like `I still need context for Testing 3...` on every unrelated reply.
 
-PR 5 builds on PR 3 (structured intent router + intent-based suppression). It does **not** change routing order or OpenRouter payload shape — that is PR 4.
+PR 5 builds on PR 3 (structured intent router + intent-based suppression). It does **not** change routing order or OpenAI payload shape — that is PR 4.
 
 This spec depends on:
 
@@ -19,7 +19,7 @@ This spec depends on:
 | PR 1 | Regression eval freeze | Done |
 | PR 2 | Real `list_people` tool | Done |
 | PR 3 | Structured intent router + intent suppression | Done |
-| PR 4 | Pass state into LLM router (OpenRouter payload) | Spec in progress |
+| PR 4 | Pass state into LLM router (OpenAI payload) | Spec in progress |
 | PR 5 | Pending reminder policy + presentation | **This spec** |
 
 Old Spec A "PR 4: Policy Validator" is implemented as PR 3.
@@ -73,7 +73,7 @@ That is necessary but not sufficient.
 
 ## Non-Goals
 
-- Do not pass state into OpenRouter (PR 4).
+- Do not pass state into OpenAI (PR 4).
 - Do not change interpreter intents or tool routing (PR 3 / PR 4).
 - Do not auto-confirm, auto-ignore, or mutate pending candidates from reminder logic.
 - Do not add push notifications or background nags outside the reply that answers the user's question.
@@ -147,7 +147,7 @@ Reminder runs **after** the primary answer is known (`responseKind`) so list/sea
 
 ## Shared context with PR 4
 
-PR 4 introduces `RouterInputEnvelope` for the OpenRouter call. PR 5 consumes a **subset** of the same facts through `PendingReminderContext` — computed once per turn in a builder both PRs can share later.
+PR 4 introduces `RouterInputEnvelope` for the OpenAI call. PR 5 consumes a **subset** of the same facts through `PendingReminderContext` — computed once per turn in a builder both PRs can share later.
 
 ```ts
 /** Subset used by PR 5; full shape owned by PR 4 spec. */

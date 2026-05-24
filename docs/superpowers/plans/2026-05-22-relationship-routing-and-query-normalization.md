@@ -6,7 +6,7 @@
 
 **Architecture:** Keep deterministic lifecycle/candidate/mutation paths in front, but stop broad regex scope rejection from blocking relationship-shaped recall. Add a `MemorySearchRequest` seam from interpretation to search, normalize broad recall filler terms, extend route/search fields, and add redacted route trace evidence.
 
-**Tech Stack:** TypeScript, Vitest, Zod, existing OpenRouter structured-output interpreter, existing in-memory and SQLite relationship repositories.
+**Tech Stack:** TypeScript, Vitest, Zod, existing OpenAI structured-output interpreter, existing in-memory and SQLite relationship repositories.
 
 ---
 
@@ -17,7 +17,7 @@
 - Modify `src/relationship/tools.ts`: export `normalizeMemorySearchQuery`, add `MemorySearchRequest` support, and use normalized/effective search queries.
 - Modify `src/relationship/tools.test.ts`: normalization and seeded broad-recall search coverage.
 - Modify `src/relationship/interpretation.ts`: add optional `domain` and `search` fields, `RouteDomain`, `SearchPlan`, and route-aware query builder.
-- Modify `src/relationship/openRouterInterpreter.ts`: populate route/search fields in rule-based fallback and include them in structured schema.
+- Modify `src/relationship/openAIInterpreter.ts`: populate route/search fields in rule-based fallback and include them in structured schema.
 - Modify `src/relationship/interpretedAgent.ts`: build `MemorySearchRequest` from interpretation before calling search.
 - Modify `src/relationship/interpretedAgent.test.ts`: integration coverage proving broad recall calls `search_memories` and returns seeded matches.
 - Modify `src/relationship/runtime/runtimeTrace.ts`: add redacted route/policy/tool trace shape.
@@ -317,7 +317,7 @@ git commit -m "fix:normalize broad relationship recall search"
 
 **Files:**
 - Modify: `src/relationship/interpretation.ts`
-- Modify: `src/relationship/openRouterInterpreter.ts`
+- Modify: `src/relationship/openAIInterpreter.ts`
 - Modify: `src/relationship/interpretedAgent.ts`
 - Modify: `src/relationship/interpretedAgent.test.ts`
 
@@ -419,7 +419,7 @@ Change `buildSearchQueryFromInterpretation` to prefer exact terms:
 
 - [ ] **Step 5: Update rule-based fallback**
 
-In `src/relationship/openRouterInterpreter.ts`, update `baseInterpretation` to include:
+In `src/relationship/openAIInterpreter.ts`, update `baseInterpretation` to include:
 
 ```ts
     domain: "relationship_memory",
@@ -500,7 +500,7 @@ const matches = tools.search_memories(message.userId, query);
 Run:
 
 ```bash
-npm test -- src/relationship/interpretation.test.ts src/relationship/openRouterInterpreter.test.ts src/relationship/interpretedAgent.test.ts
+npm test -- src/relationship/interpretation.test.ts src/relationship/openAIInterpreter.test.ts src/relationship/interpretedAgent.test.ts
 ```
 
 Expected: PASS.
@@ -510,7 +510,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/relationship/interpretation.ts src/relationship/interpretation.test.ts src/relationship/openRouterInterpreter.ts src/relationship/interpretedAgent.ts src/relationship/interpretedAgent.test.ts
+git add src/relationship/interpretation.ts src/relationship/interpretation.test.ts src/relationship/openAIInterpreter.ts src/relationship/interpretedAgent.ts src/relationship/interpretedAgent.test.ts
 git commit -m "feat:add relationship route search plan"
 ```
 

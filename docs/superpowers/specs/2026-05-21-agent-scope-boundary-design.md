@@ -107,7 +107,7 @@ Use a separate `ScopeDecision` before interpretation and tool calls. This is the
 Use a hybrid router:
 
 1. deterministic hard rules for obvious cases such as candidate confirmations, ignores, explicit memory capture, obvious coding/math/general-knowledge requests, and adversarial instruction text;
-2. model-backed structured classification for ambiguous natural language when `OPENROUTER_API_KEY` is configured;
+2. model-backed structured classification for ambiguous natural language when `OPENAI_API_KEY` is configured;
 3. deterministic fallback when no model is configured.
 
 The fallback should prefer `needs_clarification` for relationship-adjacent ambiguity and `out_of_scope` for obvious general-assistant requests. This avoids trying to hardcode every possible human message while still keeping the MVP testable without a model key.

@@ -8,9 +8,9 @@
 
 **Baseline (already merged — do not redo):** `docs/superpowers/plans/2026-05-23-strict-mode-trace-envelope.md` — strict parser, `FriendyStrictModeError`, base `FriendyTrace`, fallback throws, eval `strict-mode-fallback-rejection`.
 
-**Architecture:** Extend `FriendyTrace` and runtime redaction with delta fields only. Instrument scope-boundary short-circuit separately from OpenRouter path. Add startup warning when strict off. Add doctor + docs. Add integration test with PR 4 envelope replaying May 23 transcript.
+**Architecture:** Extend `FriendyTrace` and runtime redaction with delta fields only. Instrument scope-boundary short-circuit separately from OpenAI path. Add startup warning when strict off. Add doctor + docs. Add integration test with PR 4 envelope replaying May 23 transcript.
 
-**Tech Stack:** TypeScript, Vitest, trace/runtime/doctor modules, OpenRouter interpreter, interpreted agent.
+**Tech Stack:** TypeScript, Vitest, trace/runtime/doctor modules, OpenAI interpreter, interpreted agent.
 
 **Depends on:** Merged strict-mode work; **joint acceptance requires PR 4** envelope landed.
 
@@ -20,7 +20,7 @@
 
 - Modify: `src/relationship/trace.ts` — delta fields, `scope_boundary` route source
 - Create: `src/relationship/trace.test.ts` (if missing) — new field validation
-- Modify: `src/relationship/openRouterInterpreter.ts` — `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode` on results
+- Modify: `src/relationship/openAIInterpreter.ts` — `modelRequested`, `modelResponseSchemaValid`, `modelErrorCode` on results
 - Modify: `src/relationship/interpretedAgent.ts` — scope-boundary trace, `activeWorkflowKind`, `selectedTool`
 - Modify: `src/relationship/scopeBoundary.ts` or call sites — return trace-friendly scope decision
 - Modify: `src/relationship/runtime/runtimeTrace.ts` — redact new fields
@@ -28,7 +28,7 @@
 - Modify: `src/relationship/runtime/friendyDoctor.ts` — strict + missing API key warning
 - Modify: `REFERENCE.md`, `docs/agent-handoff.md`, `implementation-notes.html`
 - Modify: `src/relationship/interpretedAgent.test.ts` — scope trace + May 23 joint test (after PR 4)
-- Modify: `src/relationship/openRouterInterpreter.test.ts` — schema invalid trace fields
+- Modify: `src/relationship/openAIInterpreter.test.ts` — schema invalid trace fields
 
 ---
 
@@ -43,9 +43,9 @@
 
 ---
 
-## Task 2: OpenRouter Trace Metadata
+## Task 2: OpenAI Trace Metadata
 
-**Files:** `openRouterInterpreter.ts`, `openRouterInterpreter.test.ts`
+**Files:** `openAIInterpreter.ts`, `openAIInterpreter.test.ts`
 
 - [ ] **Step 1:** Write failing tests: successful parse sets `modelResponseSchemaValid: true`; invalid schema sets `false` before throw.
 - [ ] **Step 2:** Attach `modelRequested` from config on every interpret call.
@@ -71,7 +71,7 @@
 **Files:** `friendyRuntimeCli.ts`, `friendyDoctor.ts`, tests
 
 - [ ] **Step 1:** Log WARN when strict resolves false and inbound interpreted agent enabled.
-- [ ] **Step 2:** Doctor: strict on + missing `OPENROUTER_API_KEY` → actionable warning; print model id.
+- [ ] **Step 2:** Doctor: strict on + missing `OPENAI_API_KEY` → actionable warning; print model id.
 - [ ] **Step 3:** Run doctor/runtime CLI tests.
 
 ---
@@ -89,13 +89,13 @@
 
 **Files:** `interpretedAgent.test.ts` or dedicated integration test file
 
-- [ ] **Step 1:** Add transcript fixture with mocked OpenRouter returning correct intents per turn.
+- [ ] **Step 1:** Add transcript fixture with mocked OpenAI returning correct intents per turn.
 - [ ] **Step 2:** Assert strict on → no `routeSource: "fallback"` on list/duplicate/repair/delete turns.
 - [ ] **Step 3:** Run full verification:
 
 ```bash
 npm test -- src/relationship/trace.test.ts
-npm test -- src/relationship/openRouterInterpreter.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts
 npm test -- src/relationship/interpretedAgent.test.ts
 npm run eval:agent
 npm run build
@@ -105,6 +105,6 @@ npm run build
 
 ## Verification Checklist (Manual)
 
-1. `FRIENDY_STRICT_MODE=1 npm run agent:friendy` with valid OpenRouter → traces show `routeSource: "llm"`.
+1. `FRIENDY_STRICT_MODE=1 npm run agent:friendy` with valid OpenAI → traces show `routeSource: "llm"`.
 2. Same with missing API key → turn fails loud with `modelErrorCode`.
 3. Strict off → startup warning appears.

@@ -121,7 +121,7 @@ src/relationship/ingestion/
   fixture contact snapshot diffing, fixture calendar ingestion, and explicit local macOS Contacts/Calendar checker
 
 src/relationship/interpretation.ts
-src/relationship/openRouterInterpreter.ts
+src/relationship/openAIInterpreter.ts
   structured message interpretation contract and optional LLM-backed interpreter
 
 src/relationship/interpretedAgent.ts

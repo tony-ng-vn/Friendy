@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-/** OpenRouter/structured-output JSON schema for message interpretation. */
+/** OpenAI structured-output JSON schema for message interpretation. */
 export const messageInterpretationJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -335,12 +335,38 @@ export type SearchPlan = z.infer<typeof searchPlanSchema>;
  * @throws When shape or intent-specific invariants fail (e.g. capture without people)
  */
 export function validateMessageInterpretation(value: unknown): MessageInterpretation {
-  const parsed = messageInterpretationSchema.safeParse(value);
+  const parsed = messageInterpretationSchema.safeParse(normalizeRawMessageInterpretation(value));
   if (!parsed.success) {
     throw new Error(`Invalid message interpretation: ${parsed.error.message}`);
   }
 
   return parsed.data;
+}
+
+function normalizeRawMessageInterpretation(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  if (input.intent !== "search_memory" || typeof input.query !== "string" || input.query.trim().length > 0) {
+    return value;
+  }
+
+  const search = input.search;
+  if (typeof search !== "object" || search === null || Array.isArray(search)) {
+    return value;
+  }
+
+  const semanticQuery = (search as { semanticQuery?: unknown }).semanticQuery;
+  if (typeof semanticQuery !== "string" || semanticQuery.trim().length === 0) {
+    return value;
+  }
+
+  return {
+    ...input,
+    query: semanticQuery
+  };
 }
 
 /**

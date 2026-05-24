@@ -3,7 +3,7 @@ import { readExpressionConfig, type ExpressionConfig } from "./expressionConfig"
 import type { ExpressionFactBundle } from "./expressionFacts";
 import { validateExpressionReply } from "./expressionValidator";
 
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const EXPRESSION_FETCH_TIMEOUT_MS = 8_000;
 
 export type ExpressionComposerResult = {
@@ -39,7 +39,7 @@ export async function composeExpressionReply(input: {
   }
 
   try {
-    const response = await (input.fetchImpl ?? fetch)(OPENROUTER_CHAT_COMPLETIONS_URL, {
+    const response = await (input.fetchImpl ?? fetch)(expressionChatCompletionsUrl(), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -51,8 +51,7 @@ export async function composeExpressionReply(input: {
           { role: "system", content: buildExpressionSystemPrompt() },
           { role: "user", content: buildExpressionUserMessage({ draft, bundle: input.bundle }) }
         ],
-        max_tokens: 120,
-        temperature: 0.4
+        max_completion_tokens: 120
       }),
       signal: AbortSignal.timeout(EXPRESSION_FETCH_TIMEOUT_MS)
     });
@@ -98,6 +97,10 @@ export async function composeExpressionReply(input: {
       expressionModel: config.model
     };
   }
+}
+
+function expressionChatCompletionsUrl(): string {
+  return OPENAI_CHAT_COMPLETIONS_URL;
 }
 
 /** Polishes outbound text when a fact bundle is available; otherwise returns the draft unchanged. */

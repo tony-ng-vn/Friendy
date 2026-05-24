@@ -5,7 +5,7 @@
  * It does not read real macOS Contacts or calendars; live provider access belongs in explicit
  * CLI commands such as `npm run ingest:local:check`.
  */
-import { createRuleBasedInterpreter } from "../openRouterInterpreter";
+import { createRuleBasedInterpreter } from "../openAIInterpreter";
 import { createRelationshipRepository } from "../repository";
 import { createRelationshipTools } from "../tools";
 import type { CalendarEvent, RelationshipMemory } from "../types";

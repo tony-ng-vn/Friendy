@@ -6,6 +6,8 @@ import { loadFriendyEnv, readSpectrumCredentials } from "./env";
 
 const ORIGINAL_PROJECT_ID = process.env.SPECTRUM_PROJECT_ID;
 const ORIGINAL_PROJECT_SECRET = process.env.SPECTRUM_PROJECT_SECRET;
+const ORIGINAL_OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ORIGINAL_OPENAI_MODEL = process.env.OPENAI_MODEL;
 
 describe("friendy env loading", () => {
   let dir: string;
@@ -14,12 +16,16 @@ describe("friendy env loading", () => {
     dir = mkdtempSync(join(tmpdir(), "friendy-env-"));
     delete process.env.SPECTRUM_PROJECT_ID;
     delete process.env.SPECTRUM_PROJECT_SECRET;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_MODEL;
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
     restoreEnv("SPECTRUM_PROJECT_ID", ORIGINAL_PROJECT_ID);
     restoreEnv("SPECTRUM_PROJECT_SECRET", ORIGINAL_PROJECT_SECRET);
+    restoreEnv("OPENAI_API_KEY", ORIGINAL_OPENAI_API_KEY);
+    restoreEnv("OPENAI_MODEL", ORIGINAL_OPENAI_MODEL);
   });
 
   it("loads Spectrum credentials from .env.local for standalone agent scripts", () => {
@@ -53,9 +59,23 @@ describe("friendy env loading", () => {
       projectSecret: "secret_from_local"
     });
   });
+
+  it("lets .env.local replace stale shell OpenAI model credentials", () => {
+    process.env.OPENAI_API_KEY = "stale_shell_key";
+    process.env.OPENAI_MODEL = "stale_shell_model";
+    writeFileSync(join(dir, ".env.local"), "OPENAI_API_KEY=fresh_local_key\nOPENAI_MODEL=gpt-4o-mini\n");
+
+    loadFriendyEnv(dir);
+
+    expect(process.env.OPENAI_API_KEY).toBe("fresh_local_key");
+    expect(process.env.OPENAI_MODEL).toBe("gpt-4o-mini");
+  });
 });
 
-function restoreEnv(key: "SPECTRUM_PROJECT_ID" | "SPECTRUM_PROJECT_SECRET", value: string | undefined) {
+function restoreEnv(
+  key: "SPECTRUM_PROJECT_ID" | "SPECTRUM_PROJECT_SECRET" | "OPENAI_API_KEY" | "OPENAI_MODEL",
+  value: string | undefined
+) {
   if (value === undefined) {
     delete process.env[key];
     return;

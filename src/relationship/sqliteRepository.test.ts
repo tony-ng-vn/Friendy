@@ -1119,6 +1119,57 @@ describe("sqlite relationship repository", () => {
     expect(reopened.getCandidate(candidate.id)?.personId).toBe(person.id);
     expect(reopened.listMemories(fixtureUser.id)[0].personId).toBe(person.id);
   });
+
+  it("repairs legacy empty-method person collisions using contact identifiers", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const sharedPerson = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing 12",
+      createdAt: "2026-05-20T12:00:00.000Z"
+    });
+    repo.linkAppleContact({
+      personId: sharedPerson.id,
+      userId: fixtureUser.id,
+      methodFingerprint: computeMethodFingerprint({}),
+      displayNameSnapshot: "Testing 12",
+      linkedAt: "2026-05-20T12:00:00.000Z"
+    });
+    const first = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z3",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z3"
+    });
+    const second = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      displayName: "Z4",
+      phoneNumbers: [],
+      emails: [],
+      contactIdentifier: "contact-z4"
+    });
+    repo.attachCandidateToPerson(first.id, sharedPerson.id);
+    repo.attachCandidateToPerson(second.id, sharedPerson.id);
+    repo.confirmCandidate(first.id, "I met them at AI dinner", undefined, { eventTitle: "AI dinner" });
+    repo.confirmCandidate(second.id, "At AI dinner", undefined, { eventTitle: "AI dinner" });
+    repo.close();
+    repositories.splice(repositories.indexOf(repo), 1);
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const memories = reopened.listMemories(fixtureUser.id).sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+    expect(memories.map((memory) => memory.displayName)).toEqual(["Z3", "Z4"]);
+    expect(memories[0].personId).toMatch(/^person_/);
+    expect(memories[1].personId).toMatch(/^person_/);
+    expect(memories[1].personId).not.toBe(memories[0].personId);
+  });
 });
 
 function tempDatabasePath(): string {

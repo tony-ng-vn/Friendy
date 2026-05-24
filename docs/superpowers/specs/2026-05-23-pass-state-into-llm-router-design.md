@@ -2,7 +2,7 @@
 
 ## Summary
 
-PR 4 changes Friendy's model-routing input from raw user text to a compact state-aware routing envelope. PR 3 made relationship-meta routes first-class (`explain_agent_state`, `conversation_repair`, `duplicate_audit`, memory-management requests), but the OpenRouter call still sends only `message.text` as the user content. That means the model cannot reliably know whether the user is answering an active pending prompt, complaining about a stale prompt, asking about duplicates, or repairing a previous answer.
+PR 4 changes Friendy's model-routing input from raw user text to a compact state-aware routing envelope. PR 3 made relationship-meta routes first-class (`explain_agent_state`, `conversation_repair`, `duplicate_audit`, memory-management requests), but the OpenAI call still sends only `message.text` as the user content. That means the model cannot reliably know whether the user is answering an active pending prompt, complaining about a stale prompt, asking about duplicates, or repairing a previous answer.
 
 This PR gives the router enough state to choose the right `FriendyIntent` without letting the model mutate memory directly.
 
@@ -11,12 +11,12 @@ This PR gives the router enough state to choose the right `FriendyIntent` withou
 - PR 3's current `MessageInterpretation["intent"]` vocabulary is the canonical route vocabulary for this work. Do not introduce new intent strings in PR 4 unless the schema and policy validator are migrated in the same PR.
 - `explain_agent_state` and `conversation_repair` remain first-class routes, not aliases for `clarify` or `unsupported`.
 - The LLM router still returns validated structured JSON through `MessageInterpretation`; deterministic tools still execute all reads and mutations.
-- State sent to OpenRouter must be compact and privacy-minimized. It may include display names and ids needed for routing, but not raw full contact payloads, phone numbers, emails, or unbounded message history.
-- This spec covers the interpreted/OpenRouter path first. Production fallback remains disallowed in strict mode; the rule-based interpreter is only a test/local-fixture interpreter and should accept the new interpreter input shape without becoming a live routing fallback.
+- State sent to OpenAI must be compact and privacy-minimized. It may include display names and ids needed for routing, but not raw full contact payloads, phone numbers, emails, or unbounded message history.
+- This spec covers the interpreted/OpenAI path first. Production fallback remains disallowed in strict mode; the rule-based interpreter is only a test/local-fixture interpreter and should accept the new interpreter input shape without becoming a live routing fallback.
 
 ## Problem
 
-The current OpenRouter request body is effectively:
+The current OpenAI request body is effectively:
 
 ```ts
 messages: [
@@ -45,7 +45,7 @@ Without that state, the router can incorrectly classify the message as `answer_p
 
 ## Objective
 
-Build a compact state envelope for `MessageInterpreter.interpret(...)` so OpenRouter can route with conversation and domain context.
+Build a compact state envelope for `MessageInterpreter.interpret(...)` so OpenAI can route with conversation and domain context.
 
 Success means the router can distinguish:
 
@@ -59,7 +59,7 @@ Success means the router can distinguish:
 ## Non-Goals
 
 - Do not add new memory mutation tools.
-- Do not let OpenRouter execute tools or decide final user-facing copy.
+- Do not let OpenAI execute tools or decide final user-facing copy.
 - Do not add embeddings, reranking, or hybrid retrieval.
 - Do not send raw private contact methods, Apple Contacts payloads, phone numbers, emails, or full long transcript history to the model.
 - Do not remove deterministic fast paths for lifecycle commands, clear pending-contact answers, clear ignore commands, or hard safety blocks.
@@ -70,7 +70,7 @@ Success means the router can distinguish:
 Use these commands while implementing and verifying this spec:
 
 ```bash
-npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/interpretedAgent.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/interpretedAgent.test.ts
 npm run build
 npm run eval:agent
 git diff --check
@@ -83,8 +83,8 @@ Expected source/test locations:
 ```text
 src/relationship/routerInputEnvelope.ts       -> new compact state-envelope builder
 src/relationship/routerInputEnvelope.test.ts  -> envelope construction, redaction, caps, ordering
-src/relationship/openRouterInterpreter.ts     -> OpenRouter request serialization and interpreter input shape
-src/relationship/openRouterInterpreter.test.ts -> request-body and schema tests
+src/relationship/openAIInterpreter.ts     -> OpenAI request serialization and interpreter input shape
+src/relationship/openAIInterpreter.test.ts -> request-body and schema tests
 src/relationship/interpretedAgent.ts          -> passes conversation/domain state into interpreter
 src/relationship/interpretedAgent.test.ts     -> state-aware routing behavior
 src/relationship/interpretation.ts            -> route schema/prompt contract if PR 3 left compatibility aliases
@@ -106,11 +106,11 @@ export function buildRouterInputEnvelope(input: BuildRouterInputEnvelopeInput): 
 }
 ```
 
-Keep the OpenRouter client boring: it should serialize the envelope and validate the model response, not inspect repository state itself.
+Keep the OpenAI client boring: it should serialize the envelope and validate the model response, not inspect repository state itself.
 
 ## Target Input Envelope
 
-Introduce a routing envelope that becomes the OpenRouter user message content.
+Introduce a routing envelope that becomes the OpenAI user message content.
 
 ```ts
 type RouterInputEnvelope = {
@@ -218,7 +218,7 @@ type RouterRouteCapability =
 
 Both lists are advisory for route planning. The model may name an intent, but deterministic policy still decides whether a tool can run.
 
-## Serialization For OpenRouter
+## Serialization For OpenAI
 
 Use one user message containing compact JSON plus a short instruction header.
 
@@ -237,7 +237,7 @@ Do not put the state envelope into the system prompt. The system prompt should d
 
 ## State Builder Boundary
 
-Add a dedicated builder instead of constructing the envelope inside `openRouterInterpreter.ts`.
+Add a dedicated builder instead of constructing the envelope inside `openAIInterpreter.ts`.
 
 Suggested module:
 
@@ -252,7 +252,7 @@ Responsibilities:
 - cap array sizes and text lengths;
 - keep stable ordering so tests and traces are deterministic.
 
-The OpenRouter interpreter should accept either:
+The OpenAI interpreter should accept either:
 
 ```ts
 interpret(input: MessageInterpreterInput): Promise<MessageInterpreterResult>
@@ -335,7 +335,7 @@ The envelope must be bounded:
 - max last list result ids: 10;
 - max tool errors: 3;
 - max prompt/message text per field: 240 chars;
-- max serialized envelope content: 8 KB before JSON stringification into the OpenRouter message;
+- max serialized envelope content: 8 KB before JSON stringification into the OpenAI message;
 - no phone numbers, emails, raw Apple Contacts ids, `contactIdentifier`, raw contact method hashes, or full contact payload JSON.
 
 If a value is redacted, omit it or use a neutral marker. Do not send `[REDACTED PHONE]` style strings that still reveal field existence unless routing needs that fact.
@@ -344,8 +344,8 @@ If a value is redacted, omit it or use a neutral marker. Do not send `[REDACTED 
 
 Add RED tests before implementation:
 
-- `openRouterInterpreter.test.ts`
-  - OpenRouter request user content is the serialized envelope, not raw text only.
+- `openAIInterpreter.test.ts`
+  - OpenAI request user content is the serialized envelope, not raw text only.
   - Envelope includes active workflow when router context is supplied.
   - Envelope omits phone/email/private contact payload fields.
   - Envelope exposes real `AgentToolCall` names separately from route capabilities.
@@ -366,7 +366,7 @@ Add RED tests before implementation:
 Verification commands:
 
 ```bash
-npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/interpretedAgent.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/interpretedAgent.test.ts
 npm run build
 npm run eval:agent
 git diff --check
@@ -374,13 +374,13 @@ git diff --check
 
 ## Boundaries
 
-- Always: build the envelope through a dedicated typed builder; cap arrays and text lengths; validate the OpenRouter response with the existing schema path; keep deterministic tools as the only mutation path.
+- Always: build the envelope through a dedicated typed builder; cap arrays and text lengths; validate the OpenAI response with the existing schema path; keep deterministic tools as the only mutation path.
 - Ask first: adding a new persistence table, adding a new model provider, or expanding the envelope to include raw transcript history.
-- Never: send phone numbers, emails, raw Apple Contacts payloads, unbounded message history, secrets, or live Spectrum credentials to OpenRouter.
+- Never: send phone numbers, emails, raw Apple Contacts payloads, unbounded message history, secrets, or live Spectrum credentials to OpenAI.
 
 ## Success Criteria
 
-- OpenRouter receives a compact routing envelope as the user content.
+- OpenAI receives a compact routing envelope as the user content.
 - The envelope includes active pending workflow state when present.
 - The envelope includes domain summaries for pending candidates, duplicates, and known people names where available.
 - The active same-name pending/saved conflict is represented in `possibleDuplicates` and `knownPeopleNamed`.

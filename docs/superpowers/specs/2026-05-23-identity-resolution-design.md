@@ -76,7 +76,7 @@ From the regression freeze (`2026-05-23-friendy-regression-freeze-design.md`, Ca
 - Do not expose raw phone/email in traces or user replies.
 - Do not replace method-centric ingestion rules (new method still creates candidate).
 - Do not build a general entity-resolution ML model.
-- Do not change OpenRouter payload shape (PR 4) — workflow state may be passed later.
+- Do not change OpenAI payload shape (PR 4) — workflow state may be passed later.
 
 ## Design approaches considered
 

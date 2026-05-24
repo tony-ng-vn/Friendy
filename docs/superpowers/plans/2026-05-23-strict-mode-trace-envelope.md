@@ -10,7 +10,7 @@
 
 **Architecture:** Add a small strict-mode boundary and a trace constructor. Thread the trace through interpreted-agent results, persisted interactions, and redacted runtime traces. Keep non-strict behavior usable. In strict mode, throw typed errors instead of silently falling back or converting unsupported intents.
 
-**Tech Stack:** TypeScript, Vitest, Zod, existing OpenRouter interpreter, existing interpreted relationship agent, existing runtime trace.
+**Tech Stack:** TypeScript, Vitest, Zod, existing OpenAI interpreter, existing interpreted relationship agent, existing runtime trace.
 
 ---
 
@@ -20,13 +20,13 @@
 - Add `src/relationship/trace.ts`: `FriendyTrace` type and trace construction helpers.
 - Modify `src/relationship/types.ts`: expose `FriendyTrace` on interpreted agent results if this is the best central type home.
 - Modify `src/relationship/interpretedAgent.ts`: populate trace for deterministic, LLM, and fallback routes; enforce strict mode at route execution boundaries.
-- Modify `src/relationship/openRouterInterpreter.ts`: expose whether fallback was used and why; support strict-mode no-fallback behavior.
+- Modify `src/relationship/openAIInterpreter.ts`: expose whether fallback was used and why; support strict-mode no-fallback behavior.
 - Modify `src/relationship/interpretation.ts`: ensure unknown/unsupported route shape is explicit rather than silently converted.
 - Modify `src/relationship/runtime/runtimeTrace.ts`: include redacted strict-mode envelope fields.
 - Modify `src/relationship/transports/spectrumTransport.ts`: preserve trace shape in compact logs.
 - Modify `src/relationship/runtime/friendyRuntimeCli.ts`: read `FRIENDY_STRICT_MODE` and pass it to the interpreted agent/runtime.
 - Modify `src/relationship/evals/agentEvalRunner.ts`: assert required evals do not depend on unexpected fallback.
-- Add/update tests in `src/relationship/*strict*.test.ts`, `openRouterInterpreter.test.ts`, `interpretedAgent.test.ts`, and `runtimeTrace.test.ts`.
+- Add/update tests in `src/relationship/*strict*.test.ts`, `openAIInterpreter.test.ts`, `interpretedAgent.test.ts`, and `runtimeTrace.test.ts`.
 - Update `implementation-notes.html`, `docs/agent-handoff.md`, `docs/goals/PLAN.md`, `docs/goals/EXPERIMENTS.md`, and `docs/goals/EXPERIMENT_NOTES.md`.
 
 ## Task 1: Strict Mode Parser and Typed Error
@@ -140,8 +140,8 @@ npm test -- src/relationship/interpretedAgent.test.ts src/relationship/runtime/r
 ## Task 3: Interpreter Result Metadata
 
 **Files:**
-- Modify: `src/relationship/openRouterInterpreter.ts`
-- Modify: `src/relationship/openRouterInterpreter.test.ts`
+- Modify: `src/relationship/openAIInterpreter.ts`
+- Modify: `src/relationship/openAIInterpreter.test.ts`
 
 - [ ] Add RED tests proving interpreter results report:
 
@@ -165,13 +165,13 @@ Cases:
 - [ ] Run:
 
 ```bash
-npm test -- src/relationship/openRouterInterpreter.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts
 ```
 
 ## Task 4: Strict Mode Interpreter Failures
 
 **Files:**
-- Modify: `src/relationship/openRouterInterpreter.ts`
+- Modify: `src/relationship/openAIInterpreter.ts`
 - Modify: `src/relationship/interpretedAgent.ts`
 - Modify tests.
 
@@ -190,7 +190,7 @@ Important: strict mode should fail before fallback is executed when the model bo
 - [ ] Run:
 
 ```bash
-npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/interpretedAgent.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/interpretedAgent.test.ts
 ```
 
 ## Task 5: Unknown and Unsupported Routes

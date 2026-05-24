@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
-import { readOpenRouterConfig } from "../openRouterInterpreter";
+import { readOpenAIConfig } from "../openAIInterpreter";
 import { readFriendyStrictMode } from "../strictMode";
 import { resolveFriendyRuntimeConfig } from "./friendyRuntimeCli";
 import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
@@ -58,10 +58,10 @@ export function runFriendyDoctor({
   }
 
   const strictMode = readFriendyStrictMode(env);
-  const openRouter = readOpenRouterConfig(env);
+  const modelConfig = readOpenAIConfig(env);
   checks.push(strictModeCheck(strictMode));
   if (strictMode) {
-    checks.push(openRouterApiKeyCheck(openRouter.apiKey));
+    checks.push(modelApiKeyCheck(modelConfig.apiKey));
   }
 
   const promptTransport = env.FRIENDY_PROMPT_TRANSPORT || (env.FRIENDY_SENSOR_MOCK === "1" ? "console" : "spectrum");
@@ -78,7 +78,14 @@ export function runFriendyDoctor({
   return {
     ok: checks.every((check) => check.ok || check.name === "env_file" || check.name === "native_permissions"),
     checks,
-    lines: renderDoctorLines({ platform, nodeVersion, checks, strictMode, openRouterModel: openRouter.model })
+    lines: renderDoctorLines({
+      platform,
+      nodeVersion,
+      checks,
+      strictMode,
+      model: modelConfig.model,
+      provider: modelConfig.provider
+    })
   };
 }
 
@@ -90,13 +97,13 @@ function strictModeCheck(strictMode: boolean): FriendyDoctorCheck {
   };
 }
 
-function openRouterApiKeyCheck(apiKey: string): FriendyDoctorCheck {
+function modelApiKeyCheck(apiKey: string): FriendyDoctorCheck {
   const ready = Boolean(apiKey.trim());
   return {
-    name: "openrouter_api_key",
+    name: "model_api_key",
     ok: ready,
     status: ready ? "ready" : "missing",
-    remediation: ready ? undefined : "Set OPENROUTER_API_KEY before strict-mode dogfood runs."
+    remediation: ready ? undefined : "Set OPENAI_API_KEY before strict-mode dogfood runs."
   };
 }
 
@@ -169,18 +176,21 @@ function renderDoctorLines({
   nodeVersion,
   checks,
   strictMode,
-  openRouterModel
+  model,
+  provider
 }: {
   platform: NodeJS.Platform;
   nodeVersion: string;
   checks: FriendyDoctorCheck[];
   strictMode: boolean;
-  openRouterModel: string;
+  model: string;
+  provider: string;
 }): string[] {
   const lines = ["Friendy runtime doctor", `Platform: ${platform}`, `Node: ${nodeVersion}`];
   if (strictMode) {
     lines.push("strictMode: true");
-    lines.push(`OpenRouter model: ${openRouterModel}`);
+    lines.push(`Model provider: ${provider}`);
+    lines.push(`Model: ${model}`);
   }
   for (const check of checks) {
     lines.push(`${formatCheckName(check.name)}: ${formatStatus(check.status)}`);
@@ -197,7 +207,7 @@ function formatCheckName(name: string): string {
     macos_sensor: "macOS sensor",
     native_permissions: "native permissions",
     prompt_recipient: "prompt recipient",
-    openrouter_api_key: "OpenRouter API key",
+    model_api_key: "Model API key",
     prompt_transport: "prompt transport",
     runtime_config: "runtime config",
     strict_mode: "strict mode",

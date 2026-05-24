@@ -32,6 +32,14 @@ type MemoryMutationReplyInput = {
   memory: RelationshipMemory;
 };
 
+type DeleteAllMemoryConfirmReplyInput = {
+  count: number;
+};
+
+type DeleteAllMemoryReplyInput = {
+  count: number;
+};
+
 type CandidateAmbiguityReplyInput = {
   candidates: Array<{ displayName: string }>;
 };
@@ -53,7 +61,7 @@ export function composeSaveConfirmation({ memories }: SaveConfirmationInput): st
     const memory = memories[0];
     const event = getEventTitle(memory);
     const context = summarizeMemoryContext(memory);
-    const savedContext = context ? phraseSavedContext(memory.displayName, context) : "";
+    const savedContext = context ? phraseSavedContext(memory.displayName, context, event) : "";
 
     if (event && savedContext) {
       return `Got it, saved ${memory.displayName} from ${event}. I'll remember ${savedContext}.`;
@@ -88,14 +96,13 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
     return composeSingleSearchMatch(matches[0].memory);
   }
 
-  const summaries = matches.map((match) => summarizeMatch(match.memory)).join("; ");
-  const prefix = `I found ${matches.length} possible matches: ${summaries}.`;
-
   if (ambiguous) {
+    const summaries = matches.map((match) => summarizeMatch(match.memory)).join("; ");
+    const prefix = `I found ${matches.length} possible matches: ${summaries}.`;
     return `${prefix} Which person do you mean?`;
   }
 
-  return prefix;
+  return [`I found ${matches.length} people:`, "", ...matches.map((match) => formatSearchListMatch(match.memory))].join("\n");
 }
 
 /** Formats structured people inventory results without using search diagnostics. */
@@ -141,11 +148,10 @@ export function composeListPeopleReply({ result, preferBullets = false }: ListPe
   return sections.join("\n");
 }
 
-function formatListedPerson(person: ListPeopleResult["people"][number], preferBullets: boolean): string {
-  const summaries = person.memories.map((memory) => memory.summary).filter(Boolean);
-  const summary = summaries.length > 0 ? ` - ${summaries.join("; ")}` : "";
-  const prefix = preferBullets ? "- " : "";
-  return `${prefix}${person.displayName}${summary}`;
+function formatListedPerson(person: ListPeopleResult["people"][number], _preferBullets: boolean): string {
+  const contexts = person.memories.map((memory) => memory.summary.trim()).filter(Boolean);
+  const context = contexts.length > 0 ? contexts.join("; ") : "no context saved";
+  return `- ${person.displayName} - ${context}`;
 }
 
 function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]): string {
@@ -160,6 +166,11 @@ function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]
 
 function formatPendingCandidate(candidate: ListPeopleResult["pendingCandidates"][number]): string {
   return `- ${candidate.displayName}`;
+}
+
+function formatSearchListMatch(memory: RelationshipMemory): string {
+  const context = getEventTitle(memory) || summarizeMemoryContext(memory) || "no context saved";
+  return `- ${memory.displayName} - ${context}`;
 }
 
 /** Formats a no-match reply that asks for one more useful clue. */
@@ -266,6 +277,21 @@ export function composeMemoryUpdateReply({ memory }: MemoryMutationReplyInput): 
 /** Formats explicit user-requested memory deletes without exposing storage internals. */
 export function composeMemoryDeleteReply({ memory }: MemoryMutationReplyInput): string {
   return `Deleted ${memory.displayName} from Friendy memory.`;
+}
+
+/** Formats the confirmation gate for deleting all saved relationship memories. */
+export function composeDeleteAllMemoryConfirmReply({ count }: DeleteAllMemoryConfirmReplyInput): string {
+  return `I found ${count} saved ${count === 1 ? "person" : "people"} in Friendy memory. Delete everyone from Friendy memory?\nReply yes to confirm or no to cancel.`;
+}
+
+/** Formats clear-memory requests when there is nothing saved yet. */
+export function composeNoSavedMemoryReply(): string {
+  return "You haven't saved anyone in Friendy memory yet.";
+}
+
+/** Formats explicit bulk-delete completion after the user confirms. */
+export function composeDeleteAllMemoryReply({ count }: DeleteAllMemoryReplyInput): string {
+  return `Deleted ${count} ${count === 1 ? "person" : "people"} from Friendy memory.`;
 }
 
 type ExplainAgentStateReplyInput = {
@@ -499,7 +525,33 @@ function summarizeMemoryContext(memory: RelationshipMemory): string {
   return parts.join("; ");
 }
 
-function phraseSavedContext(displayName: string, context: string): string {
+function phraseSavedContext(displayName: string, context: string, eventTitle?: string): string {
+  const firstPersonMeeting = context.match(/^i\s+met\s+(?:them|him|her)\b\s*(.*)$/i);
+  if (firstPersonMeeting) {
+    const suffix = firstPersonMeeting[1]?.trim();
+    return suffix ? `you met ${displayName} ${suffix}` : `you met ${displayName}`;
+  }
+
+  const firstPersonEventOnly = context.match(/^i\s+met\s+(?:at|in|during|from|while)\b\s*(.*)$/i);
+  if (firstPersonEventOnly) {
+    const suffix = firstPersonEventOnly[1]?.trim();
+    return suffix ? `you met ${displayName} at ${suffix}` : `you met ${displayName}`;
+  }
+
+  const prepositionalMeeting = context.match(/^(at|in|during|from|while)\s+(.+)$/i);
+  if (prepositionalMeeting) {
+    return `you met ${displayName} ${prepositionalMeeting[1].toLowerCase()} ${prepositionalMeeting[2].trim()}`;
+  }
+
+  if (eventTitle && normalizeContextComparable(context).startsWith(normalizeContextComparable(eventTitle))) {
+    return `you met ${displayName} at ${lowercaseFirst(context)}`;
+  }
+
+  const thirdPersonRole = context.match(/^they\s+(?:were|are)\s+(.+)$/i);
+  if (thirdPersonRole) {
+    return `${displayName} is ${thirdPersonRole[1].trim()}`;
+  }
+
   if (/^they\b/i.test(context)) {
     return context;
   }
@@ -521,6 +573,19 @@ function withIndefiniteArticle(context: string): string {
   }
 
   return /^[aeiou]/i.test(context) ? `an ${context}` : `a ${context}`;
+}
+
+function lowercaseFirst(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /^[A-Z]{2}/.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${trimmed[0].toLowerCase()}${trimmed.slice(1)}`;
+}
+
+function normalizeContextComparable(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 function normalizeContextPart(

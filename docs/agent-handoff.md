@@ -33,12 +33,70 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
 ## Current Status (2026-05-24)
 
+### Live List Formatting and Bulk Delete Follow-up
+
+- Fixed live iMessage follow-up issues from 2026-05-24:
+  - `list_people` replies now always use `<name> - <context>` bullets for saved people, including broad inventory and filtered list requests.
+  - Multi-person event recall replies such as `Who did I meet during the photon residency?` now use the same bullet list format, for example `- Sarah Fan - Photon Residency`, instead of `I found 2 people: Sarah Fan, Cecelia.`
+  - Second-person inventory wording such as `What people do you know yet in my contact?` now bypasses OpenAI and routes deterministically to `list_people` instead of risking a structured-output schema fallback.
+  - `Can you delete everyone for me?` now opens a confirmation gate instead of falling into single-target lookup. Friendy deletes all saved memories through the bounded `clear_memories` tool only after the user replies `yes`.
+  - If the user asks to clear/delete everyone when no Friendy memories are saved, Friendy replies `You haven't saved anyone in Friendy memory yet.`
+- Added `delete-everyone-confirmation-regression`; the `list-all-contact-recall` eval now freezes the live second-person inventory wording and asserts deterministic routing.
+- Verification on 2026-05-24: focused RED/GREEN cases passed, focused routing/eval suite passed 5 files/101 tests, `npm run eval:agent` passed 48/48, full `npm test` passed 72 files/544 tests, and `npm run build` passed.
+
+### OpenAI Model Provider Switch
+
+- Follow-up cleanup on 2026-05-24 removed the remaining legacy provider naming from source, tests, env examples, docs, specs, plans, and stack-status checks. The interpreter module is now `src/relationship/openAIInterpreter.ts`, with `createOpenAIInterpreter` and `readOpenAIConfig`.
+- `.env.example` and README now document `OPENAI_API_KEY` and `OPENAI_MODEL=gpt-4o-mini`.
+- The cleanup also fixed an existing event-wide search regression: `at` is now treated as generic recall grammar, so `Who did I meet at Photon Residency II?` no longer returns unrelated memories that only match the word `at`.
+- Verification on 2026-05-24: legacy-provider grep returned no source/doc hits, focused OpenAI/provider tests passed 8 files/124 tests, `npm test` passed 72 files/539 tests, `npm run eval:agent` passed 47/47 with 0 unsafe mutations and 0 hallucinations, `npm run build` passed, and `git diff --check` passed.
+- Friendy now uses `OPENAI_API_KEY` and `OPENAI_MODEL` for the structured message interpreter. Legacy provider env vars are no longer used.
+- The optional expression-polish layer uses OpenAI when `FRIENDY_EXPRESSION_LLM` is enabled, with `FRIENDY_EXPRESSION_MODEL` still allowed as a model override.
+- `npm run doctor:friendy` now reports `Model provider: openai` and the effective OpenAI model when strict mode is enabled with `OPENAI_API_KEY`.
+- Live strict-mode failure on `Who did I meet at AI dinner?` was model/routing, not sensor infra. Root causes fixed:
+  - stale shell `OPENAI_API_KEY` could override the updated `.env.local` key; `.env.local` now wins for `OPENAI_API_KEY` and `OPENAI_MODEL`;
+  - OpenAI strict structured outputs require every object property in `required`; the request schema is now normalized for OpenAI without changing Friendy's runtime Zod contract;
+  - OpenAI can return `search.semanticQuery` while top-level `query` is empty, so validation now normalizes search queries before enforcing `search_memory` invariants.
+- Follow-up live route issue fixed: OpenAI could classify `Who did I meet at AI dinner?` as `answer_pending_contact_prompt` even with no active pending frame. The interpreted agent now repairs no-active-pending, event-recall-shaped pending-prompt routes into `search_memory` before policy/tools run.
+- Verification on 2026-05-24: focused OpenAI provider tests passed for the interpreter, doctor, expression config/composer, and model-backed eval gate.
+
+### List Reply and Context Targeting Fix
+
+- Fixed live MVP reply issues reported on 2026-05-24:
+  - multi-person recall now returns names only instead of repeating the shared event/context for every person;
+  - `list_people` replies now format saved people as bullet names and no longer dump every saved note summary inline;
+  - memory update/delete lookup can exact-match old context text such as `Hi`, so `Can you change Hi context into ...` targets the memory containing that old note instead of guessing a person name;
+  - `delete Hi` now resolves by exact context text when possible instead of fuzzy-matching an unrelated display name.
+- Follow-up strict-mode crash fix from live log: ambiguous delete/update target lookup now returns the existing user-facing disambiguation prompt in strict mode instead of throwing `FriendyStrictModeError: Executable delete-memory route has an ambiguous target.`
+- Added `strict-ambiguous-delete-clarifies-regression`; `npm run eval:agent` now passes 47/47 with 0 unsafe mutations and 0 hallucinations.
+- Verification on 2026-05-24: focused RED/GREEN regression tests passed 6 targeted cases, focused shared suite passed 6 files/137 tests, `npm run eval:agent` passed 46/46 with 0 unsafe mutations and 0 hallucinations, `npm run build` passed, `npm test` passed 72 files/522 tests, and `git diff --check` passed.
+- Follow-up verification on 2026-05-24: `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/evals/agentEvalRunner.test.ts` passed 76/76, `npm run eval:agent` passed 47/47, `npm run build` passed, full `npm test` passed 72 files/529 tests, and `git diff --check` passed.
+
 ### Live Pending-Contact Safety Fix
 
 - Fixed the live transcript regression where a stale prompted candidate could be confirmed by a low-signal reply such as `Hi` before the user had texted `start`.
 - While onboarding is still `ready_pending_user_start`, non-control inbound messages now return `If you want to start please send me 'start'` without calling the interpreter, pending-candidate tools, or memory writes.
 - While an active pending-contact prompt is open, low-signal replies such as `Hi`, `ok`, or `thanks` now ask which pending contact/context is needed instead of treating the reply as saveable relationship context.
 - Verification on 2026-05-24: `npm test -- src/relationship/interpretedAgent.test.ts -t "before start|greeting replies"` passed, `npm test -- src/relationship/interpretedAgent.test.ts` passed 67/67, full `npm test` passed 72 files/517 tests, `npm run eval:agent` passed 46/46, and `npm run build` passed.
+
+### Pre-Start Contact Notice Fix
+
+- Fixed the live UX gap where a contact added before `start` was only logged and permanently ignored. The runtime now queues the pre-start contact as a pending candidate, records the sensor event as `candidate_created` so native history batches can ack, and sends one owner-facing notice explaining that the user should text `start`.
+- When the user texts `start`, the deterministic start reply includes the queued contact prompt instead of requiring the contact to be added again.
+- `agent:friendy` startup now clears stale reviewable candidates from previous foreground runs so old prompted contacts such as prior `Testing` runs cannot hijack a new context reply after restart.
+- If the pre-start notice send fails, the runtime logs `Failed to send pre-start contact notice` while keeping the queued candidate and ackable processed-event record.
+- Verification on 2026-05-24: red tests failed for missing pre-start queueing and missing start prompt, then `npm test -- src/relationship/runtime/friendyRuntime.test.ts src/relationship/runtime/friendyRuntimeCli.test.ts src/relationship/interpretedAgent.test.ts` passed 104/104 and `npm run build` passed.
+
+### Live Schema Error Recovery and List Shortcut Fix
+
+- Fixed the live failure where `List all people I met` could hit OpenAI, receive invalid structured output, log `[friendy:inbound_agent:error]`, and then stop processing later texts because the Spectrum message loop had no per-message error boundary.
+- Broad unfiltered inventory requests such as `List all people I met` now route deterministically to `list_people` without calling the model. Filtered list requests such as `List me in bullet of all people I met testing friendy` still go through the model route so extracted filters are preserved.
+- Spectrum/iMessage inbound handling now catches one failed turn, logs `[friendy:inbound_agent:error] ...`, sends `I had trouble understanding that. Try saying it another way.`, and keeps the live loop running for the next text.
+- Save-confirmation copy now rewrites first-person meeting notes such as `I met them at AI dinner` into `I'll remember you met Z2 at AI dinner` instead of echoing the user's raw sentence back.
+- Follow-up live root cause: `Z3` saved correctly but disappeared from `AI dinner` recall because Contacts events without visible phone/email methods all shared the empty method fingerprint and were merged into the same `personId`. Candidate identity now falls back to the Apple contact identifier when raw methods are unavailable, and SQLite startup repairs legacy empty-method collisions.
+- If OpenAI misroutes `Who did I met at AI dinner?` as `list_people`, the interpreted agent now repairs that event-recall-shaped route to `search_memory`. Event-recall search uses the raw user question so event terms are preserved, while generic grammar such as `at` no longer matches unrelated memories.
+- Short event-only context replies such as `At AI dinner`, `AI dinner`, or `AI dinner in SF` now save with meeting-fact wording, for example `I'll remember you met Z4 at AI dinner`.
+- Verification on 2026-05-24: RED tests failed for first-person save copy, obvious list-all model bypass, per-message Spectrum recovery, empty-method contact identity merging, event-recall misrouting, and event-only save copy. After implementation, focused tests passed 175/175, full `npm test` passed 72 files/539 tests, `npm run build` passed, `npm run eval:agent` passed 47/47, `npm run agent:friendy:check` passed, and `git diff --check` passed.
 
 ### Core Relationship Agent Verification
 
@@ -49,9 +107,9 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
   - Focused core suite passed 11 files/190 tests covering `agentCore`, `interpretedAgent`, tools/repository/SQLite, local contact check, iMessage/Spectrum/terminal transports, Mac MVP demo test, and agent eval runner test.
   - `npm run eval:agent` passed 46/46 required cases with 0 unsafe mutations and 0 hallucinations.
   - `npm run build` passed.
-  - `npm run doctor:friendy` passed after rerunning outside the sandbox for the `tsx` temp-pipe permission issue; it reported env, SQLite, sensor state, OpenRouter, Spectrum prompt transport, recipient, sensor binary, and native permissions ready.
+  - `npm run doctor:friendy` passed after rerunning outside the sandbox for the `tsx` temp-pipe permission issue; it reported env, SQLite, sensor state, model provider readiness, Spectrum prompt transport, recipient, sensor binary, and native permissions ready.
   - `npm test` passed 72 files/515 tests.
-  - `npm run agent:friendy:check` passed after rerunning outside the sandbox for the same `tsx` temp-pipe issue; it verified start-gate behavior, normalized mock contact events, duplicate sensor-event suppression, history ack, and no pre-start prompt.
+  - `npm run agent:friendy:check` passed after rerunning outside the sandbox for the same `tsx` temp-pipe issue; it verified start-gate behavior, normalized mock contact events, duplicate sensor-event suppression, and history ack.
   - `npm run check:mac-mvp-demo` passed after rerunning outside the sandbox; transcript covered `start`, pending contact prompt, save memory, recall, update confirmation, and confirmed update.
   - `git diff --check` passed.
 - Spectrum endpoint check on 2026-05-24: `curl -I https://spectrum.photon.codes` returned HTTP/2 200. The earlier live runtime error was a transient connect timeout to Spectrum, not a deterministic Friendy-agent failure.
@@ -81,7 +139,7 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | Pending-contact start gate and weak-reply safety in current worktree |
+| **Latest fix** | Live schema-error recovery, broad list shortcut, pre-start queued contact, and cleaner save-confirmation copy in current worktree |
 | **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
 | **Active goal** | Core relationship-agent behavior verification |
 | **Branch** | `pr11-expression-llm-layer` |
@@ -106,7 +164,7 @@ Run `npm run friendy:stack-status` for live PR 1–10 state.
 - Added `FRIENDY_STRICT_MODE` parsing and typed `FriendyStrictModeError`.
 - Added `FriendyTrace` to interpreted-agent results and persisted interaction JSON.
 - Redacted runtime traces now include strict mode, route source, fallback usage, fallback reason, policy decision, active ids, and tool calls without raw private text.
-- OpenRouter interpreter now reports `routeSource`, `fallbackUsed`, and `fallbackReason`.
+- The model interpreter now reports `routeSource`, `fallbackUsed`, and `fallbackReason`.
 - Strict mode throws on missing API key fallback, model execution failure, invalid schema, explicit fallback interpreter use, unknown model route, unsupported contact-management route, missing deterministic tool, and ambiguous executable memory mutation.
 - Spectrum/iMessage runtime reads `FRIENDY_STRICT_MODE`.
 - Evals now include fallback usage count and a strict-mode fallback-rejection case.
@@ -151,7 +209,7 @@ The Swift sensor called `schedulePendingContactEmit()` on **every poll** while c
 - Broad related-contact recall covers `related`, `connected`, and `associated with` phrasing, including singular `contact`, “Who do I know connected to Friendy?”, “Do I know anyone associated with Friendy?”, “Find contacts related to Friendy”, and “Anyone I met while testing Friendy?” while keeping “Tell me about Friendy as a company” out of scope.
 - Live `agent:friendy` logs now print `[friendy:agent_turn]` with raw `userText` and `agentReply`, plus the existing redacted `[friendy:agent_interaction]` trace.
 - Each `agent:friendy` restart requires texting **`start`** again (by design).
-- Only **net-new** contacts after `start` prompt; pre-start adds are ignored for idempotency.
+- Pre-`start` contact adds are queued as pending candidates and prompted immediately after the user texts `start`; stale pending candidates from previous foreground runs are cleared on `agent:friendy` startup.
 - Saving in Contacts ≠ Friendy memory until the user replies to the iMessage prompt.
 
 ## Restart Ritual (Mac live E2E)

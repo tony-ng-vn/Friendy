@@ -47,9 +47,9 @@ Spectrum/iMessage/terminal
 
 ## Implementation Requirements
 
-- Add `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` support.
+- Add `OPENAI_API_KEY` and `OPENAI_MODEL` support.
 - Default model: `nvidia/nemotron-3-super-120b-a12b:free`.
-- Use OpenRouter chat completions with:
+- Use OpenAI chat completions with:
   - `response_format.type = "json_schema"`
   - `strict = true`
   - `temperature = 0`
@@ -62,7 +62,7 @@ Spectrum/iMessage/terminal
   - `unknown`
 - Validate model output before executing tools.
 - Retry once on invalid model output.
-- Fall back to deterministic interpreter if no OpenRouter key exists or the model call fails.
+- Fall back to deterministic interpreter if no OpenAI key exists or the model call fails.
 - Add backend interaction logs containing:
   - `inboundText`
   - `interpretedIntentJson`
@@ -139,14 +139,14 @@ All of these must be covered by automated tests and pass.
    - Asks a clarification question
    - Does not save fake memory
 
-9. OpenRouter invalid JSON or malformed schema response.
+9. OpenAI invalid JSON or malformed schema response.
 
    Expected:
    - Retry once
    - Fallback if still invalid
    - Log the error
 
-10. Missing `OPENROUTER_API_KEY`.
+10. Missing `OPENAI_API_KEY`.
 
     Expected:
     - Deterministic fallback still works for local tests
@@ -167,7 +167,7 @@ git diff --check
 - All tests pass.
 - Build passes.
 - At least the 10 MVP cases above are covered by automated tests.
-- `README.md` documents OpenRouter env vars and live iMessage test examples.
+- `README.md` documents OpenAI env vars and live iMessage test examples.
 - `implementation-notes.html` records architecture decisions and verification.
 - No secrets are committed.
 - Code is committed incrementally with detailed commit messages.

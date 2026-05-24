@@ -1,6 +1,6 @@
 import { fixtureUser } from "../fixtures";
-import { createRuleBasedInterpreter } from "../openRouterInterpreter";
-import { createSpectrumFriendyRuntime, toInboundAgentMessage } from "./spectrumTransport";
+import { createRuleBasedInterpreter } from "../openAIInterpreter";
+import { createSpectrumFriendyRuntime, respondToSpectrumInbound, toInboundAgentMessage } from "./spectrumTransport";
 
 describe("spectrum transport", () => {
   it("normalizes Spectrum message text into an inbound agent message", () => {
@@ -116,6 +116,39 @@ describe("spectrum transport", () => {
       name: "FriendyStrictModeError",
       code: "FALLBACK_USED"
     });
+  });
+
+  it("recovers per inbound message when the model route fails strict schema validation", async () => {
+    const replies: string[] = [];
+    const errors: string[] = [];
+
+    const result = await respondToSpectrumInbound({
+      runtime: {
+        async handleInboundText() {
+          throw new Error("OpenAI returned output that did not match Friendy's interpretation schema.");
+        }
+      },
+      input: {
+        userId: fixtureUser.id,
+        text: "List all people I met",
+        spaceId: "space_strict_error",
+        receivedAt: "2026-05-20T12:00:00.000Z"
+      },
+      reply: async (text) => {
+        replies.push(text);
+      },
+      logger: {
+        info() {},
+        error(...args) {
+          errors.push(args.map(String).join(" "));
+        }
+      }
+    });
+
+    expect(result.handled).toBe(false);
+    expect(replies).toEqual(["I had trouble understanding that. Try saying it another way."]);
+    expect(errors.join(" ")).toContain("[friendy:inbound_agent:error]");
+    expect(errors.join(" ")).toContain("OpenAI returned output");
   });
 
   it("does not duplicate a manual memory when the same inbound message is retried", async () => {

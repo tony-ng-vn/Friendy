@@ -6,7 +6,7 @@
 
 **Architecture:** Deterministic tools and response composers still produce the authoritative draft. A new optional expression dependency can rewrite eligible drafts from a fact bundle, then validation/fallback returns either the polished text or the original draft. The feature is disabled by default through `FRIENDY_EXPRESSION_LLM`, so local evals remain stable unless explicitly configured.
 
-**Tech Stack:** TypeScript, Vitest, existing `interpretedAgent.ts`, `expressionBundleFactory.ts`, `expressionComposer.ts`, OpenRouter-compatible fake fetch tests.
+**Tech Stack:** TypeScript, Vitest, existing `interpretedAgent.ts`, `expressionBundleFactory.ts`, `expressionComposer.ts`, OpenAI-compatible fake fetch tests.
 
 ---
 

@@ -40,7 +40,7 @@ Cover at least:
 Run the Task 4 commands from the final plan, including:
 
 ```bash
-npm test -- src/relationship/openRouterInterpreter.test.ts src/relationship/responseComposer.test.ts src/relationship/evals/agentEvalRunner.test.ts
+npm test -- src/relationship/openAIInterpreter.test.ts src/relationship/responseComposer.test.ts src/relationship/evals/agentEvalRunner.test.ts
 npm run eval:agent
 npm run build
 git diff --check

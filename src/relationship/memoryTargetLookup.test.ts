@@ -90,6 +90,46 @@ describe("lookupMemoryTarget", () => {
     });
   });
 
+  it("does not fuzzy-match short context text to an unrelated display name", () => {
+    const memories = [
+      memory("memory_please_work", "Please Work", { contextNote: "Testing Friendy" }),
+      memory("memory_testing_12", "Testing 12", { contextNote: "Hi" }),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "Hi",
+      memories,
+    });
+
+    expect(result).toEqual({
+      kind: "none",
+      query: "Hi",
+    });
+  });
+
+  it("can resolve a memory by exact context note when requested", () => {
+    const memories = [
+      memory("memory_please_work", "Please Work", { contextNote: "Testing Friendy" }),
+      memory("memory_testing_12", "Testing 12", { contextNote: "Hi" }),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "Hi",
+      memories,
+      includeContext: true,
+    });
+
+    expect(result).toEqual({
+      kind: "single",
+      memoryId: "memory_testing_12",
+      displayName: "Testing 12",
+      score: 100,
+      matchedVia: "context",
+    });
+  });
+
   it("returns single for a high-confidence exact match", () => {
     const memories = [
       memory("memory_sarah", "Sarah"),

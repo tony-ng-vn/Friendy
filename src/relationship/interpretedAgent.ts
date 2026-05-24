@@ -21,12 +21,14 @@ import { detectOnboardingControl, type OnboardingStateController } from "./onboa
 import { buildExpressionFactBundle } from "./expressionBundleFactory";
 import type { ExpressionComposerResult } from "./expressionComposer";
 import type { ExpressionFactBundle } from "./expressionFacts";
-import type { MessageInterpreter } from "./openRouterInterpreter";
+import type { MessageInterpreter } from "./openAIInterpreter";
 import type { RelationshipRepository } from "./repository";
 import {
   composeCandidateAmbiguityReply,
   composeClarificationReply,
   composeConversationRepairReply,
+  composeDeleteAllMemoryConfirmReply,
+  composeDeleteAllMemoryReply,
   composeDeleteMemoryConfirmReply,
   composeDeleteMemoryDisambiguationReply,
   composeDuplicateAuditReply,
@@ -36,6 +38,7 @@ import {
   composeMemoryUpdateReply,
   composeListPeopleReply,
   composeNoMatchReply,
+  composeNoSavedMemoryReply,
   composeNoPendingCandidateReply,
   composeOnboardingStartRequiredReply,
   composePendingCandidateInquiryReply,
@@ -62,6 +65,7 @@ import {
   isPendingPromptContextReply,
   isRelationshipMetaRouteMessage
 } from "./scopeBoundary";
+import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
 import { rankDisplayNameMatches } from "./personNameMatch";
 import { validateRequiredToolAvailability, validateRoutePolicy, type ValidatedRoutePolicy } from "./routePolicyValidator";
 import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerInputEnvelope";
@@ -76,7 +80,14 @@ import {
   type FriendyRouteSource,
   type FriendyTrace
 } from "./trace";
-import type { AgentCoreResult, AgentInteraction, AgentToolCall, InboundAgentMessage, RelationshipMemory } from "./types";
+import type {
+  AgentCoreResult,
+  AgentInteraction,
+  AgentToolCall,
+  ContactCandidate,
+  InboundAgentMessage,
+  RelationshipMemory
+} from "./types";
 
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type CandidateIntake = ReturnType<typeof createCandidateIntake>;
@@ -156,6 +167,7 @@ type ConversationContext = {
     memoryId?: string;
     displayName?: string;
     query?: string;
+    allMemoryIds?: string[];
     options?: Array<{ memoryId: string; displayName: string }>;
   };
   pendingUpdate?: {
@@ -238,7 +250,13 @@ export function createInterpretedRelationshipAgent({
       const onboardingControl = detectOnboardingControl(message.text);
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
-        const outboundText = composeOnboardingControlReply(onboardingControl);
+        const outboundText =
+          onboardingControl === "started"
+            ? composeStartedReplyWithQueuedContacts(
+                composeOnboardingControlReply(onboardingControl),
+                repo.listPendingCandidates(message.userId)
+              )
+            : composeOnboardingControlReply(onboardingControl);
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -526,6 +544,55 @@ export function createInterpretedRelationshipAgent({
         }
       }
 
+      if (turnContext.pendingDelete?.allMemoryIds && isConfirmationReply(message.text)) {
+        const toolCalls: AgentToolCall[] = [];
+        toolCalls.push("clear_memories");
+        const cleared = tools.clear_memories(message.userId, {
+          userText: message.text,
+          now: now()
+        });
+        const deletedMemoryIds = cleared.deleted.map((memory) => memory.id);
+        const outboundText =
+          deletedMemoryIds.length > 0 ? composeDeleteAllMemoryReply({ count: deletedMemoryIds.length }) : composeNoSavedMemoryReply();
+        conversationContexts.set(message.userId, { ...turnContext, pendingDelete: undefined });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "delete_memory",
+            domain: "relationship_memory",
+            conversationRelation: "answers_open_workflow",
+            target: { memoryIds: deletedMemoryIds },
+            confidence: 1,
+            traceReason: "User confirmed a pending delete-all-memory request.",
+            policyDecision: { decision: "allow", suppressPendingReminder: true },
+            activeWorkflowKind: "pending_delete_confirm",
+            selectedTool: "delete_memory"
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
       if (turnContext.pendingDelete?.memoryId && isConfirmationReply(message.text)) {
         const toolCalls: AgentToolCall[] = [];
         const pendingDelete = turnContext.pendingDelete;
@@ -581,6 +648,56 @@ export function createInterpretedRelationshipAgent({
       }
 
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
+      if (!memoryMutationRequest && isDeleteAllMemoryRequest(message.text)) {
+        const memories = repo.listMemories(message.userId);
+        const outboundText =
+          memories.length === 0 ? composeNoSavedMemoryReply() : composeDeleteAllMemoryConfirmReply({ count: memories.length });
+        const nextContext: ConversationContext =
+          memories.length === 0
+            ? turnContext
+            : {
+                ...clearSearchContext(turnContext),
+                pendingDelete: {
+                  displayName: "everyone",
+                  query: "everyone",
+                  allMemoryIds: memories.map((memory) => memory.id)
+                }
+              };
+        conversationContexts.set(message.userId, nextContext);
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "delete_memory_request",
+            memoryMutationRequest: { kind: "delete", query: "everyone" },
+            confidence: 1,
+            activeWorkflowKind: memories.length === 0 ? undefined : "pending_delete_confirm",
+            policyDecision: { decision: memories.length === 0 ? "clarify" : "allow", suppressPendingReminder: true }
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
       if (memoryMutationRequest) {
         const toolCalls: AgentToolCall[] = [];
         const mutation = executeMemoryMutationRequest(
@@ -593,6 +710,7 @@ export function createInterpretedRelationshipAgent({
           now(),
           strictMode
         );
+        const mutationPolicyDecision = policyDecisionForMemoryMutation(mutation.nextContext, memoryMutationRequest.kind);
         const outboundText = mutation.outboundText;
         conversationContexts.set(message.userId, mutation.nextContext);
         const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -607,7 +725,8 @@ export function createInterpretedRelationshipAgent({
             confidence: 1,
             activeWorkflowKind:
               memoryMutationRequest.kind === "delete" ? "pending_delete_confirm" : "pending_update_confirm",
-            selectedTool: toolCalls[0]
+            selectedTool: toolCalls[0],
+            policyDecision: mutationPolicyDecision
           },
           outboundText,
           toolCalls,
@@ -1095,6 +1214,77 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
+      if (shouldBypassModelForListPeopleRecall(message.text)) {
+        const interpretation: MessageInterpretation = {
+          intent: "list_people",
+          confidence: 1,
+          domain: "relationship_memory",
+          conversationRelation: "starts_new_relationship_task",
+          search: {
+            mode: "list_people",
+            semanticQuery: message.text,
+            exactTerms: [],
+            topK: 20
+          },
+          people: [],
+          event: { name: "", dateText: "", location: "" },
+          dateContext: undefined,
+          contextNote: "",
+          query: message.text,
+          tags: [],
+          needsClarification: false,
+          clarificationQuestion: ""
+        };
+        const toolCalls: AgentToolCall[] = [];
+        const reply = executeInterpretation(message, interpretation, repo, tools, candidateIntake, toolCalls, pendingState);
+        const expressionResult = await polishAgentReply(reply, expression);
+        conversationContexts.set(message.userId, {
+          ...clearSearchContext(turnContext),
+          activeMemoryId: undefined,
+          reminderState: turnContext.reminderState ?? {}
+        });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...interpretation,
+            interpretation,
+            routeSource: "deterministic",
+            fallbackUsed: false,
+            policyDecision: {
+              decision: "allow",
+              reason: "Allowed deterministic list_people route.",
+              suppressPendingReminder: true
+            },
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true,
+            ...expressionResult.metadata
+          },
+          outboundText: expressionResult.text,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: expressionResult.text
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
       const routerContext = buildRouterInputEnvelope({
         message,
         conversationState: pendingState,
@@ -1121,10 +1311,14 @@ export function createInterpretedRelationshipAgent({
           })
         );
       }
-      const interpretation = enrichInterpretationWithContext(
-        interpreted.interpretation,
-        turnContext,
-        parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
+      const interpretation = repairPendingPromptRecallMisroute(
+        enrichInterpretationWithContext(
+          interpreted.interpretation,
+          turnContext,
+          parseTemporalContext(message.text, { receivedAt: message.receivedAt, timezone }),
+          message.text
+        ),
+        pendingState,
         message.text
       );
       const basePolicy = validateRoutePolicy(interpretation, pendingState);
@@ -1222,6 +1416,7 @@ export function createInterpretedRelationshipAgent({
           now(),
           strictMode
         );
+        const mutationPolicyDecision = policyDecisionForMemoryMutation(mutation.nextContext, interpretedMutationRequest.kind);
         conversationContexts.set(message.userId, mutation.nextContext);
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -1240,8 +1435,8 @@ export function createInterpretedRelationshipAgent({
             modelErrorCode: interpreted.modelErrorCode,
             memoryMutationRequest: interpretedMutationRequest,
             policyDecision: {
-              decision: "allow",
-              reason: allowedPolicy.reason,
+              decision: mutationPolicyDecision.decision,
+              reason: mutationPolicyDecision.reason ?? allowedPolicy.reason,
               suppressPendingReminder: true
             },
             pendingReminderDecision: "suppressed",
@@ -1771,6 +1966,43 @@ function policyDecisionFromRoute(value: unknown): FriendyPolicyDecision | undefi
   return undefined;
 }
 
+function composeStartedReplyWithQueuedContacts(baseReply: string, pendingCandidates: ContactCandidate[]): string {
+  if (pendingCandidates.length === 0) {
+    return baseReply;
+  }
+
+  if (pendingCandidates.length === 1) {
+    const [candidate] = pendingCandidates;
+    return `${baseReply}\n\nI noticed you added ${candidate.displayName}. Where did you meet them?`;
+  }
+
+  const footer = composePendingContactsFooter({
+    items: pendingCandidates.map((candidate) => ({ displayName: candidate.displayName }))
+  });
+  return `${baseReply}\n\n${footer}`;
+}
+
+function shouldBypassModelForListPeopleRecall(text: string): boolean {
+  if (!isListPeopleRecall(text)) {
+    return false;
+  }
+
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/\bu\b/g, "you")
+    .replace(/[?.!]+$/g, "")
+    .replace(/\s+/g, " ");
+
+  return [
+    /^list(?: me)? (?:all|every|everyone|everybody|the) (?:people|persons?|contacts?) i (?:met|know|saved|remember)$/,
+    /^list(?: me)? (?:all|every|everyone|everybody|the) (?:people|persons?|contacts?)$/,
+    /^what (?:person|people|contacts?) do i (?:know|have|met|saved|remember)(?: so far)?$/,
+    /^what (?:person|people|contacts?) do you (?:know|have|remember)(?: (?:yet|so far))?(?: (?:in|from))? my (?:contact|contacts|network)$/,
+    /^who do i (?:know|have|met|saved|remember)$/
+  ].some((pattern) => pattern.test(normalized));
+}
+
 function suppressedPendingReminderFromInteraction(interaction: AgentInteraction): boolean | undefined {
   if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
     return undefined;
@@ -1927,7 +2159,7 @@ function modelTraceFromInteraction(modelUsed: string | undefined): AgentTrace["m
   const deterministic = modelUsed === "deterministic-scope" || modelUsed === "rule-based-fallback";
   return {
     used: !deterministic,
-    provider: deterministic ? undefined : "openrouter",
+    provider: deterministic ? undefined : "openai",
     modelName: modelUsed,
     fallbackUsed: deterministic
   };
@@ -2091,6 +2323,21 @@ function extractManualEventTitle(contextNote: string): string | undefined {
   return match?.[1]?.trim();
 }
 
+function policyDecisionForMemoryMutation(
+  nextContext: ConversationContext,
+  kind: MemoryMutationRequest["kind"]
+): { decision: "allow" | "clarify"; reason?: string } {
+  if (kind === "delete" && nextContext.pendingDelete?.options?.length) {
+    return { decision: "clarify", reason: "ambiguous_delete_target" };
+  }
+
+  if (kind === "update" && nextContext.pendingUpdate?.options?.length) {
+    return { decision: "clarify", reason: "ambiguous_update_target" };
+  }
+
+  return { decision: "allow" };
+}
+
 function executeMemoryMutationRequest(
   message: InboundAgentMessage,
   request: MemoryMutationRequest,
@@ -2103,31 +2350,12 @@ function executeMemoryMutationRequest(
 ): { outboundText: string; nextContext: ConversationContext } {
   if (request.kind === "delete") {
     toolCalls.push("lookup_memory_target");
-    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "delete" });
+    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "delete", includeContext: true });
     if (lookup.kind === "none") {
       return { outboundText: composeNoMatchReply(), nextContext: context };
     }
 
     if (lookup.kind === "ambiguous") {
-      if (strictMode) {
-        throw new FriendyStrictModeError(
-          "UNEXPECTED_AMBIGUITY",
-          "Executable delete-memory route has an ambiguous target.",
-          createFriendyTrace({
-            strictMode: true,
-            routeSource: "deterministic",
-            fallbackUsed: false,
-            route: {
-              intent: "delete_memory_request",
-              confidence: 1
-            },
-            policyDecision: "clarify",
-            activeWorkflowKind: "pending_delete_confirm",
-            selectedTool: "lookup_memory_target",
-            toolCalls
-          })
-        );
-      }
       return {
         outboundText: composeDeleteMemoryDisambiguationReply({
           query: lookup.query,
@@ -2162,31 +2390,12 @@ function executeMemoryMutationRequest(
 
   if (request.kind === "update" && request.query) {
     toolCalls.push("lookup_memory_target");
-    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "update" });
+    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "update", includeContext: true });
     if (lookup.kind === "none") {
       return { outboundText: composeNoMatchReply(), nextContext: context };
     }
 
     if (lookup.kind === "ambiguous") {
-      if (strictMode) {
-        throw new FriendyStrictModeError(
-          "UNEXPECTED_AMBIGUITY",
-          "Executable update-memory route has an ambiguous target.",
-          createFriendyTrace({
-            strictMode: true,
-            routeSource: "deterministic",
-            fallbackUsed: false,
-            route: {
-              intent: "update_memory",
-              confidence: 1
-            },
-            policyDecision: "clarify",
-            activeWorkflowKind: "pending_update_confirm",
-            selectedTool: "lookup_memory_target",
-            toolCalls
-          })
-        );
-      }
       return {
         outboundText: composeUpdateMemoryDisambiguationReply({
           query: lookup.query,
@@ -2317,6 +2526,21 @@ function resolveMemoryMutationTarget(
 
 function detectMemoryMutationRequest(text: string): MemoryMutationRequest | undefined {
   const trimmed = text.trim();
+  if (isDeleteAllMemoryRequest(trimmed)) {
+    return undefined;
+  }
+
+  const contextChangeMatch = trimmed.match(
+    /^(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:change|update|edit)\s+(.+?)\s+context\s+(?:into|to)\s+(.+?)[?.!]*$/i
+  );
+  if (contextChangeMatch?.[1] && contextChangeMatch[2]) {
+    const query = cleanMemoryMutationTarget(contextChangeMatch[1]);
+    const contextNote = cleanMemoryMutationContext(contextChangeMatch[2]);
+    if (query && contextNote) {
+      return { kind: "update", query, contextNote };
+    }
+  }
+
   const deleteMatch = trimmed.match(/^(?:delete|remove|forget)\s+(.+?)(?:\s+memory)?$/i);
   if (deleteMatch) {
     const query = deleteMatch[1].trim();
@@ -2352,6 +2576,33 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
   }
 
   return undefined;
+}
+
+function isDeleteAllMemoryRequest(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/\bu\b/g, "you")
+    .replace(/[?.!]+$/g, "")
+    .replace(/\s+/g, " ");
+  return /\b(delete|remove|forget)\b/.test(normalized) && /\b(everyone|everybody|all people|all contacts|all memories)\b/.test(normalized);
+}
+
+function cleanMemoryMutationTarget(value: string): string {
+  return value
+    .trim()
+    .replace(/^["'`/]+|["'`/]+$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function cleanMemoryMutationContext(value: string): string {
+  return value
+    .trim()
+    .replace(/^["'`/]+|["'`/]+$/g, "")
+    .replace(/^\/?(?:change|update|edit)\s+.+?\s+context\s+(?:into|to)\s+/i, "")
+    .replace(/[?.!]+$/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function memoryMutationRequestFromInterpretation(
@@ -2881,6 +3132,10 @@ function buildMemorySearchRequest(message: InboundAgentMessage, interpretation: 
 }
 
 function effectiveMemorySearchQuery(request: MemorySearchRequest): string {
+  if (request.mode === "event_recall") {
+    return request.rawMessage;
+  }
+
   return request.interpretedQuery || request.normalizedQuery || request.rawMessage;
 }
 
@@ -3059,6 +3314,64 @@ function enrichInterpretationWithContext(
       name: interpretation.event.name || (shouldCarryContext ? context.activeEventName ?? "" : "")
     },
     dateContext: dateContext ?? interpretation.dateContext ?? (shouldCarryContext ? context.activeDateContext : undefined)
+  };
+}
+
+function repairPendingPromptRecallMisroute(
+  interpretation: MessageInterpretation,
+  pendingState: ConversationState,
+  rawText: string
+): MessageInterpretation {
+  if (!pendingState.activeFrame && interpretation.intent === "list_people" && isEventRecallQuestion(rawText)) {
+    const query =
+      interpretation.search?.filters?.eventName ||
+      interpretation.query ||
+      interpretation.search?.semanticQuery ||
+      interpretation.event.name ||
+      rawText;
+    return {
+      ...interpretation,
+      intent: "search_memory",
+      domain: interpretation.domain ?? "relationship_memory",
+      conversationRelation: "starts_new_relationship_task",
+      query,
+      search: {
+        mode: "event_recall",
+        semanticQuery: query,
+        exactTerms: interpretation.search?.exactTerms ?? [],
+        filters: interpretation.search?.filters ?? (interpretation.event.name ? { eventName: interpretation.event.name } : undefined),
+        topK: interpretation.search?.topK ?? 10
+      },
+      needsClarification: false,
+      clarificationQuestion: ""
+    };
+  }
+
+  if (
+    pendingState.activeFrame ||
+    (interpretation.intent !== "answer_pending_contact_prompt" &&
+      interpretation.intent !== "capture_pending_contact_context") ||
+    !isEventWideRecallQuery(rawText)
+  ) {
+    return interpretation;
+  }
+
+  const query = interpretation.query || interpretation.search?.semanticQuery || interpretation.event.name || rawText;
+  return {
+    ...interpretation,
+    intent: "search_memory",
+    domain: interpretation.domain ?? "relationship_memory",
+    conversationRelation: "starts_new_relationship_task",
+    query,
+    search: interpretation.search ?? {
+      mode: "event_recall",
+      semanticQuery: query,
+      exactTerms: [],
+      filters: interpretation.event.name ? { eventName: interpretation.event.name } : undefined,
+      topK: 10
+    },
+    needsClarification: false,
+    clarificationQuestion: ""
   };
 }
 

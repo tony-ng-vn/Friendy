@@ -65,18 +65,22 @@ describe("relationship response composer", () => {
     expectNoInternalLanguage(reply);
   });
 
-  it("formats non-ambiguous multi-person recall as names only", () => {
+  it("formats non-ambiguous multi-person recall as context bullets", () => {
     const reply = composeSearchReply({
       matches: [
-        searchResult(memory({ displayName: "Testing 12", eventTitle: "AI Dinner", contextNote: "met at AI Dinner" }), "matched: ai dinner"),
-        searchResult(memory({ displayName: "Sarah Fan", eventTitle: "AI Dinner", contextNote: "community lead" }), "matched: ai dinner")
+        searchResult(
+          memory({ displayName: "Sarah Fan", eventTitle: "Photon Residency", contextNote: "met at Photon Residency" }),
+          "matched: photon residency"
+        ),
+        searchResult(
+          memory({ displayName: "Cecelia", eventTitle: "Photon Residency", contextNote: "met at Photon Residency" }),
+          "matched: photon residency"
+        )
       ],
       ambiguous: false
     });
 
-    expect(reply).toBe("I found 2 people: Testing 12, Sarah Fan.");
-    expect(reply).not.toContain("AI Dinner");
-    expect(reply).not.toContain("community lead");
+    expect(reply).toBe(["I found 2 people:", "", "- Sarah Fan - Photon Residency", "- Cecelia - Photon Residency"].join("\n"));
     expectNoInternalLanguage(reply);
   });
 
@@ -98,7 +102,7 @@ describe("relationship response composer", () => {
     expect(saved).toContain("Got it, saved Sarah Fah from Photon Residency II.");
     expect(saved).toContain("Sarah Fah");
     expect(saved).toContain("Photon Residency II");
-    expect(saved).toContain("I'll remember they were the community lead.");
+    expect(saved).toContain("I'll remember Sarah Fah is the community lead.");
     expect(saved).not.toContain('"');
     expect(noMatch).toMatch(/I don't have enough/i);
     expect(clarification).toBe("What do you remember about them, like a name or event?");
@@ -108,7 +112,48 @@ describe("relationship response composer", () => {
     [saved, noMatch, clarification, ignored, noPendingIgnore].forEach(expectNoInternalLanguage);
   });
 
-  it("formats filtered people lists with name-only bullets and duplicate groups", () => {
+  it("phrases first-person meeting context as a saved fact instead of echoing it", () => {
+    const saved = composeSaveConfirmation({
+      memories: [
+        memory({
+          displayName: "Z2",
+          eventTitle: "AI dinner",
+          contextNote: "I met them at AI dinner"
+        })
+      ]
+    });
+
+    expect(saved).toBe("Got it, saved Z2 from AI dinner. I'll remember you met Z2 at AI dinner.");
+    expect(saved).not.toContain("I'll remember I met them");
+  });
+
+  it("phrases short event-only context as a meeting fact", () => {
+    expect(
+      composeSaveConfirmation({
+        memories: [
+          memory({
+            displayName: "Z4",
+            eventTitle: "AI dinner",
+            contextNote: "At AI dinner"
+          })
+        ]
+      })
+    ).toBe("Got it, saved Z4 from AI dinner. I'll remember you met Z4 at AI dinner.");
+
+    expect(
+      composeSaveConfirmation({
+        memories: [
+          memory({
+            displayName: "Z5",
+            eventTitle: "AI dinner",
+            contextNote: "AI dinner in SF"
+          })
+        ]
+      })
+    ).toBe("Got it, saved Z5 from AI dinner. I'll remember you met Z5 at AI dinner in SF.");
+  });
+
+  it("formats filtered people lists with name and context bullets plus duplicate groups", () => {
     const reply = composeListPeopleReply({
       result: listPeopleResult({
         appliedFilterLabel: "testing friendy",
@@ -137,8 +182,8 @@ describe("relationship response composer", () => {
       [
         "I remember these people from testing friendy:",
         "",
-        "- Testing 12",
-        "- Testing 1",
+        "- Testing 12 - Met them during testing Friendy",
+        "- Testing 1 - Testing Friendy",
         "",
         "I also see possible duplicates:",
         "",

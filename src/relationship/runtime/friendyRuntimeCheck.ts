@@ -17,7 +17,7 @@ export type FriendyRuntimeCheckReport = {
   candidateCount: number;
   promptTexts: string[];
   ackPaths: string[];
-  startGateHeldBeforeStart: boolean;
+  startGateQueuedBeforeStart: boolean;
   replayedUnackedBatchAcked: boolean;
   lines: string[];
 };
@@ -63,15 +63,15 @@ export async function runFriendyRuntimeCheck({
       contactEventIds: ["sensor_evt_mock_contact_2"]
     };
 
-    let startGateHeldBeforeStart = false;
+    let startGateQueuedBeforeStart = false;
     await withRuntime({ sqlitePath, ackPaths, lines, sender, getOnboardingState: () => onboardingState, now }, async (runtime, repo, state) => {
       await runtime.processLine(JSON.stringify(readyEvent));
       await runtime.processLine(JSON.stringify(contactEvent));
       const preStartProcessed = state.getProcessedEvent("contacts:mac_mock:fixture-contact-1:add");
-      startGateHeldBeforeStart =
-        repo.listPendingCandidates("local_friendy_user").length === 0 &&
-        promptTexts.length === 0 &&
-        preStartProcessed?.status === "ignored";
+      startGateQueuedBeforeStart =
+        repo.listPendingCandidates("local_friendy_user").length === 1 &&
+        promptTexts.length === 1 &&
+        preStartProcessed?.status === "candidate_created";
     });
 
     onboardingState = "active";
@@ -87,17 +87,17 @@ export async function runFriendyRuntimeCheck({
     });
 
     const replayedUnackedBatchAcked =
-      candidateCount === 1 &&
-      promptTexts.length === 1 &&
+      candidateCount === 2 &&
+      promptTexts.length === 2 &&
       ackPaths.some((path) => path.includes("history_batch_mock_1.ack"));
     const ok =
-      startGateHeldBeforeStart &&
-      candidateCount === 1 &&
+      startGateQueuedBeforeStart &&
+      candidateCount === 2 &&
       promptTexts.some((text) => text.includes("Photon Residency Dinner")) &&
       replayedUnackedBatchAcked;
 
-    if (startGateHeldBeforeStart) {
-      lines.push("Start gate: held contact event before user start");
+    if (startGateQueuedBeforeStart) {
+      lines.push("Start gate: queued contact event before user start");
     }
     if (replayedUnackedBatchAcked) {
       lines.push("Replayed unacked history batch: acked without duplicate prompt");
@@ -109,7 +109,7 @@ export async function runFriendyRuntimeCheck({
       candidateCount,
       promptTexts,
       ackPaths,
-      startGateHeldBeforeStart,
+      startGateQueuedBeforeStart,
       replayedUnackedBatchAcked,
       lines
     };
