@@ -390,7 +390,7 @@ export function createInterpretedRelationshipAgent({
         : undefined;
       if (
         pendingState.activeFrame &&
-        (duplicateResolutionReply === "same" || duplicateResolutionReply === "different") &&
+        duplicateResolutionReply &&
         listSavedMemoriesForDisplayName(repo, message.userId, pendingState.activeFrame.displayName).length > 0
       ) {
         const resolvedAt = now();
@@ -402,23 +402,37 @@ export function createInterpretedRelationshipAgent({
         const existingPersonId =
           savedMatches.find((memory) => memory.personId)?.personId ??
           repo.findPeopleByDisplayNameNormalized(message.userId, pendingState.activeFrame.displayName)[0]?.id;
+        const samePersonId =
+          duplicateResolutionReply === "same"
+            ? existingPersonId ??
+              repo.createPersonIdentity({
+                userId: message.userId,
+                canonicalDisplayName: pendingState.activeFrame.displayName,
+                createdAt: resolvedAt
+              }).id
+            : undefined;
         const toolCalls: AgentToolCall[] = ["resolve_duplicate_person"];
         tools.resolve_duplicate_person(message.userId, {
           candidateId: pendingState.activeFrame.candidateId,
           resolution: duplicateResolutionReply,
-          personId: duplicateResolutionReply === "same" ? existingPersonId : undefined
+          personId: samePersonId
         });
-        const nextContext = recordSameOrDifferentResolution(
-          turnContext,
-          pendingState.activeFrame.candidateId,
-          duplicateResolutionReply === "same" ? "same_person" : "different_person",
-          resolvedAt
-        );
+        const nextContext =
+          duplicateResolutionReply === "same" || duplicateResolutionReply === "different"
+            ? recordSameOrDifferentResolution(
+                turnContext,
+                pendingState.activeFrame.candidateId,
+                duplicateResolutionReply === "same" ? "same_person" : "different_person",
+                resolvedAt
+              )
+            : duplicateResolutionReply === "ignore"
+              ? clearLastReminder(turnContext)
+              : turnContext;
         conversationContexts.set(message.userId, nextContext);
-        const outboundText =
-          duplicateResolutionReply === "same"
-            ? `Got it — I'll treat this as the same ${pendingState.activeFrame.displayName}. What should I remember about them?`
-            : `Got it — I'll treat this as a different ${pendingState.activeFrame.displayName}. What should I remember about them?`;
+        const outboundText = duplicateResolutionOutboundText(
+          duplicateResolutionReply,
+          pendingState.activeFrame.displayName
+        );
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${resolvedAt.replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -1465,6 +1479,22 @@ function routeLog({
     policyDecision,
     activeWorkflowKind
   };
+}
+
+function duplicateResolutionOutboundText(
+  resolution: NonNullable<ReturnType<typeof parseDuplicateResolutionReply>>,
+  displayName: string
+): string {
+  switch (resolution) {
+    case "same":
+      return `Got it - I'll treat this as the same ${displayName}. What should I remember about them?`;
+    case "different":
+      return `Got it - I'll treat this as a different ${displayName}. What should I remember about them?`;
+    case "ignore":
+      return composeIgnoreCandidateReply({ candidateName: displayName });
+    case "not_sure":
+      return `No problem - reply same if ${displayName} is the person you already saved, different if this is someone new, or ignore to skip.`;
+  }
 }
 
 function looksLikeDirectPendingContactContext(text: string, frame: PendingContactContextFrame): boolean {

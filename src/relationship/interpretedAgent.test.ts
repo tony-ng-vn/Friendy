@@ -1118,6 +1118,51 @@ describe("interpreted relationship agent", () => {
     expect(resolution.trace.activeWorkflowKind).toBe("duplicate_resolution");
   });
 
+  it("handles ignore and not-sure replies in the duplicate-resolution workflow", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [{ ...memoryFixture("Sarah Fan", "community lead at Photon Residency I"), id: "memory_sarah_old" }]
+    });
+    const tools = createRelationshipTools(repo);
+    const notSureCandidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Sarah Fan",
+      phoneNumbers: ["+15550101052"]
+    });
+    repo.markCandidatePrompted(notSureCandidate.id, "interaction_prompt_sarah_not_sure", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: createRuleBasedInterpreter(),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const notSure = await agent.handleMessage(inboundInSpace("not sure"));
+
+    expect(notSure.toolCalls).toEqual(["resolve_duplicate_person"]);
+    expect(notSure.outbound.text).toContain("reply same");
+    expect(repo.getCandidate(notSureCandidate.id)).toMatchObject({
+      status: "prompted",
+      duplicateResolutionStatus: "not_sure"
+    });
+    expect(notSure.trace.activeWorkflowKind).toBe("duplicate_resolution");
+
+    const ignored = await agent.handleMessage(inboundInSpace("ignore"));
+
+    expect(ignored.toolCalls).toEqual(["resolve_duplicate_person"]);
+    expect(ignored.outbound.text).toBe("Ignored Sarah Fan.");
+    expect(repo.getCandidate(notSureCandidate.id)).toMatchObject({
+      status: "ignored",
+      duplicateResolutionStatus: "ignored"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("cleans named pending-contact facts before saving the note", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
