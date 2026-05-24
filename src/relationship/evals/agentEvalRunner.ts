@@ -1370,8 +1370,8 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[42],
-    async run({ now }) {
-      const { agent } = createPendingReminderEvalHarness({ now });
+    async run({ now, interpreter }) {
+      const { agent } = createPendingReminderEvalHarness({ now, interpreter });
       const result = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
 
       return [
@@ -1396,27 +1396,25 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[43],
-    async run({ now }) {
-      const { agent } = createTestingFriendyRegressionHarness({
-        interpreter: createPendingReminderSearchInterpreter({
-          query: "testing Friendy",
-          semanticQuery: "people met testing Friendy",
-          exactTerms: ["testing", "friendy"],
-          filters: { tags: ["testing", "friendy"] }
-        }),
-        now
+    async run({ now, interpreter }) {
+      const { agent } = createPendingReminderEvalHarness({
+        now,
+        interpreter,
+        savedMemory: memory(
+          "memory_sarah_fan_photon",
+          "Sarah Fan",
+          "Met at Photon Residency Dinner",
+          "Photon Residency Dinner"
+        )
       });
-      const result = await agent.handleMessage({
-        ...interpretedInbound("Who did I meet while testing Friendy?"),
-        spaceId: "imessage_testing_regression"
-      });
+      const result = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
 
       return [
         assertion(
           "same-name saved plus pending suppresses reminder",
           "clarification",
           !result.outbound.text.includes("Also, I still have") &&
-            !includesStalePendingReminder(result.outbound.text, "Testing 3")
+            !includesStalePendingReminder(result.outbound.text, "Sarah Fan")
         ),
         assertion(
           "same-name reminder trace records suppression",
@@ -1430,8 +1428,8 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[44],
-    async run({ now }) {
-      const { agent } = createPendingReminderEvalHarness({ now });
+    async run({ now, interpreter }) {
+      const { agent } = createPendingReminderEvalHarness({ now, interpreter });
       const first = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
       const second = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
 
@@ -1454,10 +1452,10 @@ const executableEvalCases: ExecutableEvalCase[] = [
   },
   {
     ...relationshipAgentEvalCases[45],
-    async run({ now }) {
+    async run({ now, interpreter }) {
       const { agent } = createPendingReminderEvalHarness({
         now,
-        interpreter: createPendingReminderListPeopleInterpreter()
+        interpreter
       });
       const result = await agent.handleMessage(interpretedInbound("List everyone I know"));
 
@@ -1656,87 +1654,6 @@ function createStateEnvelopeStalePromptInterpreter(): MessageInterpreter {
   };
 }
 
-function createPendingReminderSearchInterpreter({
-  query = "Photon",
-  semanticQuery = "people met at Photon",
-  exactTerms = ["photon"],
-  filters = { eventName: "Photon" }
-}: {
-  query?: string;
-  semanticQuery?: string;
-  exactTerms?: string[];
-  filters?: { eventName?: string; tags?: string[] };
-} = {}): MessageInterpreter {
-  return {
-    async interpret() {
-      return {
-        modelUsed: "pending-reminder-eval",
-        error: "",
-        routeSource: "llm",
-        fallbackUsed: false,
-        interpretation: {
-          intent: "search_memory",
-          confidence: 0.94,
-          domain: "relationship_memory",
-          conversationRelation: "starts_new_relationship_task",
-          target: null,
-          people: [],
-          event: { name: "", dateText: "", location: "" },
-          dateContext: undefined,
-          contextNote: "",
-          query,
-          search: {
-            mode: "event_recall",
-            semanticQuery,
-            exactTerms,
-            filters,
-            topK: 10
-          },
-          tags: exactTerms,
-          needsClarification: false,
-          clarificationQuestion: ""
-        }
-      };
-    }
-  };
-}
-
-function createPendingReminderListPeopleInterpreter(): MessageInterpreter {
-  return {
-    async interpret(input) {
-      const text = input.message.text;
-
-      return {
-        modelUsed: "pending-reminder-eval",
-        error: "",
-        routeSource: "llm",
-        fallbackUsed: false,
-        interpretation: {
-          intent: "list_people",
-          confidence: 0.96,
-          domain: "relationship_memory",
-          conversationRelation: "starts_new_relationship_task",
-          target: null,
-          people: [],
-          event: { name: "", dateText: "", location: "" },
-          dateContext: undefined,
-          contextNote: "",
-          query: text,
-          search: {
-            mode: "list_people",
-            semanticQuery: text,
-            exactTerms: [],
-            topK: 20
-          },
-          tags: [],
-          needsClarification: false,
-          clarificationQuestion: ""
-        }
-      };
-    }
-  };
-}
-
 async function maybeRunModelBackedEvals(
   options: RunOptions,
   now: () => string
@@ -1822,11 +1739,12 @@ function createTestingFriendyRegressionHarness({
 
 function createPendingReminderEvalHarness({
   now,
-  interpreter = createPendingReminderSearchInterpreter()
-}: Required<Pick<RunOptions, "now">> & { interpreter?: MessageInterpreter }) {
+  interpreter,
+  savedMemory = memory("memory_maya_photon", "Maya", "Met at Photon Residency Dinner", "Photon Residency Dinner")
+}: Required<Pick<RunOptions, "interpreter" | "now">> & { savedMemory?: RelationshipMemory }) {
   const repo = createRelationshipRepository({
     users: [fixtureUser],
-    memories: [memory("memory_maya_photon", "Maya", "Met at Photon Residency Dinner", "Photon Residency Dinner")]
+    memories: [savedMemory]
   });
   const tools = createRelationshipTools(repo);
   const pendingSarah = tools.create_contact_candidate({
