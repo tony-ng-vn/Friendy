@@ -25,7 +25,8 @@ describe("Friendy runtime doctor", () => {
       env: {
         FRIENDY_SENSOR_MOCK: "1",
         FRIENDY_PROMPT_TRANSPORT: "console",
-        FRIENDY_RUNTIME_STORE: "sqlite"
+        FRIENDY_RUNTIME_STORE: "sqlite",
+        OPENROUTER_API_KEY: "sk-test"
       },
       platform: "linux",
       nodeVersion: "v24.15.0"
@@ -99,6 +100,49 @@ describe("Friendy runtime doctor", () => {
       nodeVersion: "v24.15.0"
     });
     expect(realReport.checks.find((check) => check.name === "env_file")?.status).toBe("missing");
+  });
+
+  it("warns when strict mode is on but OPENROUTER_API_KEY is missing", () => {
+    const cwd = tempDir();
+    const report = runFriendyDoctor({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_STRICT_MODE: "1"
+      },
+      nodeVersion: "v24.15.0"
+    });
+
+    expect(report.checks.find((check) => check.name === "strict_mode")?.status).toBe("enabled");
+    expect(report.checks.find((check) => check.name === "openrouter_api_key")).toMatchObject({
+      ok: false,
+      status: "missing"
+    });
+    expect(report.lines.join("\n")).toContain("strictMode: true");
+    expect(report.lines.join("\n")).toContain("OpenRouter model:");
+    expect(report.lines.join("\n")).toContain("OpenRouter API key: missing");
+  });
+
+  it("reports OpenRouter readiness when strict mode is on and the API key is set", () => {
+    const cwd = tempDir();
+    const report = runFriendyDoctor({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_STRICT_MODE: "1",
+        OPENROUTER_API_KEY: "sk-test",
+        OPENROUTER_MODEL: "custom-model"
+      },
+      nodeVersion: "v24.15.0"
+    });
+
+    expect(report.checks.find((check) => check.name === "openrouter_api_key")).toMatchObject({
+      ok: true,
+      status: "ready"
+    });
+    expect(report.lines.join("\n")).toContain("OpenRouter model: custom-model");
   });
 });
 

@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadFriendyEnv } from "../env";
+import { readOpenRouterConfig } from "../openRouterInterpreter";
+import { readFriendyStrictMode } from "../strictMode";
 import { resolveFriendyRuntimeConfig } from "./friendyRuntimeCli";
 import { resolveMacosSensorBinaryPath } from "./macosSensorBinaryPath";
 
@@ -55,6 +57,13 @@ export function runFriendyDoctor({
     });
   }
 
+  const strictMode = readFriendyStrictMode(env);
+  const openRouter = readOpenRouterConfig(env);
+  checks.push(strictModeCheck(strictMode));
+  if (strictMode) {
+    checks.push(openRouterApiKeyCheck(openRouter.apiKey));
+  }
+
   const promptTransport = env.FRIENDY_PROMPT_TRANSPORT || (env.FRIENDY_SENSOR_MOCK === "1" ? "console" : "spectrum");
   checks.push({ name: "prompt_transport", ok: true, status: promptTransport });
   checks.push(promptRecipientCheck(env, promptTransport));
@@ -69,7 +78,25 @@ export function runFriendyDoctor({
   return {
     ok: checks.every((check) => check.ok || check.name === "env_file" || check.name === "native_permissions"),
     checks,
-    lines: renderDoctorLines({ platform, nodeVersion, checks })
+    lines: renderDoctorLines({ platform, nodeVersion, checks, strictMode, openRouterModel: openRouter.model })
+  };
+}
+
+function strictModeCheck(strictMode: boolean): FriendyDoctorCheck {
+  return {
+    name: "strict_mode",
+    ok: true,
+    status: strictMode ? "enabled" : "disabled"
+  };
+}
+
+function openRouterApiKeyCheck(apiKey: string): FriendyDoctorCheck {
+  const ready = Boolean(apiKey.trim());
+  return {
+    name: "openrouter_api_key",
+    ok: ready,
+    status: ready ? "ready" : "missing",
+    remediation: ready ? undefined : "Set OPENROUTER_API_KEY before strict-mode dogfood runs."
   };
 }
 
@@ -140,13 +167,21 @@ function writableDirectoryCheck(name: string, dirPath: string): FriendyDoctorChe
 function renderDoctorLines({
   platform,
   nodeVersion,
-  checks
+  checks,
+  strictMode,
+  openRouterModel
 }: {
   platform: NodeJS.Platform;
   nodeVersion: string;
   checks: FriendyDoctorCheck[];
+  strictMode: boolean;
+  openRouterModel: string;
 }): string[] {
   const lines = ["Friendy runtime doctor", `Platform: ${platform}`, `Node: ${nodeVersion}`];
+  if (strictMode) {
+    lines.push("strictMode: true");
+    lines.push(`OpenRouter model: ${openRouterModel}`);
+  }
   for (const check of checks) {
     lines.push(`${formatCheckName(check.name)}: ${formatStatus(check.status)}`);
     if (!check.ok && check.remediation) {
@@ -162,8 +197,10 @@ function formatCheckName(name: string): string {
     macos_sensor: "macOS sensor",
     native_permissions: "native permissions",
     prompt_recipient: "prompt recipient",
+    openrouter_api_key: "OpenRouter API key",
     prompt_transport: "prompt transport",
     runtime_config: "runtime config",
+    strict_mode: "strict mode",
     sensor_state_directory: "sensor state directory",
     sqlite_runtime_store: "SQLite runtime store"
   };

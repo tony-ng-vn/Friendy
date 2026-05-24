@@ -240,6 +240,56 @@ describe("Friendy foreground runtime CLI configuration", () => {
       })
     ).rejects.toThrow(/FRIENDY_OWNER_PHONE|FRIENDY_PROMPT_TO_PHONE/);
   });
+
+  it("warns when strict mode is off and the inbound interpreted agent is enabled", async () => {
+    const cwd = tempDir();
+    const logs: string[] = [];
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_STRICT_MODE: "0",
+        FRIENDY_START_INBOUND_AGENT: "1",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      startSensor() {
+        return { child: fakeChildProcess() };
+      },
+      startInboundAgent() {
+        return undefined;
+      },
+      logger: testLogger(logs)
+    });
+
+    expect(logs.join("\n")).toContain("[friendy:strict_mode:warning]");
+    expect(logs.join("\n")).toContain("FRIENDY_STRICT_MODE is off");
+    started.close();
+  });
+
+  it("does not warn about strict mode when inbound agent is disabled", async () => {
+    const cwd = tempDir();
+    const logs: string[] = [];
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_PROMPT_TRANSPORT: "console",
+        FRIENDY_STRICT_MODE: "0",
+        FRIENDY_DISABLE_INBOUND_AGENT: "1",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      startSensor() {
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger(logs)
+    });
+
+    expect(logs.join("\n")).not.toContain("[friendy:strict_mode:warning]");
+    started.close();
+  });
 });
 
 function tempDir(): string {

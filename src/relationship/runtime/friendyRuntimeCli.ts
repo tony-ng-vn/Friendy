@@ -170,6 +170,7 @@ export async function startFriendyForegroundRuntime({
     logger,
     getOnboardingState: () => resolvedOnboarding.getState()
   });
+  warnIfStrictModeDisabledForInboundAgent(config, env, logger);
   const inboundAgent = shouldStartInboundAgent(config, env)
     ? startInboundAgent({ repo, userId, onboarding: resolvedOnboarding, env, logger })
     : undefined;
@@ -368,6 +369,19 @@ function shouldStartInboundAgent(config: FriendyRuntimeConfig, env: Partial<Node
   }
 
   return config.sensor.mode === "real" || env.FRIENDY_START_INBOUND_AGENT === "1";
+}
+
+/** Warns when dogfood routing can silently degrade because strict mode is explicitly off. */
+function warnIfStrictModeDisabledForInboundAgent(
+  config: FriendyRuntimeConfig,
+  env: Partial<NodeJS.ProcessEnv>,
+  logger: RuntimeLogger
+): void {
+  if (!config.strictMode && shouldStartInboundAgent(config, env)) {
+    logger.warn(
+      "[friendy:strict_mode:warning] FRIENDY_STRICT_MODE is off — rule-based fallback and silent routing degradation are allowed. Use FRIENDY_STRICT_MODE=1 for dogfood."
+    );
+  }
 }
 
 function warnIfRuntimePathIsCloudSynced(config: FriendyRuntimeConfig, logger: RuntimeLogger): void {
