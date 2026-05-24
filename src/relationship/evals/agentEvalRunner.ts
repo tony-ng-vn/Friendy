@@ -725,9 +725,10 @@ const executableEvalCases: ExecutableEvalCase[] = [
       await agent.handleMessage(interpretedInbound("I met Maya at dinner, building recruiting agents"));
       await agent.handleMessage(interpretedInbound("I met Sarah at dinner, hardware founder"));
       await agent.handleMessage(interpretedInbound("Who was building recruiting agents?"));
-      const updated = await agent.handleMessage(
+      const requested = await agent.handleMessage(
         interpretedInbound("Actually she was working on hiring workflows, not recruiting agents")
       );
+      const confirmed = await agent.handleMessage(interpretedInbound("yes"));
       const maya = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Maya");
       const sarah = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Sarah");
 
@@ -735,7 +736,9 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "pronoun correction updates active single search result",
           "memoryWrite",
-          updated.toolCalls.includes("update_memory") && Boolean(maya?.contextNote.includes("hiring workflows"))
+          !requested.toolCalls.includes("update_memory") &&
+            confirmed.toolCalls.includes("update_memory") &&
+            Boolean(maya?.contextNote.includes("hiring workflows"))
         ),
         assertion(
           "active correction preserves other memories",
@@ -909,9 +912,15 @@ const executableEvalCases: ExecutableEvalCase[] = [
     async run({ interpreter, now }) {
       const { agent, tools } = createInterpretedHarness({ interpreter, now });
       await agent.handleMessage(interpretedInbound("I met Maya at dinner, building recruiting agents"));
-      const deleted = await agent.handleMessage(interpretedInbound("delete Maya memory"));
+      const requested = await agent.handleMessage(interpretedInbound("delete Maya memory"));
+      const deleted = await agent.handleMessage(interpretedInbound("yes"));
 
       return [
+        assertion(
+          "delete memory asks for confirmation before deleting",
+          "memoryWrite",
+          requested.toolCalls.includes("lookup_memory_target") && !requested.toolCalls.includes("delete_memory")
+        ),
         assertion(
           "delete memory removes it from search results",
           "memoryWrite",
@@ -1288,7 +1297,7 @@ const executableEvalCases: ExecutableEvalCase[] = [
         assertion(
           "fuzzy delete routes to delete memory request",
           "intent",
-          ["delete_memory_request", "delete_memory"].includes(String(result.trace.route?.intent))
+          result.trace.route?.intent === "delete_memory_request"
         ),
         assertion(
           "fuzzy delete maps Unamed to Unnamed Contact",

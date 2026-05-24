@@ -1576,7 +1576,7 @@ describe("interpreted relationship agent", () => {
     expect(stale.outbound.text).not.toContain("Maya");
   });
 
-  it("routes a pronoun correction to the active single search result", async () => {
+  it("asks for confirmation before updating the active single search result", async () => {
     const { agent, repo } = createTestAgentWithMemories([
       memoryFixture("Maya", "building recruiting agents"),
       memoryFixture("Sarah", "hardware founder")
@@ -1587,10 +1587,17 @@ describe("interpreted relationship agent", () => {
 
     const maya = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Maya");
     const sarah = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Sarah");
-    expect(result.toolCalls).toEqual(["update_memory"]);
-    expect(result.outbound.text).toContain("updated Maya");
-    expect(maya?.contextNote).toContain("hiring workflows");
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("Update the note");
+    expect(maya?.contextNote).toBe("building recruiting agents");
     expect(sarah?.contextNote).toBe("hardware founder");
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+    const updatedMaya = repo.listMemories(fixtureUser.id).find((memory) => memory.displayName === "Maya");
+
+    expect(confirmed.toolCalls).toEqual(["update_memory"]);
+    expect(confirmed.outbound.text).toContain("updated Maya");
+    expect(updatedMaya?.contextNote).toContain("hiring workflows");
   });
 
   it("asks who to update when a correction follows an ambiguous search", async () => {
@@ -1624,7 +1631,7 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("building recruiting agents");
   });
 
-  it("updates a saved memory from a natural correction through bounded tools", async () => {
+  it("asks for confirmation before updating a saved memory from a natural correction", async () => {
     const { agent, repo } = createTestAgentWithMemories([
       memoryFixture("Maya", "old note from dinner")
     ]);
@@ -1632,61 +1639,117 @@ describe("interpreted relationship agent", () => {
     const result = await agent.handleMessage(inbound("Maya actually works on recruiting agents"));
 
     const [memory] = repo.listMemories(fixtureUser.id);
-    expect(result.toolCalls).toEqual(["search_memories", "update_memory"]);
-    expect(result.outbound.text).toContain("updated Maya");
-    expect(memory.contextNote).toContain("works on recruiting agents");
+    expect(result.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(result.outbound.text).toBe('I found Maya. Update the note to "works on recruiting agents"?\nReply yes to confirm or no to cancel.');
+    expect(result.trace.activeWorkflowKind).toBe("pending_update_confirm");
+    expect(result.trace.selectedTool).toBe("lookup_memory_target");
+    expect(memory.contextNote).toBe("old note from dinner");
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+    const [updatedMemory] = repo.listMemories(fixtureUser.id);
+
+    expect(confirmed.toolCalls).toEqual(["update_memory"]);
+    expect(confirmed.outbound.text).toContain("updated Maya");
+    expect(updatedMemory.contextNote).toContain("works on recruiting agents");
     expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
       reason: "user_correction",
-      userText: "Maya actually works on recruiting agents"
+      userText: "yes"
     });
   });
 
-  it("deletes a saved memory from a natural forget request through bounded tools", async () => {
+  it("asks for confirmation before deleting a saved memory from a natural forget request", async () => {
     const original = memoryFixture("Maya", "building recruiting agents");
     const { agent, repo, tools } = createTestAgentWithMemories([original]);
 
     const result = await agent.handleMessage(inbound("delete Maya memory"));
 
-    expect(result.toolCalls).toEqual(["search_memories", "delete_memory"]);
-    expect(result.outbound.text).toContain("Deleted Maya");
+    expect(result.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(result.outbound.text).toBe("I found Maya. Delete this from Friendy memory?\nReply yes to confirm or no to cancel.");
+    expect(result.trace.activeWorkflowKind).toBe("pending_delete_confirm");
+    expect(result.trace.selectedTool).toBe("lookup_memory_target");
+    expect(tools.search_memories(fixtureUser.id, "recruiting agents").map((match) => match.memory.displayName)).toEqual(["Maya"]);
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.toolCalls).toEqual(["delete_memory"]);
+    expect(confirmed.outbound.text).toContain("Deleted Maya");
     expect(tools.search_memories(fixtureUser.id, "recruiting agents")).toEqual([]);
     expect(repo.listMemoryRevisions(original.id).at(-1)).toMatchObject({
       reason: "deleted",
-      userText: "delete Maya memory"
+      userText: "yes"
     });
   });
 
-  it("asks which memory to delete when the request is ambiguous", async () => {
+  it("uses lookup disambiguation and numbered selection before deleting an ambiguous memory target", async () => {
     const { agent, repo } = createTestAgentWithMemories([
-      memoryFixture("Maya", "recruiting agents founder"),
-      memoryFixture("Sarah", "hardware founder")
+      memoryFixture("Sarah", "met at Photon dinner"),
+      memoryFixture("Sara Kim", "met at recruiting meetup")
     ]);
 
-    const result = await agent.handleMessage(inbound("delete the founder"));
+    const result = await agent.handleMessage(inbound("delete Srah memory"));
 
-    expect(result.toolCalls).toEqual(["search_memories"]);
-    expect(result.outbound.text).toContain("Maya");
+    expect(result.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(result.outbound.text).toContain("Srah");
     expect(result.outbound.text).toContain("Sarah");
-    expect(result.outbound.text).toContain("Which person");
+    expect(result.outbound.text).toContain("Sara Kim");
+    expect(result.outbound.text).toContain("Reply 1 or 2");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+
+    const selected = await agent.handleMessage(inbound("1"));
+
+    expect(selected.toolCalls).toEqual([]);
+    expect(selected.outbound.text).toContain("Delete this from Friendy memory?");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.toolCalls).toEqual(["delete_memory"]);
+    expect(confirmed.outbound.text).toContain("Deleted Sarah");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Sara Kim"]);
+  });
+
+  it("cancels pending memory delete or update confirmations", async () => {
+    const deleteHarness = createTestAgentWithMemories([memoryFixture("Maya", "building recruiting agents")]);
+
+    await deleteHarness.agent.handleMessage(inbound("delete Maya memory"));
+    const deleteCancelled = await deleteHarness.agent.handleMessage(inbound("no"));
+    const strayDeleteYes = await deleteHarness.agent.handleMessage(inbound("yes"));
+
+    expect(deleteCancelled.toolCalls).toEqual([]);
+    expect(deleteCancelled.outbound.text).toContain("Cancelled");
+    expect(strayDeleteYes.toolCalls).not.toContain("delete_memory");
+    expect(deleteHarness.repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Maya"]);
+
+    const updateHarness = createTestAgentWithMemories([memoryFixture("Maya", "old note from dinner")]);
+
+    await updateHarness.agent.handleMessage(inbound("Maya actually works on recruiting agents"));
+    const updateCancelled = await updateHarness.agent.handleMessage(inbound("cancel"));
+    const strayUpdateYes = await updateHarness.agent.handleMessage(inbound("yes"));
+
+    expect(updateCancelled.toolCalls).toEqual([]);
+    expect(updateCancelled.outbound.text).toContain("Cancelled");
+    expect(strayUpdateYes.toolCalls).not.toContain("update_memory");
+    expect(updateHarness.repo.listMemories(fixtureUser.id)[0].contextNote).toBe("old note from dinner");
   });
 
   it("throws instead of silently clarifying an ambiguous executable delete in strict mode", async () => {
     const { agent, repo } = createTestAgentWithMemories(
-      [memoryFixture("Maya", "recruiting agents founder"), memoryFixture("Sarah", "hardware founder")],
+      [memoryFixture("Sarah", "met at Photon dinner"), memoryFixture("Sara Kim", "met at recruiting meetup")],
       { strictMode: true }
     );
 
-    await expect(agent.handleMessage(inbound("delete the founder"))).rejects.toMatchObject({
+    await expect(agent.handleMessage(inbound("delete Srah memory"))).rejects.toMatchObject({
       name: "FriendyStrictModeError",
       code: "UNEXPECTED_AMBIGUITY",
       trace: {
         strictMode: true,
         routeSource: "deterministic",
         fallbackUsed: false,
-        route: { intent: "delete_memory" },
+        route: { intent: "delete_memory_request" },
         policyDecision: "clarify",
-        toolCalls: ["search_memories"]
+        activeWorkflowKind: "pending_delete_confirm",
+        selectedTool: "lookup_memory_target",
+        toolCalls: ["lookup_memory_target"]
       }
     });
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);

@@ -6,6 +6,15 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Robust Delete/Update PR 7 (2026-05-24)</h2>
+    <ul>
+      <li>Changed interpreted memory delete/update requests to resolve targets through the read-only <code>lookup_memory_target</code> tool and ask for explicit confirmation before mutating memory.</li>
+      <li>Delete flows now store pending delete confirmation state for single-target and numbered disambiguation flows. <code>delete Srah memory</code> can ask the user to choose between similarly named memories, then asks for confirmation before <code>delete_memory</code> runs.</li>
+      <li>Named update flows now mirror delete: <code>Maya actually works on recruiting agents</code> asks for confirmation before <code>update_memory</code> runs. Pronoun corrections that rely on an active memory target also ask for confirmation instead of writing immediately.</li>
+      <li>Trace projection now includes <code>selectedTool</code> from persisted interaction JSON, and delete/update confirmation turns set <code>activeWorkflowKind</code> to <code>pending_delete_confirm</code> or <code>pending_update_confirm</code>.</li>
+      <li>Updated the older delete eval to expect the new two-turn confirmation flow. This is intentional: interpreted user messages should no longer delete memory on the lookup/request turn.</li>
+      <li>Verification passed: <code>npm test</code> passed with 65 files/463 tests; <code>npm run eval:agent</code> passed 46/46; <code>npm run build</code> passed; <code>git diff --check</code> passed.</li>
+    </ul>
     <h2>Duplicate Identity Resolution PR 6 (2026-05-24)</h2>
     <ul>
       <li>Wired deterministic duplicate-person resolution for same-display-name pending contacts. Explicit replies <code>same</code>, <code>different</code>, <code>ignore</code>, and <code>not sure</code> route through <code>resolve_duplicate_person</code> before any pending-contact context can be saved.</li>

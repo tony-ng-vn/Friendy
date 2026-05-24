@@ -48,6 +48,8 @@ export async function runMacMvpDemoCheck(): Promise<MacMvpDemoCheckReport> {
     message("Actually she was working on hiring workflows, not recruiting agents", "2026-05-22T12:06:00.000Z")
   );
   lines.push(update.outbound.text);
+  const updateConfirmation = await agent.handleMessage(message("yes", "2026-05-22T12:06:30.000Z"));
+  lines.push(updateConfirmation.outbound.text);
 
   const ok =
     onboarding.getState() === "active" &&
