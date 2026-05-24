@@ -36,12 +36,33 @@ Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 | Item | State |
 |------|--------|
 | **Mac MVP contact E2E** | **Working** — verified live with contact “Testing 12” |
-| **Latest fix** | Strict mode and trace envelope implemented on `feat/strict-mode-trace-envelope`; final verification passed |
+| **Latest fix** | Review fixes at `3d7d727` (real memory timestamps, redact local contact checks) |
 | **Latest navigation update** | Understand Anything graph generated and linked from `AGENTS.md` / `REFERENCE.md` as a searchable repo index |
-| **Active goal** | `docs/goals/strict-mode-trace-envelope-goal.md` |
-| **Branch** | `feat/strict-mode-trace-envelope` (pushed) |
+| **Active goal** | Concrete fix stack PR 4–10 (see merge order below) |
+| **Branch** | `main` |
 
-### Active implementation status (2026-05-23, strict mode)
+### Fix stack status (2026-05-23, parallel prep batch)
+
+Run `npm run friendy:stack-status` for live PR 1–10 state.
+
+| PR | Topic | Status on `main` |
+|----|--------|------------------|
+| 1–3 | Regression freeze, `list_people`, structured router | **Done** |
+| 4 | Pass state into LLM router (envelope) | **In progress elsewhere** — plan ready |
+| 5 | Pending reminder policy | **Prep** — `pendingReminderPolicy` module landed |
+| 6 | Identity resolution | **Prep** — `identityResolution` + `lookupMemoryTarget` modules landed |
+| 7 | Robust delete/update | **Prep** modules on main (full PR not merged as stack unit) |
+| 8 | Sensor normalization ack | **Done** on `main` |
+| 9 | Strict-mode dogfooding trace | **Partial** — wave 1 doctor/CLI warning at `32b3456`; Task 1 trace delta fields in flight |
+| 10 | Durable conversation session | Plan ready |
+
+**Recommended merge order:** PR 4 → 5 → 6 → 7 → PR 9 wave 2 → 10
+
+**PR 9 wave 1 (merged):** strict-off runtime warning, doctor strict + OpenRouter key hints (`32b3456`).
+
+**PR 9 Task 1 (in flight):** extend `FriendyTrace` with delta fields (`scope_boundary`, `ActiveWorkflowKind`, model/workflow/scope metadata). Tasks 2–3 blocked on PR 4 envelope.
+
+### Active implementation status (2026-05-23, strict mode baseline)
 
 - Added `FRIENDY_STRICT_MODE` parsing and typed `FriendyStrictModeError`.
 - Added `FriendyTrace` to interpreted-agent results and persisted interaction JSON.

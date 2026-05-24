@@ -1,8 +1,15 @@
 import type { MessageInterpretation } from "./interpretation";
 import type { AgentToolCall } from "./types";
 
-export type FriendyRouteSource = "llm" | "deterministic" | "fallback";
+export type FriendyRouteSource = "llm" | "deterministic" | "fallback" | "scope_boundary";
 export type FriendyPolicyDecision = "allow" | "clarify" | "reject" | "unsupported";
+export type FriendyScopeDecision = "in_scope" | "out_of_scope" | "clarify";
+export type ActiveWorkflowKind =
+  | "pending_contact_confirm"
+  | "duplicate_resolution"
+  | "pending_delete_confirm"
+  | "pending_update_confirm"
+  | "none";
 
 export type FriendyRouteTrace = {
   domain?: MessageInterpretation["domain"];
@@ -31,6 +38,12 @@ export type FriendyTrace = {
   activeCandidateId?: string;
   activeMemoryId?: string;
   toolCalls: AgentToolCall[];
+  scopeDecision?: FriendyScopeDecision;
+  activeWorkflowKind?: ActiveWorkflowKind;
+  selectedTool?: AgentToolCall | string;
+  modelRequested?: string;
+  modelResponseSchemaValid?: boolean;
+  modelErrorCode?: string;
 };
 
 export function createFriendyTrace(input: {
@@ -45,6 +58,12 @@ export function createFriendyTrace(input: {
   activeCandidateId?: string;
   activeMemoryId?: string;
   toolCalls?: AgentToolCall[];
+  scopeDecision?: FriendyScopeDecision;
+  activeWorkflowKind?: ActiveWorkflowKind;
+  selectedTool?: AgentToolCall | string;
+  modelRequested?: string;
+  modelResponseSchemaValid?: boolean;
+  modelErrorCode?: string;
 }): FriendyTrace {
   return {
     strictMode: input.strictMode,
@@ -57,7 +76,13 @@ export function createFriendyTrace(input: {
     activeFrameId: input.activeFrameId,
     activeCandidateId: input.activeCandidateId,
     activeMemoryId: input.activeMemoryId,
-    toolCalls: input.toolCalls ?? []
+    toolCalls: input.toolCalls ?? [],
+    scopeDecision: input.scopeDecision,
+    activeWorkflowKind: input.activeWorkflowKind,
+    selectedTool: input.selectedTool,
+    modelRequested: input.modelRequested,
+    modelResponseSchemaValid: input.modelResponseSchemaValid,
+    modelErrorCode: input.modelErrorCode
   };
 }
 
@@ -124,7 +149,10 @@ function isFriendyTrace(value: unknown): value is FriendyTrace {
   const trace = value as Partial<FriendyTrace>;
   return (
     typeof trace.strictMode === "boolean" &&
-    (trace.routeSource === "llm" || trace.routeSource === "deterministic" || trace.routeSource === "fallback") &&
+    (trace.routeSource === "llm" ||
+      trace.routeSource === "deterministic" ||
+      trace.routeSource === "fallback" ||
+      trace.routeSource === "scope_boundary") &&
     typeof trace.fallbackUsed === "boolean" &&
     Array.isArray(trace.toolCalls)
   );
