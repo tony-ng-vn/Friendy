@@ -47,6 +47,7 @@ import {
 } from "./scopeBoundary";
 import { rankDisplayNameMatches } from "./personNameMatch";
 import { validateRequiredToolAvailability, validateRoutePolicy, type ValidatedRoutePolicy } from "./routePolicyValidator";
+import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerInputEnvelope";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
@@ -131,6 +132,35 @@ type ConversationContext = {
  */
 const MIN_CAPTURE_CONFIDENCE = 0.5;
 const SEARCH_CONTEXT_TTL_MS = 15 * 60 * 1000;
+const ROUTER_AVAILABLE_TOOLS = [
+  "list_people",
+  "find_duplicate_people",
+  "search_memories",
+  "list_pending_candidates",
+  "list_candidate_event_matches",
+  "get_candidate",
+  "confirm_candidate",
+  "ignore_candidate",
+  "create_manual_memory",
+  "update_memory",
+  "delete_memory"
+] satisfies AgentToolCall[];
+const ROUTER_AVAILABLE_ROUTE_CAPABILITIES = [
+  "answer_pending_contact_prompt",
+  "capture_pending_contact_context",
+  "ignore_candidate",
+  "list_people",
+  "search_memory",
+  "duplicate_audit",
+  "delete_memory_request",
+  "update_memory",
+  "manual_memory_create",
+  "explain_agent_state",
+  "explain_pending_workflow",
+  "conversation_repair",
+  "clarify",
+  "reject"
+] satisfies RouterRouteCapability[];
 
 /**
  * Creates the LLM-interpreted relationship agent.
@@ -596,7 +626,14 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      const interpreted = await interpreter.interpret({ message });
+      const routerContext = buildRouterInputEnvelope({
+        message,
+        conversationState: pendingState,
+        memories: repo.listMemories(message.userId),
+        availableTools: ROUTER_AVAILABLE_TOOLS,
+        availableRouteCapabilities: ROUTER_AVAILABLE_ROUTE_CAPABILITIES
+      });
+      const interpreted = await interpreter.interpret({ message, routerContext });
       if (strictMode && interpreted.fallbackUsed) {
         throw new FriendyStrictModeError(
           "FALLBACK_USED",
