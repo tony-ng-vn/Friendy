@@ -15,7 +15,7 @@ import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from 
 import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
 import { FriendyStrictModeError, type FriendyStrictModeErrorCode } from "./strictMode";
 import { createFriendyTrace } from "./trace";
-import type { InboundAgentMessage } from "./types";
+import type { MessageInterpreterInput } from "./routerInputEnvelope";
 
 /** Default free-tier model when `OPENROUTER_MODEL` is unset. */
 export const DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
@@ -44,7 +44,7 @@ export type MessageInterpreterResult = {
 
 /** Contract for turning inbound agent text into validated {@link MessageInterpretation} JSON. */
 export type MessageInterpreter = {
-  interpret(message: InboundAgentMessage): Promise<MessageInterpreterResult>;
+  interpret(input: MessageInterpreterInput): Promise<MessageInterpreterResult>;
 };
 
 type OpenRouterInterpreterOptions = {
@@ -80,7 +80,7 @@ export function createOpenRouterInterpreter({
   fallback = createRuleBasedInterpreter()
 }: OpenRouterInterpreterOptions): MessageInterpreter {
   return {
-    async interpret(message) {
+    async interpret(input) {
       if (!apiKey) {
         throwStrictInterpreterError({
           strictMode,
@@ -90,7 +90,7 @@ export function createOpenRouterInterpreter({
           fallbackUsed: true,
           fallbackReason: "missing_openrouter_api_key"
         });
-        const fallbackResult = await fallback.interpret(message);
+        const fallbackResult = await fallback.interpret(input);
         return {
           ...fallbackResult,
           routeSource: "fallback",
@@ -103,7 +103,7 @@ export function createOpenRouterInterpreter({
       let fallbackReason: MessageInterpreterResult["fallbackReason"] = "model_interpreter_failed";
       for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt += 1) {
         try {
-          const interpretation = await callOpenRouter({ apiKey, model, fetchImpl, message });
+          const interpretation = await callOpenRouter({ apiKey, model, fetchImpl, input });
           return {
             interpretation,
             modelUsed: model,
@@ -128,7 +128,7 @@ export function createOpenRouterInterpreter({
         }
       }
 
-      const fallbackResult = await fallback.interpret(message);
+      const fallbackResult = await fallback.interpret(input);
       return {
         interpretation: fallbackResult.interpretation,
         modelUsed: fallbackResult.modelUsed,
@@ -144,9 +144,9 @@ export function createOpenRouterInterpreter({
 /** Deterministic local fallback for tests and fixtures when model calls fail or are not configured. */
 export function createRuleBasedInterpreter(): MessageInterpreter {
   return {
-    async interpret(message) {
+    async interpret(input) {
       return {
-        interpretation: validateMessageInterpretation(ruleBasedInterpret(message.text)),
+        interpretation: validateMessageInterpretation(ruleBasedInterpret(input.message.text)),
         modelUsed: "rule-based-fallback",
         error: "",
         routeSource: "fallback",
@@ -195,12 +195,12 @@ async function callOpenRouter({
   apiKey,
   model,
   fetchImpl,
-  message
+  input
 }: {
   apiKey: string;
   model: string;
   fetchImpl: FetchLike;
-  message: InboundAgentMessage;
+  input: MessageInterpreterInput;
 }): Promise<MessageInterpretation> {
   const response = await fetchImpl(OPENROUTER_CHAT_COMPLETIONS_URL, {
     method: "POST",
@@ -226,7 +226,7 @@ async function callOpenRouter({
           role: "system",
           content: [buildInterpreterSystemPrompt(), buildStructuredOutputInstructions()].join("\n\n")
         },
-        { role: "user", content: message.text }
+        { role: "user", content: serializeRouterUserContent(input) }
       ]
     })
   });
@@ -239,6 +239,18 @@ async function callOpenRouter({
   const content = payload.choices?.[0]?.message?.content;
   const parsed = typeof content === "string" ? JSON.parse(content) : content;
   return validateMessageInterpretation(parsed);
+}
+
+function serializeRouterUserContent(input: MessageInterpreterInput): string {
+  if (!input.routerContext) {
+    return input.message.text;
+  }
+
+  return [
+    "Route this Friendy turn using the state envelope.",
+    "Return only JSON matching the schema.",
+    JSON.stringify(input.routerContext)
+  ].join("\n\n");
 }
 
 function ruleBasedInterpret(text: string): MessageInterpretation {

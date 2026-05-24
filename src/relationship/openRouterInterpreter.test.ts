@@ -7,6 +7,7 @@ import {
   readOpenRouterConfig
 } from "./openRouterInterpreter";
 import { FriendyStrictModeError } from "./strictMode";
+import type { RouterInputEnvelope } from "./routerInputEnvelope";
 import type { InboundAgentMessage } from "./types";
 
 const inbound: InboundAgentMessage = {
@@ -14,6 +15,31 @@ const inbound: InboundAgentMessage = {
   platform: "terminal",
   text: "Who I have met at the Residency?",
   receivedAt: "2026-05-20T12:00:00.000Z"
+};
+
+const routerContext: RouterInputEnvelope = {
+  userText: inbound.text,
+  conversationState: {
+    activeWorkflow: {
+      kind: "pending_contact_confirmation",
+      frameId: "frame-1",
+      candidateId: "candidate-1",
+      displayName: "Amaya",
+      lastFriendyPrompt: "Should I save Amaya as a contact?",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    },
+    recentAgentMessages: [],
+    recentEntityRefs: [],
+    lastListResultIds: [],
+    lastToolErrors: []
+  },
+  domainStateSummary: {
+    pendingCandidates: [],
+    knownPeopleNamed: [],
+    possibleDuplicates: []
+  },
+  availableTools: [],
+  availableRouteCapabilities: ["search_memory", "answer_pending_contact_prompt"]
 };
 
 describe("openrouter message interpreter", () => {
@@ -48,7 +74,7 @@ describe("openrouter message interpreter", () => {
       fetchImpl
     });
 
-    const result = await interpreter.interpret(inbound);
+    const result = await interpreter.interpret({ message: inbound });
     const body = JSON.parse(String(calls[0].init.body));
 
     expect(result.interpretation.intent).toBe("search_memory");
@@ -72,6 +98,47 @@ describe("openrouter message interpreter", () => {
     });
     expect(body.messages[0].content).toContain("Calendar guesses are suggestions");
     expect(body.messages[0].content).toContain("Return JSON that matches the provided schema");
+  });
+
+  it("serializes router context into the OpenRouter user message when provided", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      return jsonResponse({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                intent: "answer_pending_contact_prompt",
+                confidence: 0.86,
+                people: [],
+                event: { name: "", dateText: "", location: "" },
+                contextNote: "",
+                query: "",
+                tags: [],
+                needsClarification: false,
+                clarificationQuestion: ""
+              })
+            }
+          }
+        ]
+      });
+    };
+
+    const interpreter = createOpenRouterInterpreter({
+      apiKey: "test-key",
+      model: "model",
+      fetchImpl
+    });
+
+    await interpreter.interpret({ message: inbound, routerContext });
+    const body = JSON.parse(String(calls[0].init.body));
+    const userContent = body.messages[1].content;
+
+    expect(userContent).toContain("Route this Friendy turn using the state envelope.");
+    expect(userContent).toContain("activeWorkflow");
+    expect(userContent).toContain("lastFriendyPrompt");
+    expect(userContent).not.toBe(inbound.text);
   });
 
   it("retries invalid model output when strict mode is explicitly disabled", async () => {
@@ -106,7 +173,7 @@ describe("openrouter message interpreter", () => {
     };
 
     const interpreter = createOpenRouterInterpreter({ apiKey: "test-key", model: "model", strictMode: false, fetchImpl });
-    const result = await interpreter.interpret(inbound);
+    const result = await interpreter.interpret({ message: inbound });
 
     expect(calls).toBe(2);
     expect(result.interpretation.intent).toBe("search_memory");
@@ -126,8 +193,10 @@ describe("openrouter message interpreter", () => {
     });
 
     const result = await interpreter.interpret({
-      ...inbound,
-      text: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :("
+      message: {
+        ...inbound,
+        text: "I met Amaya at Photon Residency II, and me and him sleep on the same bed cuz we ran out of bed :("
+      }
     });
 
     expect(result.interpretation.intent).toBe("capture_memory");
@@ -148,8 +217,10 @@ describe("openrouter message interpreter", () => {
     });
 
     const result = await interpreter.interpret({
-      ...inbound,
-      text: "Ok so at the residency, I also met Zhiyuan who also call zed, go to CMU, class 2028 and making swift project that allow you to control your computer through your phone with a clicky UI and similar function like Wisper Flow"
+      message: {
+        ...inbound,
+        text: "Ok so at the residency, I also met Zhiyuan who also call zed, go to CMU, class 2028 and making swift project that allow you to control your computer through your phone with a clicky UI and similar function like Wisper Flow"
+      }
     });
 
     expect(result.interpretation.intent).toBe("capture_memory");
@@ -171,7 +242,7 @@ describe("openrouter message interpreter", () => {
       fallback: createRuleBasedInterpreter()
     });
 
-    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+    await expect(interpreter.interpret({ message: inbound })).rejects.toMatchObject({
       name: "FriendyStrictModeError",
       code: "FALLBACK_USED",
       trace: {
@@ -196,13 +267,13 @@ describe("openrouter message interpreter", () => {
       fallback: {
         async interpret() {
           fallbackCalls += 1;
-          return createRuleBasedInterpreter().interpret(inbound);
+          return createRuleBasedInterpreter().interpret({ message: inbound });
         }
       }
     });
 
-    await expect(interpreter.interpret(inbound)).rejects.toBeInstanceOf(FriendyStrictModeError);
-    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+    await expect(interpreter.interpret({ message: inbound })).rejects.toBeInstanceOf(FriendyStrictModeError);
+    await expect(interpreter.interpret({ message: inbound })).rejects.toMatchObject({
       code: "INVALID_ROUTE_SCHEMA",
       trace: {
         strictMode: true,
@@ -226,12 +297,12 @@ describe("openrouter message interpreter", () => {
       fallback: {
         async interpret() {
           fallbackCalls += 1;
-          return createRuleBasedInterpreter().interpret(inbound);
+          return createRuleBasedInterpreter().interpret({ message: inbound });
         }
       }
     });
 
-    await expect(interpreter.interpret(inbound)).rejects.toMatchObject({
+    await expect(interpreter.interpret({ message: inbound })).rejects.toMatchObject({
       name: "FriendyStrictModeError",
       code: "MODEL_INTERPRETATION_FAILED",
       trace: {
@@ -258,8 +329,10 @@ describe("openrouter message interpreter", () => {
       "Show people connected to Friendy testing."
     ]) {
       const result = await interpreter.interpret({
-        ...inbound,
-        text
+        message: {
+          ...inbound,
+          text
+        }
       });
 
       expect(result.interpretation).toMatchObject({
@@ -279,8 +352,10 @@ describe("openrouter message interpreter", () => {
 
     for (const text of ["Just give me all the people in my contact so far", "Do you know anyone in my contact?"]) {
       const result = await interpreter.interpret({
-        ...inbound,
-        text
+        message: {
+          ...inbound,
+          text
+        }
       });
 
       expect(result.interpretation).toMatchObject({
