@@ -10,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import { createCandidateId } from "./eventMapper";
 import { isListPeopleRecall } from "./listPeopleRecall";
+import { lookupMemoryTarget, type MemoryTargetLookupResult } from "./memoryTargetLookup";
 import { buildMemorySearchDocument, scoreMemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
 import type { CalendarEvent, ContactCandidateDetected, RelationshipDateContext, RelationshipMemory } from "./types";
@@ -82,6 +83,14 @@ export type ListPeopleResult = {
   nextCursor?: string;
   unsupportedSources?: ListPeopleSource[];
 };
+
+export type LookupMemoryTargetOptions = {
+  operation?: "delete" | "update";
+  minScore?: number;
+  ambiguityGap?: number;
+};
+
+export type { MemoryTargetLookupResult };
 
 type SearchQueryAnalysis = {
   terms: string[];
@@ -263,6 +272,20 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return repo.deleteMemory(memoryId, {
         userText: options.userText,
         deletedAt: options.now ?? new Date().toISOString()
+      });
+    },
+
+    lookup_memory_target(
+      userId: string,
+      query: string,
+      options: LookupMemoryTargetOptions = {}
+    ): MemoryTargetLookupResult {
+      return lookupMemoryTarget({
+        userId,
+        query,
+        memories: repo.listMemories(userId),
+        minScore: options.minScore,
+        ambiguityGap: options.ambiguityGap
       });
     }
   };

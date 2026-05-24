@@ -525,6 +525,80 @@ describe("relationship tools", () => {
     expect(results.map((result) => result.memory.displayName)).toEqual(["Leo"]);
   });
 
+  it("lookup_memory_target resolves Unamed to Unnamed Contact without mutating memories", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memory("Testing 3", "testing Friendy", "Testing Friendy"),
+        memory("Unnamed Contact", "manual capture", "Unnamed Contact"),
+        memory("Testing 1", "testing Friendy", "Testing 1")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const before = repo.listMemories(fixtureUser.id);
+
+    const result = tools.lookup_memory_target(fixtureUser.id, "Unamed", { operation: "delete" });
+
+    expect(result).toEqual({
+      kind: "single",
+      memoryId: "memory_unnamed_contact",
+      displayName: "Unnamed Contact",
+      score: 74,
+      matchedVia: "fuzzy"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toEqual(before);
+  });
+
+  it("lookup_memory_target returns ambiguous matches for typo queries", () => {
+    const tools = createToolsWithMemories([
+      memory("Sarah", "Photon dinner", "met at Photon dinner"),
+      memory("Sara Kim", "recruiting meetup", "met at recruiting meetup"),
+      memory("Bob", "Demo Prep", "builder")
+    ]);
+
+    const result = tools.lookup_memory_target(fixtureUser.id, "Srah", { operation: "delete" });
+
+    expect(result).toEqual({
+      kind: "ambiguous",
+      query: "Srah",
+      options: [
+        { memoryId: "memory_sarah", displayName: "Sarah", score: 74 },
+        { memoryId: "memory_sara_kim", displayName: "Sara Kim", score: 73 }
+      ]
+    });
+  });
+
+  it("lookup_memory_target returns none when no display name clears minScore", () => {
+    const tools = createToolsWithMemories([
+      memory("Sarah", "Photon dinner", "met at Photon dinner"),
+      memory("Bob", "Demo Prep", "builder")
+    ]);
+
+    expect(tools.lookup_memory_target(fixtureUser.id, "xyznone")).toEqual({
+      kind: "none",
+      query: "xyznone"
+    });
+  });
+
+  it("lookup_memory_target ignores deleted memories from the repository", () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        {
+          ...memory("Unnamed Contact", "manual capture", "Unnamed Contact"),
+          deletedAt: "2026-05-22T12:00:00.000Z"
+        },
+        memory("Testing 1", "testing Friendy", "Testing 1")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+
+    expect(tools.lookup_memory_target(fixtureUser.id, "Unamed")).toEqual({
+      kind: "none",
+      query: "Unamed"
+    });
+  });
+
   it("keeps school and event-wide searches working after field-aware ranking", () => {
     const tools = createToolsWithMemories([
       memory("Leo", "Photon Residency II", "event: Photon Residency II | I met Leo at Photon Residency II, making devtools for agents | project: devtools for agents"),
