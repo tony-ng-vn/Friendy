@@ -67,6 +67,15 @@ export type CompactInteractionLog = {
     candidateCount: number;
     memoryCount: number;
     hasError: boolean;
+    strictMode?: boolean;
+    routeSource?: string;
+    fallbackUsed?: boolean;
+    scopeDecision?: string;
+    activeWorkflowKind?: string;
+    selectedTool?: string;
+    modelRequested?: string;
+    modelResponseSchemaValid?: boolean;
+    modelErrorCode?: string;
     searchOutcome?: string;
   };
   modelUsed?: string;
@@ -231,6 +240,15 @@ function toCompactTrace(trace: unknown): CompactInteractionLog["trace"] | undefi
 
   const value = trace as {
     traceId?: unknown;
+    strictMode?: unknown;
+    routeSource?: unknown;
+    fallbackUsed?: unknown;
+    scopeDecision?: unknown;
+    activeWorkflowKind?: unknown;
+    selectedTool?: unknown;
+    modelRequested?: unknown;
+    modelResponseSchemaValid?: unknown;
+    modelErrorCode?: unknown;
     toolCalls?: unknown;
     candidateIdsTouched?: unknown;
     memoryIdsTouched?: unknown;
@@ -248,6 +266,16 @@ function toCompactTrace(trace: unknown): CompactInteractionLog["trace"] | undefi
     candidateCount: Array.isArray(value.candidateIdsTouched) ? value.candidateIdsTouched.length : 0,
     memoryCount: Array.isArray(value.memoryIdsTouched) ? value.memoryIdsTouched.length : 0,
     hasError: Array.isArray(value.errors) && value.errors.length > 0,
+    strictMode: typeof value.strictMode === "boolean" ? value.strictMode : undefined,
+    routeSource: typeof value.routeSource === "string" ? value.routeSource : undefined,
+    fallbackUsed: typeof value.fallbackUsed === "boolean" ? value.fallbackUsed : undefined,
+    scopeDecision: typeof value.scopeDecision === "string" ? value.scopeDecision : undefined,
+    activeWorkflowKind: typeof value.activeWorkflowKind === "string" ? value.activeWorkflowKind : undefined,
+    selectedTool: typeof value.selectedTool === "string" ? value.selectedTool : undefined,
+    modelRequested: typeof value.modelRequested === "string" ? value.modelRequested : undefined,
+    modelResponseSchemaValid:
+      typeof value.modelResponseSchemaValid === "boolean" ? value.modelResponseSchemaValid : undefined,
+    modelErrorCode: typeof value.modelErrorCode === "string" ? value.modelErrorCode : undefined,
     searchOutcome: typeof search?.outcome === "string" ? search.outcome : undefined
   };
 }

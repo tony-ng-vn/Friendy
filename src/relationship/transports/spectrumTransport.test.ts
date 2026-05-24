@@ -41,7 +41,11 @@ describe("spectrum transport", () => {
       toolCalls: ["create_manual_memory"],
       trace: {
         toolCallCount: 1,
-        hasError: false
+        hasError: false,
+        strictMode: false,
+        routeSource: "fallback",
+        fallbackUsed: true,
+        modelRequested: undefined
       }
     });
     expect(result.log.trace?.traceId).toMatch(/^trace_/);

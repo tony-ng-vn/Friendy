@@ -912,6 +912,9 @@ export function createInterpretedRelationshipAgent({
           spaceId: message.spaceId,
           inboundText: message.text,
           interpretedIntentJson: {
+            intent: "reject",
+            routeSource: "scope_boundary",
+            scopeDecision: { scope: "out_of_scope", reason: hardSafety.reason },
             hardSafetyDecision: hardSafety,
             policyDecision: { decision: "reject", reason: hardSafety.reason }
           },
@@ -997,6 +1000,9 @@ export function createInterpretedRelationshipAgent({
             fallbackReason: interpreted.fallbackReason,
             route: interpreted.interpretation,
             policyDecision: "reject",
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
             toolCalls: []
           })
         );
@@ -1020,6 +1026,9 @@ export function createInterpretedRelationshipAgent({
           routeSource: interpreted.routeSource,
           fallbackUsed: interpreted.fallbackUsed,
           fallbackReason: interpreted.fallbackReason,
+          modelRequested: interpreted.modelRequested,
+          modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+          modelErrorCode: interpreted.modelErrorCode,
           route: interpretation,
           policyDecision: routePolicy.decision,
           suppressedPendingReminder: routePolicy.suppressPendingReminder,
@@ -1051,6 +1060,9 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
             policyDecision: {
               decision: routePolicy.decision,
               reason: routePolicy.reason,
@@ -1109,6 +1121,9 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
             memoryMutationRequest: interpretedMutationRequest,
             policyDecision: {
               decision: "allow",
@@ -1209,6 +1224,9 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
             policyDecision: {
               decision: "allow",
               reason: allowedPolicy.reason,
@@ -1521,8 +1539,12 @@ function traceFromInteractionFields(interaction: AgentInteraction, strictMode: b
     activeCandidateId: target.candidateId,
     activeMemoryId: target.memoryId,
     toolCalls: interaction.toolCalls as AgentToolCall[],
+    scopeDecision: friendyScopeDecisionFromInteraction(interaction),
     activeWorkflowKind: activeWorkflowKindFromInteraction(interaction),
-    selectedTool: selectedToolFromInteraction(interaction)
+    selectedTool: selectedToolFromInteraction(interaction),
+    modelRequested: modelRequestedFromInteraction(interaction),
+    modelResponseSchemaValid: modelResponseSchemaValidFromInteraction(interaction),
+    modelErrorCode: modelErrorCodeFromInteraction(interaction)
   });
 }
 
@@ -1549,7 +1571,7 @@ function routeSourceMetadataFromRoute(value: unknown): FriendyRouteSource | unde
   }
 
   const routeSource = String((value as { routeSource?: unknown }).routeSource);
-  if (routeSource === "llm" || routeSource === "deterministic" || routeSource === "fallback") {
+  if (routeSource === "llm" || routeSource === "deterministic" || routeSource === "fallback" || routeSource === "scope_boundary") {
     return routeSource;
   }
 
@@ -1576,6 +1598,19 @@ function fallbackReasonMetadataFromRoute(value: unknown): string | undefined {
 
   const fallbackReason = (value as { fallbackReason?: unknown }).fallbackReason;
   return typeof fallbackReason === "string" && fallbackReason.length > 0 ? fallbackReason : undefined;
+}
+
+function friendyScopeDecisionFromInteraction(interaction: AgentInteraction): FriendyTrace["scopeDecision"] | undefined {
+  const scopeDecision = scopeDecisionFromRoute(interaction.interpretedIntentJson);
+  if (scopeDecision === "in_scope" || scopeDecision === "out_of_scope") {
+    return scopeDecision;
+  }
+
+  if (scopeDecision === "needs_clarification" || scopeDecision === "clarify") {
+    return "clarify";
+  }
+
+  return undefined;
 }
 
 function policyDecisionFromInteraction(interaction: AgentInteraction): FriendyPolicyDecision | undefined {
@@ -1689,6 +1724,36 @@ function selectedToolFromInteraction(interaction: AgentInteraction): FriendyTrac
 
   const selectedTool = (interaction.interpretedIntentJson as { selectedTool?: unknown }).selectedTool;
   return typeof selectedTool === "string" ? selectedTool : undefined;
+}
+
+function modelRequestedFromInteraction(interaction: AgentInteraction): FriendyTrace["modelRequested"] | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const modelRequested = (interaction.interpretedIntentJson as { modelRequested?: unknown }).modelRequested;
+  return typeof modelRequested === "string" ? modelRequested : undefined;
+}
+
+function modelResponseSchemaValidFromInteraction(
+  interaction: AgentInteraction
+): FriendyTrace["modelResponseSchemaValid"] | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const modelResponseSchemaValid = (interaction.interpretedIntentJson as { modelResponseSchemaValid?: unknown })
+    .modelResponseSchemaValid;
+  return typeof modelResponseSchemaValid === "boolean" ? modelResponseSchemaValid : undefined;
+}
+
+function modelErrorCodeFromInteraction(interaction: AgentInteraction): FriendyTrace["modelErrorCode"] | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const modelErrorCode = (interaction.interpretedIntentJson as { modelErrorCode?: unknown }).modelErrorCode;
+  return typeof modelErrorCode === "string" ? modelErrorCode : undefined;
 }
 
 function hardSafetyDecisionFromRoute(value: unknown): "reject" | undefined {

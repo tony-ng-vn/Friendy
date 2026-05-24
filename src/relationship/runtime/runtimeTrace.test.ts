@@ -125,6 +125,41 @@ describe("redacted runtime trace", () => {
     expect(JSON.stringify(trace)).not.toContain("sarah@example.com");
   });
 
+  it("copies PR9 strict dogfood trace deltas without private text", () => {
+    const trace = buildRedactedInteractionTrace({
+      inboundText: "Can you delete Maya from Friendy memory?",
+      interpretedIntentJson: {
+        intent: "delete_memory_request",
+        confidence: 0.93,
+        target: { displayName: "Maya" },
+        policyDecision: { decision: "allow" }
+      },
+      toolCalls: ["lookup_memory_target"],
+      outboundText: "I found Maya. Delete this from Friendy memory?",
+      friendyTrace: {
+        strictMode: true,
+        routeSource: "llm",
+        fallbackUsed: false,
+        policyDecision: "allow",
+        scopeDecision: "in_scope",
+        activeWorkflowKind: "pending_delete_confirm",
+        selectedTool: "lookup_memory_target",
+        modelRequested: "openrouter/model",
+        modelResponseSchemaValid: true,
+        modelErrorCode: undefined,
+        toolCalls: ["lookup_memory_target"]
+      },
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    expect(trace.scopeDecision).toBe("in_scope");
+    expect(trace.activeWorkflowKind).toBe("pending_delete_confirm");
+    expect(trace.selectedTool).toBe("lookup_memory_target");
+    expect(trace.modelRequested).toBe("openrouter/model");
+    expect(trace.modelResponseSchemaValid).toBe(true);
+    expect(JSON.stringify(trace)).not.toContain("Maya");
+  });
+
   it("preserves pending reminder decision metadata without raw text", () => {
     const trace = buildRedactedInteractionTrace({
       inboundText: "Who did I meet at Photon while Sarah Fan is still pending?",

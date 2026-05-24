@@ -95,6 +95,9 @@ describe("openrouter message interpreter", () => {
     expect(result.routeSource).toBe("llm");
     expect(result.fallbackUsed).toBe(false);
     expect(result.fallbackReason).toBeUndefined();
+    expect(result.modelRequested).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+    expect(result.modelResponseSchemaValid).toBe(true);
+    expect(result.modelErrorCode).toBeUndefined();
     expect(calls[0].url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(calls[0].init.headers).toMatchObject({
       Authorization: "Bearer test-key",
@@ -220,6 +223,9 @@ describe("openrouter message interpreter", () => {
     expect(result.routeSource).toBe("fallback");
     expect(result.fallbackUsed).toBe(true);
     expect(result.fallbackReason).toBe("invalid_model_output");
+    expect(result.modelRequested).toBe("model");
+    expect(result.modelResponseSchemaValid).toBe(false);
+    expect(result.modelErrorCode).toBe("INVALID_ROUTE_SCHEMA");
   });
 
   it("uses deterministic fallback only when strict mode is explicitly disabled and no OpenRouter API key exists", async () => {
@@ -247,6 +253,8 @@ describe("openrouter message interpreter", () => {
     expect(result.routeSource).toBe("fallback");
     expect(result.fallbackUsed).toBe(true);
     expect(result.fallbackReason).toBe("missing_openrouter_api_key");
+    expect(result.modelRequested).toBe(DEFAULT_OPENROUTER_MODEL);
+    expect(result.modelErrorCode).toBe("FALLBACK_USED");
   });
 
   it("throws instead of using fallback by default when no OpenRouter API key exists", async () => {
@@ -263,7 +271,9 @@ describe("openrouter message interpreter", () => {
         strictMode: true,
         routeSource: "fallback",
         fallbackUsed: true,
-        fallbackReason: "missing_openrouter_api_key"
+        fallbackReason: "missing_openrouter_api_key",
+        modelRequested: DEFAULT_OPENROUTER_MODEL,
+        modelErrorCode: "FALLBACK_USED"
       }
     });
   });
@@ -293,7 +303,10 @@ describe("openrouter message interpreter", () => {
         strictMode: true,
         routeSource: "llm",
         fallbackUsed: false,
-        fallbackReason: "invalid_model_output"
+        fallbackReason: "invalid_model_output",
+        modelRequested: "model",
+        modelResponseSchemaValid: false,
+        modelErrorCode: "INVALID_ROUTE_SCHEMA"
       }
     });
     expect(fallbackCalls).toBe(0);
@@ -323,7 +336,9 @@ describe("openrouter message interpreter", () => {
         strictMode: true,
         routeSource: "llm",
         fallbackUsed: false,
-        fallbackReason: "model_interpreter_failed"
+        fallbackReason: "model_interpreter_failed",
+        modelRequested: "model",
+        modelErrorCode: "MODEL_INTERPRETATION_FAILED"
       }
     });
     expect(fallbackCalls).toBe(0);

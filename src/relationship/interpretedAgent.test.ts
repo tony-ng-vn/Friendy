@@ -35,8 +35,17 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("ignore or override");
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
     expect(repo.listInteractions(fixtureUser.id)[0].interpretedIntentJson).toMatchObject({
-      hardSafetyDecision: { decision: "reject" }
+      hardSafetyDecision: { decision: "reject" },
+      trace: {
+        routeSource: "scope_boundary",
+        scopeDecision: "out_of_scope",
+        modelRequested: undefined,
+        modelResponseSchemaValid: undefined,
+        modelErrorCode: undefined
+      }
     });
+    expect(result.trace.routeSource).toBe("scope_boundary");
+    expect(result.trace.scopeDecision).toBe("out_of_scope");
   });
 
   it("does not save person-laundered coding requests through the interpreted path", async () => {
@@ -1755,6 +1764,55 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
   });
 
+  it("routes the May 23 regression turns through strict model routes without fallback", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Testing 3", "I met testing 3 during testing Friendy"),
+        memoryFixture("Unnamed Contact", "Just give me all the people in my contact so far")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const pending = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 3",
+      phoneNumbers: ["+15550101045"],
+      emails: []
+    });
+    repo.markCandidatePrompted(pending.id, "interaction_prompt_testing_3", {
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: may23StrictInterpreter(),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const list = await agent.handleMessage(inbound("List me in bullet of all people I met testing friendy"));
+    const duplicate = await agent.handleMessage(inbound("Do you see you are having duplicate people in your contacts?"));
+    const repair = await agent.handleMessage(inbound("Why u still asking for testing 3 context when u already have it?"));
+    const deletion = await agent.handleMessage(inbound("Can you help me delete Unamed Contact from your memory?"));
+
+    for (const turn of [list, duplicate, repair, deletion]) {
+      expect(turn.trace.strictMode).toBe(true);
+      expect(turn.trace.routeSource).toBe("llm");
+      expect(turn.trace.fallbackUsed).toBe(false);
+      expect(turn.trace.modelRequested).toBe("test-openrouter-model");
+      expect(turn.trace.modelResponseSchemaValid).toBe(true);
+    }
+    expect(list.trace.route?.intent).toBe("list_people");
+    expect(list.toolCalls).toEqual(["list_people"]);
+    expect(duplicate.trace.route?.intent).toBe("duplicate_audit");
+    expect(duplicate.toolCalls).toEqual(["find_duplicate_people"]);
+    expect(repair.trace.route?.intent).toBe("conversation_repair");
+    expect(repair.toolCalls).toEqual([]);
+    expect(deletion.trace.route?.intent).toBe("delete_memory_request");
+    expect(deletion.toolCalls).toEqual(["lookup_memory_target"]);
+  });
+
   it("asks clarification for vague references and does not save a fake memory", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -1882,7 +1940,71 @@ function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretatio
         error: "",
         routeSource: "llm" as const,
         fallbackUsed: false,
+        modelRequested: "test-model",
+        modelResponseSchemaValid: true,
         interpretation: fullInterpretation(overrides)
+      };
+    }
+  };
+}
+
+function may23StrictInterpreter() {
+  return {
+    async interpret(input: MessageInterpreterInput) {
+      const text = input.message.text.toLowerCase();
+      let interpretation: ReturnType<typeof fullInterpretation>;
+      if (text.includes("list me") && text.includes("testing friendy")) {
+        interpretation = fullInterpretation({
+          intent: "list_people",
+          domain: "relationship_memory",
+          confidence: 0.96,
+          search: {
+            mode: "list_people",
+            semanticQuery: "people I met testing Friendy",
+            exactTerms: ["testing", "friendy"],
+            filters: { tags: ["testing", "friendy"] },
+            topK: 10
+          }
+        });
+      } else if (text.includes("duplicate")) {
+        interpretation = fullInterpretation({
+          intent: "duplicate_audit",
+          domain: "relationship_memory",
+          confidence: 0.94
+        });
+      } else if (text.includes("why") && text.includes("testing 3")) {
+        interpretation = fullInterpretation({
+          intent: "conversation_repair",
+          domain: "relationship_memory",
+          confidence: 0.93,
+          target: { displayName: "Testing 3" }
+        });
+      } else if (text.includes("delete")) {
+        interpretation = fullInterpretation({
+          intent: "delete_memory_request",
+          domain: "relationship_memory",
+          confidence: 0.95,
+          query: "Unamed Contact",
+          target: { displayName: "Unamed Contact" }
+        });
+      } else {
+        interpretation = fullInterpretation({
+          intent: "clarify",
+          domain: "relationship_memory",
+          confidence: 0.7,
+          needsClarification: true,
+          clarificationQuestion: "Which relationship task should I help with?"
+        });
+      }
+
+      return {
+        interpretation,
+        modelUsed: "test-openrouter-model",
+        error: "",
+        routeSource: "llm" as const,
+        fallbackUsed: false,
+        modelRequested: "test-openrouter-model",
+        modelResponseSchemaValid: true
       };
     }
   };
@@ -1895,6 +2017,8 @@ function fullInterpretation(overrides: Partial<{
     | "list_people"
     | "duplicate_audit"
     | "explain_agent_state"
+    | "conversation_repair"
+    | "delete_memory_request"
     | "ignore_candidate"
     | "clarify"
     | "unknown"

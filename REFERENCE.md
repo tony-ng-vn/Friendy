@@ -95,6 +95,16 @@ npm run agent:friendy
 npm run agent:spectrum
 ```
 
+Strict-mode dogfood commands:
+
+```bash
+npm run doctor:friendy
+FRIENDY_STRICT_MODE=1 npm run agent:friendy
+FRIENDY_STRICT_MODE=1 npm run agent:spectrum
+```
+
+Use strict mode for manual routing validation. With strict mode enabled, missing OpenRouter config, invalid model route JSON, and fallback routing fail loudly instead of being hidden by the rule-based fallback.
+
 Optional macOS Contacts smoke command:
 
 ```bash

@@ -16,9 +16,14 @@ export type AgentTrace = {
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
+  activeWorkflowKind?: FriendyTrace["activeWorkflowKind"];
+  selectedTool?: FriendyTrace["selectedTool"];
+  modelRequested?: string;
+  modelResponseSchemaValid?: boolean;
+  modelErrorCode?: string;
   friendyToolCalls?: AgentToolCall[];
   inboundTextRedacted?: string;
-  scopeDecision: string;
+  scopeDecision?: string;
   interpretedIntent?: { intent: string; confidence?: number };
   toolCalls: Array<{ name: AgentToolCall; result: "success" | "error" | "blocked" }>;
   hardBlock?: { blocked: boolean; reason?: string };
@@ -81,9 +86,14 @@ export function buildRedactedInteractionTrace(input: TraceInput): AgentTrace {
     activeFrameId: input.friendyTrace?.activeFrameId,
     activeCandidateId: input.friendyTrace?.activeCandidateId,
     activeMemoryId: input.friendyTrace?.activeMemoryId,
+    activeWorkflowKind: input.friendyTrace?.activeWorkflowKind,
+    selectedTool: input.friendyTrace?.selectedTool,
+    modelRequested: input.friendyTrace?.modelRequested,
+    modelResponseSchemaValid: input.friendyTrace?.modelResponseSchemaValid,
+    modelErrorCode: input.friendyTrace?.modelErrorCode,
     friendyToolCalls: input.friendyTrace?.toolCalls,
     inboundTextRedacted: redactTextShape(input.inboundText),
-    scopeDecision: scopeDecisionFromInterpretation(input.interpretedIntentJson),
+    scopeDecision: input.friendyTrace?.scopeDecision ?? scopeDecisionFromInterpretation(input.interpretedIntentJson),
     interpretedIntent: intentFromInterpretation(input.interpretedIntentJson),
     toolCalls: input.toolCalls.map((name) => ({ name, result: "success" })),
     hardBlock: hardBlockFromInterpretation(input.interpretedIntentJson),
@@ -205,9 +215,9 @@ function intentFromInterpretation(value: unknown): AgentTrace["interpretedIntent
   return typeof confidence === "number" ? { intent, confidence } : { intent };
 }
 
-function scopeDecisionFromInterpretation(value: unknown): string {
+function scopeDecisionFromInterpretation(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null || !("scopeDecision" in value)) {
-    return "relationship_memory";
+    return undefined;
   }
 
   const scopeDecision = (value as { scopeDecision?: unknown }).scopeDecision;
@@ -215,7 +225,7 @@ function scopeDecisionFromInterpretation(value: unknown): string {
     return String((scopeDecision as { scope: unknown }).scope);
   }
 
-  return "relationship_memory";
+  return undefined;
 }
 
 function redactTextShape(value: string): string {

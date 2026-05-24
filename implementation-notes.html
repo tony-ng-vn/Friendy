@@ -6,6 +6,14 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Strict-Mode Dogfooding Trace PR 9 (2026-05-24)</h2>
+    <ul>
+      <li>Completed the PR 9 dogfood deltas on top of the merged strict-mode envelope: OpenRouter results and strict errors now carry <code>modelRequested</code>, <code>modelResponseSchemaValid</code>, and <code>modelErrorCode</code>.</li>
+      <li>Pre-router hard safety rejections are traced as <code>routeSource: scope_boundary</code> with <code>scopeDecision: out_of_scope</code>, so fast rejects no longer look like model or generic unknown-route failures.</li>
+      <li>Redacted runtime traces and Spectrum compact logs now expose the safe PR 9 fields: strict mode, route source, fallback usage, scope decision, active workflow kind, selected tool, and model metadata without raw names or notes.</li>
+      <li>Added strict May 23 regression coverage using mocked LLM routes to prove list, duplicate audit, repair, and fuzzy-delete turns run with <code>routeSource: llm</code> and no fallback.</li>
+      <li>Documented canonical strict dogfood commands in <code>REFERENCE.md</code>. Per the active user override, <code>docs/agent-handoff.md</code> and <code>docs/handoff/*</code> were left untouched.</li>
+    </ul>
     <h2>Robust Delete/Update PR 7 (2026-05-24)</h2>
     <ul>
       <li>Changed interpreted memory delete/update requests to resolve targets through the read-only <code>lookup_memory_target</code> tool and ask for explicit confirmation before mutating memory.</li>
