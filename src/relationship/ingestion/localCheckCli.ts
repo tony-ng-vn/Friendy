@@ -102,6 +102,8 @@ async function maybeCreateLiveSender(env: NodeJS.ProcessEnv): Promise<LocalPromp
     return undefined;
   }
 
+  assertLivePromptSharedRuntimeState(env);
+
   const toPhone = env.FRIENDY_LOCAL_CHECK_TO_PHONE || env.FRIENDY_OWNER_PHONE;
   if (!toPhone) {
     throw new Error("FRIENDY_LOCAL_CHECK_SEND=1 requires FRIENDY_LOCAL_CHECK_TO_PHONE or FRIENDY_OWNER_PHONE.");
@@ -124,6 +126,16 @@ async function maybeCreateLiveSender(env: NodeJS.ProcessEnv): Promise<LocalPromp
   };
 }
 
+export function assertLivePromptSharedRuntimeState(env: Partial<NodeJS.ProcessEnv>): void {
+  if (env.FRIENDY_RUNTIME_STORE !== "sqlite") {
+    throw new Error("FRIENDY_LOCAL_CHECK_SEND=1 requires FRIENDY_RUNTIME_STORE=sqlite so replies can resolve pending candidates.");
+  }
+
+  if (!env.FRIENDY_SQLITE_PATH?.trim()) {
+    throw new Error("FRIENDY_LOCAL_CHECK_SEND=1 requires FRIENDY_SQLITE_PATH so replies can resolve pending candidates.");
+  }
+}
+
 function readSnapshot(path: string): ContactSnapshot {
   return JSON.parse(readFileSync(path, "utf8")) as ContactSnapshot;
 }
@@ -138,10 +150,12 @@ function valueAfter(argv: string[], flag: string): string | undefined {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  if (os.platform() !== "darwin") {
-    console.error("Use npm run ingest:local:check -- --mock for deterministic local verification off macOS.");
-  }
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    if (os.platform() !== "darwin") {
+      console.error("Use npm run ingest:local:check -- --mock for deterministic local verification off macOS.");
+    }
+    process.exit(1);
+  });
+}
