@@ -37,6 +37,24 @@ describe("route policy validator", () => {
     expect(decision).toMatchObject({ decision: "allow", suppressPendingReminder: true });
   });
 
+  it("keeps suppressPendingReminder only as compatibility metadata", () => {
+    const decision = validateRoutePolicy(
+      route("search_memory", {
+        query: "Photon",
+        search: {
+          mode: "event_recall",
+          semanticQuery: "people met at Photon",
+          exactTerms: ["photon"],
+          filters: { eventName: "Photon" },
+          topK: 10
+        }
+      }),
+      emptyState
+    );
+
+    expect(decision).toMatchObject({ decision: "allow", suppressPendingReminder: false });
+  });
+
   it("allows explain_agent_state when pending frame exists", () => {
     const state: ConversationState = {
       activeFrame: {

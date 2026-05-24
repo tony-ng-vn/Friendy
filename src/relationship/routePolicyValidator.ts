@@ -63,6 +63,7 @@ export function validateRoutePolicy(
   return {
     decision: "allow",
     reason: `Allowed route ${interpretation.intent}.`,
+    // Compatibility projection for traces during PR 5. Append/defer decisions live in pendingReminderPolicy.ts.
     suppressPendingReminder: shouldSuppressPendingReminderForRoute(interpretation.intent, interpretation.search?.mode)
   };
 }
