@@ -22,7 +22,6 @@ What works today:
 
 What is not built yet:
 
-- A macOS LaunchAgent or always-on background watcher.
 - Signed `.app`, installer, or LaunchAgent packaging.
 - LinkedIn, Instagram, X, or other social connection detectors.
 - Face recognition, scraping, a CRM, or automatic memory creation without user confirmation.
@@ -93,6 +92,31 @@ npm run agent:friendy
 ```
 
 Friendy notices new contacts on your Mac and uses Calendar only to guess where you met them. It never reads your iMessages or scrapes social profiles, and it always asks before saving someone.
+
+### Background macOS daemon
+
+Install the user LaunchAgent after building the sensor and verifying readiness:
+
+```bash
+npm run build:macos-sensor
+npm run doctor:friendy
+scripts/install-daemon.sh
+```
+
+The installer copies `launchagents/com.friendy.sensor.plist` to `~/Library/LaunchAgents/com.friendy.sensor.plist`, points it at this checkout, loads it for the current user, and starts `npm run agent:friendy` on login. Logs are written to `~/Library/Logs/friendy-sensor.log` and `~/Library/Logs/friendy-sensor.err.log`.
+
+Stop the daemon:
+
+```bash
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.friendy.sensor.plist
+```
+
+Start it again after installation:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.friendy.sensor.plist
+launchctl kickstart -k gui/$(id -u)/com.friendy.sensor
+```
 
 ## Live iMessage Agent
 
