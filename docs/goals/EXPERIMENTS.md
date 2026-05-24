@@ -1,3 +1,27 @@
+# Bi-Directional Apple Contacts Integration
+
+## Baseline
+
+- Date: 2026-05-24
+- Goal source: `docs/goals/apple-contacts-bidirectional-integration-goal.md`.
+- Branch: `main`.
+- Starting state: worktree already had unrelated onboarding/API and docs edits before this goal slice (`.env.example`, `REFERENCE.md`, `docs/agent-handoff.md`, `implementation-notes.html`, `package.json`, `src/relationship/sqliteRepository.ts`, plus untracked onboarding API files). Apple Contacts work must avoid reverting them and stage only goal-relevant files.
+- Initial code state: Swift sensor has `SensorCLI.swift`, `NativeMacosSensor.swift`, `PermissionPrompt.swift`, and source-contract tests, but no JSON stdin Contacts actuator. TypeScript relationship tools expose Friendy memory and candidate tools only; Apple contact management intents are still unsupported route-policy blockers.
+- Process: subagent-driven development started with two read-only explorer agents, one for Swift actuator placement and one for TypeScript routing/workflow surfaces. Behavior changes will use RED/GREEN TDD slices.
+
+## Swift Actuator RED
+
+- Date: 2026-05-24
+- Added a source-contract test requiring `MacContactsActuator.swift`, a `--contacts-actuator-stdin` CLI path, native `Contacts` APIs, `CNSaveRequest`, all four actions, permission prompting, and no AppleScript/`osascript`.
+- RED run: `npm test -- src/relationship/runtime/macosSensorSource.test.ts` failed because `swift/FriendyMacOSSensor/Sources/FriendyMacOSSensor/MacContactsActuator.swift` does not exist.
+
+## Swift Actuator GREEN
+
+- Date: 2026-05-24
+- Added `MacContactsActuator.swift` with a `--contacts-actuator-stdin` CLI mode that reads one JSON command from stdin, requests Contacts permission, performs `READ`, `CREATE`, `UPDATE`, or `DELETE` with native `CNContactStore` / `CNSaveRequest`, emits one JSON result, and exits.
+- Focused green run: `npm test -- src/relationship/runtime/macosSensorSource.test.ts` passed with 9 tests.
+- Native build check: `npm run build:macos-sensor` passed and signed both `bin/friendy-macos-sensor` and `bin/Friendy macOS Sensor.app`.
+
 # Friendy List People Tool
 
 ## GREEN

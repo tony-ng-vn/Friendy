@@ -1,3 +1,10 @@
+# Bi-Directional Apple Contacts Integration Notes
+
+- 2026-05-24: This goal intentionally changes the previous contact-management boundary. Old `request_contact_create/edit/delete` routes were unsupported because Friendy only owned relationship memory. The new implementation must keep Friendy Memory and Apple Contacts separate while adding explicit Apple Contact tools and confirmation workflows.
+- 2026-05-24: The new Swift actuator must not use AppleScript. Existing local macOS ingestion adapters and smoke helpers still contain AppleScript for older explicit commands; this goal should not expand those paths for native CRUD.
+- 2026-05-24: Tests must not read or mutate real macOS Contacts. Source-level Swift tests and TypeScript adapter tests should validate command contracts, spawned JSON envelopes, parsing, route gating, and workflow behavior with fakes.
+- 2026-05-24: The current worktree has unrelated onboarding API edits before this goal. Preserve them and stage Apple Contacts goal changes explicitly.
+
 # Friendy List People Tool Notes
 
 - 2026-05-23: `list_people` is Friendy-memory-first. `apple_contacts` and `both` mark Apple Contacts listing unsupported in this PR.

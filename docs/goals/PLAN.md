@@ -1,4 +1,22 @@
-# Active Goal Plan: Strict Mode and Trace Envelope
+# Active Goal Plan: Bi-Directional Apple Contacts Integration
+
+- [x] Read `docs/goals/apple-contacts-bidirectional-integration-goal.md`, `REFERENCE.md`, scoped AGENTS instructions, and the repo graph entry points.
+- [x] Start subagent-driven execution with separate Swift and TypeScript codebase explorers.
+- [x] Add RED source-level Swift contract tests for the native Contacts JSON actuator.
+- [x] Implement Swift stdin JSON actuator using `CNContactStore` / `CNSaveRequest`, with no AppleScript.
+- [ ] Add RED TypeScript tests for the Apple Contacts adapter command envelope and result parsing.
+- [ ] Implement `src/relationship/contacts/macContactsAdapter.ts`.
+- [ ] Add RED tool tests for `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact`.
+- [ ] Expose Apple Contact tools through `src/relationship/tools.ts` and route capability lists.
+- [ ] Add RED interpretation/prompt tests for Apple Contact mutation intents and confirmation rules.
+- [ ] Add confirmation workflow state for Apple Contact create/update/delete and block writes before explicit `yes`.
+- [ ] Add RED router-envelope test for linked Apple Contact metadata injection.
+- [ ] Inject linked Apple Contact metadata into the router input envelope before LLM routing.
+- [ ] Update docs and handoff artifacts for the new actuator, adapter, tools, workflows, and verification evidence.
+- [ ] Run required verification: `npm test`, `npm run build`, `npm run eval:agent`, relevant Swift/source checks, and `git diff --check`.
+- [ ] Commit incrementally with `<scope>:<message>` and push `main` after the goal is complete.
+
+# Previous Active Goal Plan: Strict Mode and Trace Envelope
 
 - [x] Read `docs/goals/strict-mode-trace-envelope-goal.md` and `docs/superpowers/plans/2026-05-23-strict-mode-trace-envelope.md`.
 - [x] Add `FRIENDY_STRICT_MODE` parser and typed `FriendyStrictModeError`.

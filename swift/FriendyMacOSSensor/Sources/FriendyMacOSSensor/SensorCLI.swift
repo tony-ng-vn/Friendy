@@ -13,10 +13,15 @@ struct SensorCLIOptions {
 func runSensorCLI(arguments: [String]) {
     let identity = SensorIdentity.current()
 
+    if arguments.contains("--contacts-actuator-stdin") {
+        runMacContactsActuatorFromStandardInput()
+        return
+    }
+
     guard let options = parseSensorCLIOptions(arguments) else {
         emitSensorEvent(fatalSensorEvent(
             code: "missing_state_dir",
-            message: "Usage: friendy-macos-sensor --state-dir <path> [--emit-fixture contact_batch|contact_added|ready]",
+            message: "Usage: friendy-macos-sensor --state-dir <path> [--emit-fixture contact_batch|contact_added|ready] OR friendy-macos-sensor --contacts-actuator-stdin",
             identity: identity
         ))
         exit(1)

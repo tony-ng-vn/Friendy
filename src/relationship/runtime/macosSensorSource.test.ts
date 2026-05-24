@@ -40,6 +40,29 @@ describe("macOS sensor Swift source contract", () => {
     expect(nativeSource).toContain("EKEventStore");
   });
 
+  it("exposes a native stdin JSON Apple Contacts actuator without AppleScript", () => {
+    const cliSource = readSwift("SensorCLI.swift");
+    const actuatorSource = readSwift("MacContactsActuator.swift");
+
+    expect(cliSource).toContain("--contacts-actuator-stdin");
+    expect(cliSource).toContain("runMacContactsActuatorFromStandardInput()");
+    expect(actuatorSource).toContain("#if os(macOS) && canImport(Contacts)");
+    expect(actuatorSource).toContain("import Contacts");
+    expect(actuatorSource).toContain("CNContactStore");
+    expect(actuatorSource).toContain("CNContactFetchRequest");
+    expect(actuatorSource).toContain("CNMutableContact");
+    expect(actuatorSource).toContain("CNSaveRequest");
+    expect(actuatorSource).toContain("requestAccess(for: .contacts");
+    expect(actuatorSource).toContain("case READ");
+    expect(actuatorSource).toContain("case CREATE");
+    expect(actuatorSource).toContain("case UPDATE");
+    expect(actuatorSource).toContain("case DELETE");
+    expect(actuatorSource).toContain("mutableCopy()");
+    expect(actuatorSource).toContain("saveRequest.delete");
+    expect(actuatorSource).not.toContain("AppleScript");
+    expect(actuatorSource).not.toContain("osascript");
+  });
+
   it("documents crash-safe Contacts token and outbox handling in native source", () => {
     const nativeSource = readSwift("NativeMacosSensor.swift");
     const eventSource = readSwift("SensorEvents.swift");
