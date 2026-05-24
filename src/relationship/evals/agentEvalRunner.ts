@@ -274,6 +274,23 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "state envelope routes stale prompt complaint to explain or repair",
     "state envelope includes same-name pending and saved memory",
     "stale prompt complaint does not confirm candidate"
+  ]),
+  evalCase("pending-reminder-search-footer", "interpreted", [
+    "search answer may append pending footer",
+    "search footer is separate from primary answer",
+    "search footer trace records appended decision"
+  ]),
+  evalCase("pending-reminder-same-name-suppression", "interpreted", [
+    "same-name saved plus pending suppresses reminder",
+    "same-name reminder trace records suppression"
+  ]),
+  evalCase("pending-reminder-ttl-defer", "interpreted", [
+    "repeat search interrupt defers footer within ttl",
+    "ttl defer trace records deferred decision"
+  ]),
+  evalCase("pending-reminder-list-never-footer", "interpreted", [
+    "list_people never appends pending reminder footer",
+    "list_people trace records suppression"
   ])
 ];
 
@@ -1350,6 +1367,114 @@ const executableEvalCases: ExecutableEvalCase[] = [
         )
       ];
     }
+  },
+  {
+    ...relationshipAgentEvalCases[42],
+    async run({ now }) {
+      const { agent } = createPendingReminderEvalHarness({ now });
+      const result = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
+
+      return [
+        assertion(
+          "search answer may append pending footer",
+          "intent",
+          includesAll(result.outbound.text, ["Maya", "Also, I still have", "Sarah Fan"])
+        ),
+        assertion(
+          "search footer is separate from primary answer",
+          "intent",
+          result.outbound.text.includes("\n\nAlso, I still have")
+        ),
+        assertion(
+          "search footer trace records appended decision",
+          "intent",
+          result.trace.pendingReminderDecision === "appended_footer",
+          String(result.trace.pendingReminderDecision)
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[43],
+    async run({ now }) {
+      const { agent } = createTestingFriendyRegressionHarness({
+        interpreter: createPendingReminderSearchInterpreter({
+          query: "testing Friendy",
+          semanticQuery: "people met testing Friendy",
+          exactTerms: ["testing", "friendy"],
+          filters: { tags: ["testing", "friendy"] }
+        }),
+        now
+      });
+      const result = await agent.handleMessage({
+        ...interpretedInbound("Who did I meet while testing Friendy?"),
+        spaceId: "imessage_testing_regression"
+      });
+
+      return [
+        assertion(
+          "same-name saved plus pending suppresses reminder",
+          "clarification",
+          !result.outbound.text.includes("Also, I still have") &&
+            !includesStalePendingReminder(result.outbound.text, "Testing 3")
+        ),
+        assertion(
+          "same-name reminder trace records suppression",
+          "intent",
+          result.trace.pendingReminderDecision === "suppressed" &&
+            result.trace.pendingReminderReason === "same_name_disambiguation_pending",
+          `${result.trace.pendingReminderDecision}:${result.trace.pendingReminderReason}`
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[44],
+    async run({ now }) {
+      const { agent } = createPendingReminderEvalHarness({ now });
+      const first = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
+      const second = await agent.handleMessage(interpretedInbound("Who did I meet at Photon?"));
+
+      return [
+        assertion(
+          "repeat search interrupt defers footer within ttl",
+          "intent",
+          first.outbound.text.includes("Also, I still have") && !second.outbound.text.includes("Also, I still have")
+        ),
+        assertion(
+          "ttl defer trace records deferred decision",
+          "intent",
+          first.trace.pendingReminderDecision === "appended_footer" &&
+            second.trace.pendingReminderDecision === "deferred" &&
+            second.trace.pendingReminderReason === "reminder_ttl",
+          `${first.trace.pendingReminderDecision}:${second.trace.pendingReminderDecision}:${second.trace.pendingReminderReason}`
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[45],
+    async run({ now }) {
+      const { agent } = createPendingReminderEvalHarness({
+        now,
+        interpreter: createPendingReminderListPeopleInterpreter()
+      });
+      const result = await agent.handleMessage(interpretedInbound("List everyone I know"));
+
+      return [
+        assertion(
+          "list_people never appends pending reminder footer",
+          "intent",
+          toolCallsInclude(result.toolCalls, "list_people") && !result.outbound.text.includes("Also, I still have")
+        ),
+        assertion(
+          "list_people trace records suppression",
+          "intent",
+          result.trace.pendingReminderDecision === "suppressed",
+          String(result.trace.pendingReminderDecision)
+        )
+      ];
+    }
   }
 ];
 
@@ -1531,6 +1656,87 @@ function createStateEnvelopeStalePromptInterpreter(): MessageInterpreter {
   };
 }
 
+function createPendingReminderSearchInterpreter({
+  query = "Photon",
+  semanticQuery = "people met at Photon",
+  exactTerms = ["photon"],
+  filters = { eventName: "Photon" }
+}: {
+  query?: string;
+  semanticQuery?: string;
+  exactTerms?: string[];
+  filters?: { eventName?: string; tags?: string[] };
+} = {}): MessageInterpreter {
+  return {
+    async interpret() {
+      return {
+        modelUsed: "pending-reminder-eval",
+        error: "",
+        routeSource: "llm",
+        fallbackUsed: false,
+        interpretation: {
+          intent: "search_memory",
+          confidence: 0.94,
+          domain: "relationship_memory",
+          conversationRelation: "starts_new_relationship_task",
+          target: null,
+          people: [],
+          event: { name: "", dateText: "", location: "" },
+          dateContext: undefined,
+          contextNote: "",
+          query,
+          search: {
+            mode: "event_recall",
+            semanticQuery,
+            exactTerms,
+            filters,
+            topK: 10
+          },
+          tags: exactTerms,
+          needsClarification: false,
+          clarificationQuestion: ""
+        }
+      };
+    }
+  };
+}
+
+function createPendingReminderListPeopleInterpreter(): MessageInterpreter {
+  return {
+    async interpret(input) {
+      const text = input.message.text;
+
+      return {
+        modelUsed: "pending-reminder-eval",
+        error: "",
+        routeSource: "llm",
+        fallbackUsed: false,
+        interpretation: {
+          intent: "list_people",
+          confidence: 0.96,
+          domain: "relationship_memory",
+          conversationRelation: "starts_new_relationship_task",
+          target: null,
+          people: [],
+          event: { name: "", dateText: "", location: "" },
+          dateContext: undefined,
+          contextNote: "",
+          query: text,
+          search: {
+            mode: "list_people",
+            semanticQuery: text,
+            exactTerms: [],
+            topK: 20
+          },
+          tags: [],
+          needsClarification: false,
+          clarificationQuestion: ""
+        }
+      };
+    }
+  };
+}
+
 async function maybeRunModelBackedEvals(
   options: RunOptions,
   now: () => string
@@ -1612,6 +1818,30 @@ function createTestingFriendyRegressionHarness({
   const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
 
   return { agent, repo, tools, pendingTesting3 };
+}
+
+function createPendingReminderEvalHarness({
+  now,
+  interpreter = createPendingReminderSearchInterpreter()
+}: Required<Pick<RunOptions, "now">> & { interpreter?: MessageInterpreter }) {
+  const repo = createRelationshipRepository({
+    users: [fixtureUser],
+    memories: [memory("memory_maya_photon", "Maya", "Met at Photon Residency Dinner", "Photon Residency Dinner")]
+  });
+  const tools = createRelationshipTools(repo);
+  const pendingSarah = tools.create_contact_candidate({
+    ...fixtureDetectedContact,
+    displayName: "Sarah Fan",
+    contactIdentifier: "contact_sarah_fan_pending",
+    phoneNumbers: ["+15550101044"],
+    emails: []
+  });
+  repo.markCandidatePrompted(pendingSarah.id, "interaction_prompt_sarah_fan_eval", {
+    promptedAt: "2026-05-20T11:59:00.000Z"
+  });
+  const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
+
+  return { agent, repo, tools, pendingSarah };
 }
 
 function evalCase(
