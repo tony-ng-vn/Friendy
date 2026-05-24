@@ -58,10 +58,13 @@ describe("relationship agent eval runner", () => {
       "pending-reminder-ttl-defer",
       "pending-reminder-list-never-footer",
       "strict-ambiguous-delete-clarifies-regression",
-      "delete-everyone-confirmation-regression"
+      "duplicate-exact-name-delete-disambiguation-regression",
+      "delete-everyone-confirmation-regression",
+      "sarah-fan-beside-role-update-regression",
+      "sarah-fan-named-role-update-regression"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(48);
+    expect(relationshipAgentEvalCases).toHaveLength(51);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -77,8 +80,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(48);
-    expect(summary.requiredTotal).toBe(48);
+    expect(summary.total).toBe(51);
+    expect(summary.requiredTotal).toBe(51);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);
@@ -118,6 +121,28 @@ describe("relationship agent eval runner", () => {
       "delete everyone opens confirmation",
       "delete everyone does not mutate before confirmation",
       "delete everyone removes all memories after yes"
+    ]);
+  });
+
+  it("tracks the Sarah Fan beside role update regression assertions", () => {
+    expect(
+      relationshipAgentEvalCases.find((evalCase) => evalCase.id === "sarah-fan-beside-role-update-regression")
+        ?.assertionNames
+    ).toEqual([
+      "Sarah Fan beside role update opens confirmation",
+      "Sarah Fan beside role update does not mutate before confirmation",
+      "Sarah Fan beside role update updates existing memory only"
+    ]);
+  });
+
+  it("tracks the Sarah Fan named role update regression assertions", () => {
+    expect(
+      relationshipAgentEvalCases.find((evalCase) => evalCase.id === "sarah-fan-named-role-update-regression")
+        ?.assertionNames
+    ).toEqual([
+      "Sarah Fan named role update opens confirmation",
+      "Sarah Fan named role update does not create duplicate memory",
+      "Sarah Fan named role update appends after confirmation"
     ]);
   });
 

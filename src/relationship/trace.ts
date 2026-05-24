@@ -14,6 +14,7 @@ export type FriendyScopeDecision = "in_scope" | "out_of_scope" | "clarify";
 export type ActiveWorkflowKind =
   | "pending_contact_confirm"
   | "duplicate_resolution"
+  | "pending_delete_disambiguation"
   | "pending_delete_confirm"
   | "pending_update_confirm"
   | "none";
@@ -54,6 +55,13 @@ export type FriendyTrace = {
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: string;
+  modelCalled?: boolean;
+  targetQueryRaw?: string;
+  targetQueryCleaned?: string;
+  lookupProjection?: string;
+  matchReason?: string;
+  requiresConfirmation?: boolean;
+  invalidModelSchemaRecovery?: string;
 };
 
 /** Builds a normalized trace with safe defaults for missing optional fields. */
@@ -77,6 +85,13 @@ export function createFriendyTrace(input: {
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: string;
+  modelCalled?: boolean;
+  targetQueryRaw?: string;
+  targetQueryCleaned?: string;
+  lookupProjection?: string;
+  matchReason?: string;
+  requiresConfirmation?: boolean;
+  invalidModelSchemaRecovery?: string;
 }): FriendyTrace {
   return {
     strictMode: input.strictMode,
@@ -97,7 +112,14 @@ export function createFriendyTrace(input: {
     selectedTool: input.selectedTool,
     modelRequested: input.modelRequested,
     modelResponseSchemaValid: input.modelResponseSchemaValid,
-    modelErrorCode: input.modelErrorCode
+    modelErrorCode: input.modelErrorCode,
+    modelCalled: input.modelCalled,
+    targetQueryRaw: input.targetQueryRaw,
+    targetQueryCleaned: input.targetQueryCleaned,
+    lookupProjection: input.lookupProjection,
+    matchReason: input.matchReason,
+    requiresConfirmation: input.requiresConfirmation,
+    invalidModelSchemaRecovery: input.invalidModelSchemaRecovery
   };
 }
 

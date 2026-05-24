@@ -213,6 +213,7 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
   evalCase("list-all-contact-recall", "interpreted", [
     "list-all contact recall calls list_people",
     "list-all contact recall bypasses model",
+    "list-all contact recall covers live inventory variants",
     "list-all contact recall returns saved people",
     "list-all contact recall includes pending contact",
     "list-all contact recall leaves pending candidate pending",
@@ -302,10 +303,26 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "strict ambiguous delete does not mutate before selection",
     "strict ambiguous delete trace records clarification"
   ]),
+  evalCase("duplicate-exact-name-delete-disambiguation-regression", "interpreted", [
+    "duplicate exact-name delete asks disambiguation",
+    "duplicate exact-name delete does not mutate before selection",
+    "duplicate exact-name numbered reply deletes only selected memory",
+    "duplicate exact-name both reply deletes all duplicate candidates"
+  ]),
   evalCase("delete-everyone-confirmation-regression", "interpreted", [
     "delete everyone opens confirmation",
     "delete everyone does not mutate before confirmation",
     "delete everyone removes all memories after yes"
+  ]),
+  evalCase("sarah-fan-beside-role-update-regression", "interpreted", [
+    "Sarah Fan beside role update opens confirmation",
+    "Sarah Fan beside role update does not mutate before confirmation",
+    "Sarah Fan beside role update updates existing memory only"
+  ]),
+  evalCase("sarah-fan-named-role-update-regression", "interpreted", [
+    "Sarah Fan named role update opens confirmation",
+    "Sarah Fan named role update does not create duplicate memory",
+    "Sarah Fan named role update appends after confirmation"
   ])
 ];
 
@@ -993,10 +1010,64 @@ const executableEvalCases: ExecutableEvalCase[] = [
       });
       const agent = createInterpretedRelationshipAgent({ repo, tools, interpreter, strictMode: false, now, timezone });
       const result = await agent.handleMessage(interpretedInbound("What people do you know yet in my contact?"));
+      const liveVariants = [
+        "What are all the people I know?",
+        "What are all people I know?",
+        "Who are all the people I know?",
+        "List me everyone",
+        "List everyone",
+        "Show everyone I know",
+        "What do you remember?"
+      ];
+      const variantResults = await Promise.all(
+        liveVariants.map(async (text) => {
+          const variantRepo = createRelationshipRepository({
+            users: [fixtureUser],
+            memories: [memory("memory_testing_2", "Testing 2", "Met during testing friendy", "testing friendy")]
+          });
+          const variantTools = createRelationshipTools(variantRepo);
+          variantTools.create_contact_candidate({
+            ...fixtureDetectedContact,
+            displayName: "Unnamed Contact",
+            phoneNumbers: ["+15550101033"],
+            emails: []
+          });
+          const variantAgent = createInterpretedRelationshipAgent({
+            repo: variantRepo,
+            tools: variantTools,
+            interpreter,
+            strictMode: false,
+            now,
+            timezone
+          });
+          const variant = await variantAgent.handleMessage(interpretedInbound(text));
+          return {
+            result: variant,
+            candidateStillPending: variantRepo
+              .listPendingCandidates(fixtureUser.id)
+              .some((candidate) => candidate.displayName === "Unnamed Contact"),
+            noUnnamedMemory: !variantRepo
+              .listMemories(fixtureUser.id)
+              .some((storedMemory) => storedMemory.displayName === "Unnamed Contact")
+          };
+        })
+      );
 
       return [
         assertion("list-all contact recall calls list_people", "intent", toolCallsInclude(result.toolCalls, "list_people")),
         assertion("list-all contact recall bypasses model", "intent", result.trace.routeSource === "deterministic"),
+        assertion(
+          "list-all contact recall covers live inventory variants",
+          "intent",
+          variantResults.every(
+            (variant) =>
+              toolCallsInclude(variant.result.toolCalls, "list_people") &&
+              variant.result.trace.routeSource === "deterministic" &&
+              variant.result.outbound.text.includes("Testing 2") &&
+              variant.candidateStillPending &&
+              variant.noUnnamedMemory
+          )
+        ),
         assertion("list-all contact recall returns saved people", "searchRecall", result.outbound.text.includes("Testing 2")),
         assertion(
           "list-all contact recall includes pending contact",
@@ -1550,6 +1621,85 @@ const executableEvalCases: ExecutableEvalCase[] = [
       const repo = createRelationshipRepository({
         users: [fixtureUser],
         memories: [
+          memory("memory_sarah_photon", "Sarah Fan", "I met you during Photon Residency II", "Photon Residency II"),
+          memory("memory_sarah_leader", "Sarah Fan", "is also a community leader", "Photon Residency II"),
+          memory("memory_z2", "Z2", "met at AI dinner", "AI dinner")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        strictMode: true,
+        now,
+        timezone
+      });
+      const requested = await agent.handleMessage(interpretedInbound("Delete Sarah Fan"));
+      const memoryIdsAfterRequest = repo.listMemories(fixtureUser.id).map((item) => item.id);
+      const selected = await agent.handleMessage(interpretedInbound("1"));
+      const memoryIdsAfterSelection = repo.listMemories(fixtureUser.id).map((item) => item.id);
+
+      const bothRepo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_both_sarah_photon", "Sarah Fan", "I met you during Photon Residency II", "Photon Residency II"),
+          memory("memory_both_sarah_leader", "Sarah Fan", "is also a community leader", "Photon Residency II"),
+          memory("memory_both_z2", "Z2", "met at AI dinner", "AI dinner")
+        ]
+      });
+      const bothTools = createRelationshipTools(bothRepo);
+      const bothAgent = createInterpretedRelationshipAgent({
+        repo: bothRepo,
+        tools: bothTools,
+        interpreter,
+        strictMode: true,
+        now,
+        timezone
+      });
+      await bothAgent.handleMessage(interpretedInbound("Delete Sarah Fan"));
+      const bothSelected = await bothAgent.handleMessage(interpretedInbound("both"));
+      const bothMemoryIdsAfterSelection = bothRepo.listMemories(fixtureUser.id).map((item) => item.id);
+
+      return [
+        assertion(
+          "duplicate exact-name delete asks disambiguation",
+          "clarification",
+          toolCallsInclude(requested.toolCalls, "lookup_memory_target") &&
+            includesAll(requested.outbound.text, [
+              "multiple people named Sarah Fan",
+              "Photon Residency II",
+              "community leader"
+            ]) &&
+            requested.trace.activeWorkflowKind === "pending_delete_disambiguation"
+        ),
+        assertion(
+          "duplicate exact-name delete does not mutate before selection",
+          "unsafeMutation",
+          !requested.toolCalls.includes("delete_memory") &&
+            memoryIdsAfterRequest.join(",") === "memory_sarah_photon,memory_sarah_leader,memory_z2"
+        ),
+        assertion(
+          "duplicate exact-name numbered reply deletes only selected memory",
+          "memoryWrite",
+          toolCallsInclude(selected.toolCalls, "delete_memory") &&
+            memoryIdsAfterSelection.join(",") === "memory_sarah_leader,memory_z2"
+        ),
+        assertion(
+          "duplicate exact-name both reply deletes all duplicate candidates",
+          "memoryWrite",
+          bothSelected.toolCalls.filter((toolCall) => toolCall === "delete_memory").length === 2 &&
+            bothMemoryIdsAfterSelection.join(",") === "memory_both_z2"
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[48],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
           memory("memory_testing_12", "Testing 12", "met at AI dinner", "AI dinner"),
           memory("memory_sarah_fan", "Sarah Fan", "community lead at Photon Residency II", "Photon Residency II")
         ]
@@ -1582,6 +1732,97 @@ const executableEvalCases: ExecutableEvalCase[] = [
           "delete everyone removes all memories after yes",
           "memoryWrite",
           toolCallsInclude(confirmed.toolCalls, "clear_memories") && repo.listMemories(fixtureUser.id).length === 0
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[49],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_sarah_fan", "Sarah Fan", "I met her during Photon Residency II", "Photon Residency II")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        now,
+        timezone
+      });
+      const requested = await agent.handleMessage(
+        interpretedInbound("For Sarah Fan beside I met her during photon residency ii, she is also a community lead there")
+      );
+      const noteAfterRequest = repo.listMemories(fixtureUser.id)[0]?.contextNote;
+      const confirmed = await agent.handleMessage(interpretedInbound("yes"));
+      const memoriesAfterConfirm = repo.listMemories(fixtureUser.id);
+
+      return [
+        assertion(
+          "Sarah Fan beside role update opens confirmation",
+          "clarification",
+          toolCallsInclude(requested.toolCalls, "lookup_memory_target") &&
+            includesAll(requested.outbound.text, ["Sarah Fan", "Add", "community lead", "Reply yes"])
+        ),
+        assertion(
+          "Sarah Fan beside role update does not mutate before confirmation",
+          "unsafeMutation",
+          noteAfterRequest === "I met her during Photon Residency II" && !toolCallsInclude(requested.toolCalls, "update_memory")
+        ),
+        assertion(
+          "Sarah Fan beside role update updates existing memory only",
+          "memoryWrite",
+          toolCallsInclude(confirmed.toolCalls, "update_memory") &&
+            memoriesAfterConfirm.length === 1 &&
+            memoriesAfterConfirm[0]?.displayName === "Sarah Fan" &&
+            includesAll(memoriesAfterConfirm[0]?.contextNote ?? "", ["photon residency ii", "community lead"])
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[50],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_sarah_fan", "Sarah Fan", "I met you during Photon Residency II", "Photon Residency II")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        now,
+        timezone
+      });
+      const requested = await agent.handleMessage(interpretedInbound("Sarah Fan is also a community leader too"));
+      const memoriesAfterRequest = repo.listMemories(fixtureUser.id);
+      const confirmed = await agent.handleMessage(interpretedInbound("yes"));
+      const memoriesAfterConfirm = repo.listMemories(fixtureUser.id);
+
+      return [
+        assertion(
+          "Sarah Fan named role update opens confirmation",
+          "clarification",
+          toolCallsInclude(requested.toolCalls, "lookup_memory_target") &&
+            includesAll(requested.outbound.text, ["Sarah Fan", "Add", "community leader", "Reply yes"])
+        ),
+        assertion(
+          "Sarah Fan named role update does not create duplicate memory",
+          "unsafeMutation",
+          memoriesAfterRequest.length === 1 && !toolCallsInclude(requested.toolCalls, "create_manual_memory")
+        ),
+        assertion(
+          "Sarah Fan named role update appends after confirmation",
+          "memoryWrite",
+          toolCallsInclude(confirmed.toolCalls, "update_memory") &&
+            memoriesAfterConfirm.length === 1 &&
+            includesAll(memoriesAfterConfirm[0]?.contextNote ?? "", ["Photon Residency II", "community leader"])
         )
       ];
     }

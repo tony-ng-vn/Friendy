@@ -5,6 +5,7 @@
  * the user quotes saved text. Ambiguity uses a score gap, not search-result collapse.
  */
 import { rankDisplayNameMatches } from "./personNameMatch";
+import { cleanMemoryTargetQuery } from "./targetQueryCleanup";
 import type { RelationshipMemory } from "./types";
 
 /** Single target, ambiguous options, or no qualifying memory for the query. */
@@ -13,13 +14,14 @@ export type MemoryTargetLookupResult =
   | {
       kind: "single";
       memoryId: string;
+      memoryIds?: string[];
       displayName: string;
       score: number;
       matchedVia: "exact" | "fuzzy" | "context";
     }
   | {
       kind: "ambiguous";
-      options: Array<{ memoryId: string; displayName: string; score: number }>;
+      options: Array<{ memoryId: string; memoryIds?: string[]; displayName: string; detail?: string; score: number }>;
       query: string;
     };
 
@@ -30,11 +32,15 @@ export type LookupMemoryTargetInput = {
   minScore?: number;
   ambiguityGap?: number;
   includeContext?: boolean;
+  operation?: "delete" | "update";
+  recentPeople?: Array<{ displayName: string; memoryIds: string[] }>;
 };
 
 type ScoredMemoryTarget = {
   memoryId: string;
+  memoryIds?: string[];
   displayName: string;
+  detail?: string;
   score: number;
 };
 
@@ -58,7 +64,7 @@ function resolveMatchedVia(query: string, displayName: string, score: number): "
 export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTargetLookupResult {
   const minScore = input.minScore ?? 70;
   const ambiguityGap = input.ambiguityGap ?? 8;
-  const query = input.query.trim();
+  const query = cleanMemoryTargetQuery(input.query);
 
   if (!query) {
     return { kind: "none", query: input.query };
@@ -84,16 +90,36 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
     if (contextMatches.length > 1) {
       return {
         kind: "ambiguous",
-        options: contextMatches.map(({ memoryId, displayName, score }) => ({ memoryId, displayName, score })),
+        options: contextMatches.map(({ memoryId, displayName, detail, score }) => ({
+          memoryId,
+          displayName,
+          detail,
+          score
+        })),
         query,
       };
     }
   }
 
+  const exactDuplicateDisplayNameDeleteTargets = findExactDuplicateDisplayNameDeleteTargets(
+    query,
+    userMemories,
+    input.operation
+  );
+  if (exactDuplicateDisplayNameDeleteTargets) {
+    return exactDuplicateDisplayNameDeleteTargets;
+  }
+
+  const recentMatch = lookupRecentListedPerson(query, input.recentPeople ?? []);
+  if (recentMatch) {
+    return recentMatch;
+  }
+
   const rankedMatches = rankDisplayNameMatches(
     query,
-    userMemories.map((memory) => memory.displayName)
+    groupMemoryTargetsByDisplayName(userMemories).map((target) => target.displayName)
   );
+  const groupedTargets = groupMemoryTargetsByDisplayName(userMemories);
 
   const qualified: ScoredMemoryTarget[] = [];
   for (const match of rankedMatches) {
@@ -101,14 +127,15 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
       continue;
     }
 
-    for (const memory of userMemories) {
-      if (memory.displayName !== match.displayName) {
+    for (const target of groupedTargets) {
+      if (target.displayName !== match.displayName) {
         continue;
       }
 
       qualified.push({
-        memoryId: memory.id,
-        displayName: memory.displayName,
+        memoryId: target.memoryIds[0],
+        memoryIds: target.memoryIds.length > 1 ? target.memoryIds : undefined,
+        displayName: target.displayName,
         score: match.score,
       });
     }
@@ -125,6 +152,7 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
     return {
       kind: "single",
       memoryId: match.memoryId,
+      memoryIds: match.memoryIds,
       displayName: match.displayName,
       score: match.score,
       matchedVia: resolveMatchedVia(query, match.displayName, match.score),
@@ -139,6 +167,7 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
     return {
       kind: "single",
       memoryId: match.memoryId,
+      memoryIds: match.memoryIds,
       displayName: match.displayName,
       score: match.score,
       matchedVia: resolveMatchedVia(query, match.displayName, match.score),
@@ -150,8 +179,9 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
     if (options.length > 1) {
       return {
         kind: "ambiguous",
-        options: options.map(({ memoryId, displayName, score }) => ({
+        options: dedupeScoredTargetsByDisplayName(options).map(({ memoryId, memoryIds, displayName, score }) => ({
           memoryId,
+          memoryIds,
           displayName,
           score,
         })),
@@ -161,6 +191,117 @@ export function lookupMemoryTarget(input: LookupMemoryTargetInput): MemoryTarget
   }
 
   return { kind: "none", query };
+}
+
+function findExactDuplicateDisplayNameDeleteTargets(
+  query: string,
+  memories: RelationshipMemory[],
+  operation: LookupMemoryTargetInput["operation"]
+): MemoryTargetLookupResult | undefined {
+  if (operation !== "delete") {
+    return undefined;
+  }
+
+  const normalizedQuery = normalizeDisplayName(query);
+  const matches = memories.filter((memory) => normalizeDisplayName(memory.displayName) === normalizedQuery);
+  if (matches.length <= 1) {
+    return undefined;
+  }
+
+  return {
+    kind: "ambiguous",
+    query,
+    options: matches.map((memory) => ({
+      memoryId: memory.id,
+      displayName: memory.displayName,
+      detail: summarizeMemoryTarget(memory),
+      score: 100
+    }))
+  };
+}
+
+function lookupRecentListedPerson(
+  query: string,
+  recentPeople: Array<{ displayName: string; memoryIds: string[] }>
+): MemoryTargetLookupResult | undefined {
+  const normalizedQuery = normalizeDisplayName(query);
+  const matches = recentPeople.filter((person) => normalizeDisplayName(person.displayName) === normalizedQuery);
+  if (matches.length === 0) {
+    return undefined;
+  }
+
+  const deduped = dedupeRecentPeople(matches);
+  if (deduped.length === 1) {
+    const [match] = deduped;
+    return {
+      kind: "single",
+      memoryId: match.memoryIds[0],
+      memoryIds: match.memoryIds.length > 1 ? match.memoryIds : undefined,
+      displayName: match.displayName,
+      score: 100,
+      matchedVia: "exact"
+    };
+  }
+
+  return {
+    kind: "ambiguous",
+    query,
+    options: deduped.map((match) => ({
+      memoryId: match.memoryIds[0],
+      memoryIds: match.memoryIds.length > 1 ? match.memoryIds : undefined,
+      displayName: match.displayName,
+      score: 100
+    }))
+  };
+}
+
+function dedupeRecentPeople(
+  people: Array<{ displayName: string; memoryIds: string[] }>
+): Array<{ displayName: string; memoryIds: string[] }> {
+  const groups = new Map<string, { displayName: string; memoryIds: string[] }>();
+  for (const person of people) {
+    const key = normalizeDisplayName(person.displayName);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.memoryIds.push(...person.memoryIds.filter((id) => !existing.memoryIds.includes(id)));
+      continue;
+    }
+    groups.set(key, { displayName: person.displayName, memoryIds: [...person.memoryIds] });
+  }
+  return [...groups.values()];
+}
+
+function groupMemoryTargetsByDisplayName(memories: RelationshipMemory[]): Array<{ displayName: string; memoryIds: string[] }> {
+  const groups = new Map<string, { displayName: string; memoryIds: string[] }>();
+
+  for (const memory of memories) {
+    const key = normalizeDisplayName(memory.displayName);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.memoryIds.push(memory.id);
+      continue;
+    }
+
+    groups.set(key, { displayName: memory.displayName, memoryIds: [memory.id] });
+  }
+
+  return [...groups.values()];
+}
+
+function dedupeScoredTargetsByDisplayName(targets: ScoredMemoryTarget[]): ScoredMemoryTarget[] {
+  const seen = new Set<string>();
+  const deduped: ScoredMemoryTarget[] = [];
+
+  for (const target of targets) {
+    const key = normalizeDisplayName(target.displayName);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(target);
+  }
+
+  return deduped;
 }
 
 function findExactContextMatches(query: string, memories: RelationshipMemory[]): ContextMemoryTarget[] {
@@ -174,9 +315,20 @@ function findExactContextMatches(query: string, memories: RelationshipMemory[]):
     .map((memory) => ({
       memoryId: memory.id,
       displayName: memory.displayName,
+      detail: summarizeMemoryTarget(memory),
       score: 100,
       matchedVia: "context" as const,
     }));
+}
+
+function summarizeMemoryTarget(memory: RelationshipMemory): string | undefined {
+  const detail = memory.contextNote || memory.eventTitle || memory.relationshipContext;
+  const normalized = detail?.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  return normalized.length <= 120 ? normalized : `${normalized.slice(0, 117).trimEnd()}...`;
 }
 
 function contextAliases(contextNote: string): string[] {

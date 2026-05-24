@@ -394,7 +394,7 @@ type DeleteMemorySingleConfirmReplyInput = {
 
 /** Confirmation copy for a single high-confidence delete target. */
 export function composeDeleteMemorySingleConfirmReply({ displayName }: DeleteMemorySingleConfirmReplyInput): string {
-  return `I found ${displayName}. Delete this from Friendy memory?\nReply yes to confirm or no to cancel.`;
+  return `Do you want me to forget ${displayName}?\nReply yes to confirm or no to cancel.`;
 }
 
 type DeleteMemoryDisambiguationReplyInput = {
@@ -407,29 +407,34 @@ export function composeDeleteMemoryDisambiguationReply({
   query,
   options
 }: DeleteMemoryDisambiguationReplyInput): string {
-  const countLabel = options.length === 2 ? "two" : String(options.length);
+  const allSameName = options.length > 1 && options.every((option) => option.displayName === options[0]?.displayName);
   const optionLines = options.map((option, index) => {
-    const detail = option.detail ? ` — ${option.detail}` : "";
+    const detail = option.detail ? ` - ${option.detail}` : "";
     return `${index + 1}. ${option.displayName}${detail}`;
   });
-  const pickHint =
-    options.length === 2
-      ? "Reply 1 or 2, or say cancel."
-      : `Reply ${options.map((_, index) => String(index + 1)).join(" or ")}, or say cancel.`;
+  const header = allSameName
+    ? `I found multiple people named ${options[0]?.displayName ?? query}:`
+    : `I found multiple possible matches for "${query}":`;
 
-  return [`I found ${countLabel} possible matches for "${query}":`, ...optionLines, pickHint].join("\n");
+  return [header, ...optionLines, "Which one do you want to delete, or should I delete both?"].join("\n");
 }
 
 type UpdateMemoryConfirmReplyInput = {
   displayName: string;
   proposedContextNote: string;
+  mode?: "replace" | "append";
 };
 
 /** Confirmation copy before applying a user-requested memory note update. */
 export function composeUpdateMemoryConfirmReply({
   displayName,
-  proposedContextNote
+  proposedContextNote,
+  mode = "replace"
 }: UpdateMemoryConfirmReplyInput): string {
+  if (mode === "append") {
+    return `I found ${displayName}. Add "${proposedContextNote}" to this memory?\nReply yes to confirm or no to cancel.`;
+  }
+
   return `I found ${displayName}. Update the note to "${proposedContextNote}"?\nReply yes to confirm or no to cancel.`;
 }
 

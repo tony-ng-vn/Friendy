@@ -89,6 +89,7 @@ export type LookupMemoryTargetOptions = {
   minScore?: number;
   ambiguityGap?: number;
   includeContext?: boolean;
+  recentPeople?: Array<{ displayName: string; memoryIds: string[] }>;
 };
 
 export type { MemoryTargetLookupResult };
@@ -117,6 +118,7 @@ type UpdateMemoryOptions = {
   reason: "user_correction" | "user_note_added";
   userText?: string;
   now?: string;
+  mode?: "replace" | "append";
 };
 
 type DeleteMemoryOptions = {
@@ -310,8 +312,11 @@ export function createRelationshipTools(repo: RelationshipRepository) {
         throw new Error(`Memory not found for user: ${memoryId}`);
       }
 
+      const nextContextNote =
+        options.mode === "append" ? appendMemoryContextNote(memory.contextNote, contextNote) : contextNote;
+
       return repo.updateMemory(memoryId, {
-        contextNote,
+        contextNote: nextContextNote,
         reason: options.reason,
         userText: options.userText,
         updatedAt: options.now ?? new Date().toISOString()
@@ -355,7 +360,9 @@ export function createRelationshipTools(repo: RelationshipRepository) {
         memories: repo.listMemories(userId),
         minScore: options.minScore,
         ambiguityGap: options.ambiguityGap,
-        includeContext: options.includeContext
+        includeContext: options.includeContext,
+        operation: options.operation,
+        recentPeople: options.recentPeople
       });
     }
   };
@@ -836,6 +843,24 @@ function stripInternalScores(result: InternalMemorySearchResult): MemorySearchRe
     score: result.score,
     reason: result.reason
   };
+}
+
+function appendMemoryContextNote(existingNote: string, addedNote: string): string {
+  const existing = existingNote.trim();
+  const added = addedNote.trim();
+  if (!existing) {
+    return added;
+  }
+
+  if (!added) {
+    return existing;
+  }
+
+  if (existing.toLowerCase().includes(added.toLowerCase())) {
+    return existing;
+  }
+
+  return `${existing}; ${added}`;
 }
 
 /**

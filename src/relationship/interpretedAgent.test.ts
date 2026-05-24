@@ -145,6 +145,110 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("asks same-or-different on start when a queued contact matches a saved display name", async () => {
+    const person = {
+      id: "person_testing_existing",
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing",
+      createdAt: "2026-05-20T11:50:00.000Z",
+      updatedAt: "2026-05-20T11:50:00.000Z"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      personIdentities: [person],
+      memories: [
+        {
+          ...memoryFixture("Testing", "During testing friendy"),
+          id: "memory_testing_existing",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const onboarding = createOnboardingStateController("ready_pending_user_start");
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      userId: fixtureUser.id,
+      displayName: "Testing",
+      phoneNumbers: ["+15550109999"],
+      detectedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      onboarding,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run for control messages");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const started = await agent.handleMessage(inbound("start"));
+
+    expect(started.outbound.text).toContain("Great. Friendy is on.");
+    expect(started.outbound.text).toContain("I already have Testing saved in Friendy memory");
+    expect(started.outbound.text).toContain("Reply same, different, ignore, or not sure.");
+    expect(started.outbound.text).not.toContain("Where did you meet them?");
+    expect(repo.getCandidate(candidate.id)).toMatchObject({
+      status: "prompted",
+      duplicateResolutionStatus: "pending"
+    });
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
+  it("asks same-or-different before confirming a broad pending-context reply", async () => {
+    const person = {
+      id: "person_testing_existing",
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Testing",
+      createdAt: "2026-05-20T11:50:00.000Z",
+      updatedAt: "2026-05-20T11:50:00.000Z"
+    };
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      personIdentities: [person],
+      memories: [
+        {
+          ...memoryFixture("Testing", "During testing friendy"),
+          id: "memory_testing_existing",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing",
+      phoneNumbers: ["+15550109999"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_testing", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("interpreter should not run before duplicate clarification");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inboundInSpace("During testing friendy"));
+
+    expect(result.toolCalls).toEqual([]);
+    expect(result.outbound.text).toContain("I already have Testing saved in Friendy memory");
+    expect(result.outbound.text).toContain("Reply same, different, ignore, or not sure.");
+    expect(result.trace.activeWorkflowKind).toBe("duplicate_resolution");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+  });
+
   it("does not route messages before start into pending-contact memory writes", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
@@ -1864,6 +1968,83 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("- Sarah Fan - community lead at Photon Residency II");
   });
 
+  it.each([
+    "What are all the people I know?",
+    "What are all people I know?",
+    "Who are all the people I know?",
+    "List all people I know",
+    "List me everyone",
+    "List everyone",
+    "Show everyone I know",
+    "Show everyone I remember",
+    "What do you remember?"
+  ])("bypasses the model for broad people inventory: %s", async (text) => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Z", "I sleep with them; person I used to test friendy"),
+        memoryFixture("Z2", "I met Z2 while testing Friendy")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Pending Person",
+      phoneNumbers: ["+15550101077"],
+      emails: []
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("model should not run for broad people inventory questions");
+        }
+      },
+      now: () => "2026-05-24T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound(text));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace.routeSource).toBe("deterministic");
+    expect(result.outbound.text).toContain("- Z - I sleep with them; person I used to test friendy");
+    expect(result.outbound.text).toContain("- Z2 - I met Z2 while testing Friendy");
+    expect(repo.getCandidate(candidate.id)?.status).toBe("pending");
+    expect(repo.listMemories(fixtureUser.id).some((memory) => memory.candidateId === candidate.id)).toBe(false);
+  });
+
+  it("does not let model topK hide people from broad everyone inventory", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Sarah Fan", "I met you during Photon Residency II"),
+        memoryFixture("Testing", "During testing friendy")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("model should not run for broad everyone inventory");
+        }
+      },
+      strictMode: true,
+      now: () => "2026-05-24T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List me everyone"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace.routeSource).toBe("deterministic");
+    expect(result.outbound.text).toContain("Sarah Fan");
+    expect(result.outbound.text).toContain("Testing");
+  });
+
   it("confirms a pending contact from free-text context before calling the interpreter", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],
@@ -2151,6 +2332,56 @@ describe("interpreted relationship agent", () => {
     );
   });
 
+  it("treats a for-person also/beside note as a confirmed update, not a new memory", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Sarah Fan", "I met her during Photon Residency II")
+    ]);
+
+    const requested = await agent.handleMessage(
+      inbound("For Sarah Fan beside I met her during photon residency ii, she is also a community lead there")
+    );
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toContain("I found Sarah Fan");
+    expect(requested.outbound.text).toContain("Add");
+    expect(requested.outbound.text.toLowerCase()).toContain("community lead");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("I met her during Photon Residency II");
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.toolCalls).toEqual(["update_memory"]);
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+    expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({
+      displayName: "Sarah Fan",
+      contextNote: "I met her during Photon Residency II; she is also a community lead there"
+    });
+  });
+
+  it("treats a named is-also note as a confirmed append, not a new memory", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      memoryFixture("Sarah Fan", "I met you during Photon Residency II")
+    ]);
+
+    const requested = await agent.handleMessage(inbound("Sarah Fan is also a community leader too"));
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toContain("I found Sarah Fan");
+    expect(requested.outbound.text).toContain("Add");
+    expect(requested.outbound.text.toLowerCase()).toContain("community leader");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+    expect(repo.listMemories(fixtureUser.id)[0].contextNote).toBe("I met you during Photon Residency II");
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.toolCalls).toEqual(["update_memory"]);
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(1);
+    expect(repo.listMemories(fixtureUser.id)[0]).toMatchObject({
+      displayName: "Sarah Fan",
+      contextNote: "I met you during Photon Residency II; is also a community leader"
+    });
+  });
+
   it("asks for confirmation before deleting a saved memory from a natural forget request", async () => {
     const original = memoryFixture("Maya", "building recruiting agents");
     const { agent, repo, tools } = createTestAgentWithMemories([original]);
@@ -2158,7 +2389,7 @@ describe("interpreted relationship agent", () => {
     const result = await agent.handleMessage(inbound("delete Maya memory"));
 
     expect(result.toolCalls).toEqual(["lookup_memory_target"]);
-    expect(result.outbound.text).toBe("I found Maya. Delete this from Friendy memory?\nReply yes to confirm or no to cancel.");
+    expect(result.outbound.text).toBe("Do you want me to forget Maya?\nReply yes to confirm or no to cancel.");
     expect(result.trace.activeWorkflowKind).toBe("pending_delete_confirm");
     expect(result.trace.selectedTool).toBe("lookup_memory_target");
     expect(tools.search_memories(fixtureUser.id, "recruiting agents").map((match) => match.memory.displayName)).toEqual(["Maya"]);
@@ -2183,8 +2414,116 @@ describe("interpreted relationship agent", () => {
     const result = await agent.handleMessage(inbound("delete Hi"));
 
     expect(result.toolCalls).toEqual(["lookup_memory_target"]);
-    expect(result.outbound.text).toBe("I found Testing 12. Delete this from Friendy memory?\nReply yes to confirm or no to cancel.");
+    expect(result.outbound.text).toBe("Do you want me to forget Testing 12?\nReply yes to confirm or no to cancel.");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Testing 12", "Please Work"]);
+  });
+
+  it("asks confirmation for a cleaned natural delete target without duplicate nearby options", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        { ...memoryFixture("Z", "met at dinner"), id: "memory_z_1" },
+        { ...memoryFixture("Z", "works on Friendy"), id: "memory_z_2" },
+        { ...memoryFixture("Z2", "met at AI dinner"), id: "memory_z2" },
+        { ...memoryFixture("Z", "from testing"), id: "memory_z_3" },
+        { ...memoryFixture("Sarah Fan", "community lead"), id: "memory_sarah" }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "delete_memory_request",
+        domain: "relationship_memory",
+        confidence: 0.95,
+        query: "Can you delete Z2 please?",
+        target: { displayName: "Z2 please" }
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Can you delete Z2 please?"));
+
+    expect(result.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(result.outbound.text).toBe("Do you want me to forget Z2?\nReply yes to confirm or no to cancel.");
+    expect(result.outbound.text).not.toContain("Z\n");
+    expect(result.trace).toMatchObject({
+      modelCalled: true,
+      targetQueryRaw: "Z2 please",
+      targetQueryCleaned: "Z2",
+      lookupProjection: "grouped_people",
+      matchReason: "exact",
+      requiresConfirmation: true
+    });
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Z", "Z", "Z2", "Z", "Sarah Fan"]);
+  });
+
+  it("asks the user to disambiguate before deleting duplicate exact-name memories", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      { ...memoryFixture("Z", "met at dinner"), id: "memory_z_1" },
+      { ...memoryFixture("Z", "works on Friendy"), id: "memory_z_2" },
+      { ...memoryFixture("Z2", "met at AI dinner"), id: "memory_z2" },
+      { ...memoryFixture("Z", "from testing"), id: "memory_z_3" }
+    ]);
+
+    const requested = await agent.handleMessage(inbound("delete Z memory"));
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toBe(
+      "I found multiple people named Z:\n" +
+        "1. Z - met at dinner\n" +
+        "2. Z - works on Friendy\n" +
+        "3. Z - from testing\n" +
+        "Which one do you want to delete, or should I delete both?"
+    );
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.id)).toEqual([
+      "memory_z_1",
+      "memory_z_2",
+      "memory_z2",
+      "memory_z_3"
+    ]);
+
+    const selected = await agent.handleMessage(inbound("1"));
+
+    expect(selected.toolCalls).toEqual(["delete_memory"]);
+    expect(selected.outbound.text).toContain("Deleted Z");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.id)).toEqual([
+      "memory_z_2",
+      "memory_z2",
+      "memory_z_3"
+    ]);
+  });
+
+  it("deletes every duplicate exact-name option only when the disambiguation reply says both", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      { ...memoryFixture("Sarah Fan", "I met you during Photon Residency II"), id: "memory_sarah_photon" },
+      { ...memoryFixture("Sarah Fan", "is also a community leader"), id: "memory_sarah_leader" },
+      { ...memoryFixture("Z2", "met at AI dinner"), id: "memory_z2" }
+    ]);
+
+    const requested = await agent.handleMessage(inbound("Delete Sarah Fan"));
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toBe(
+      "I found multiple people named Sarah Fan:\n" +
+        "1. Sarah Fan - I met you during Photon Residency II\n" +
+        "2. Sarah Fan - is also a community leader\n" +
+        "Which one do you want to delete, or should I delete both?"
+    );
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.id)).toEqual([
+      "memory_sarah_photon",
+      "memory_sarah_leader",
+      "memory_z2"
+    ]);
+
+    const selected = await agent.handleMessage(inbound("both"));
+
+    expect(selected.toolCalls).toEqual(["delete_memory", "delete_memory"]);
+    expect(selected.outbound.text).toBe("Deleted 2 Sarah Fan memories from Friendy memory.");
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.id)).toEqual(["memory_z2"]);
   });
 
   it("asks for confirmation before deleting every saved memory", async () => {
@@ -2231,19 +2570,13 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Srah");
     expect(result.outbound.text).toContain("Sarah");
     expect(result.outbound.text).toContain("Sara Kim");
-    expect(result.outbound.text).toContain("Reply 1 or 2");
+    expect(result.outbound.text).toContain("Which one do you want to delete");
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
 
     const selected = await agent.handleMessage(inbound("1"));
 
-    expect(selected.toolCalls).toEqual([]);
-    expect(selected.outbound.text).toContain("Delete this from Friendy memory?");
-    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
-
-    const confirmed = await agent.handleMessage(inbound("yes"));
-
-    expect(confirmed.toolCalls).toEqual(["delete_memory"]);
-    expect(confirmed.outbound.text).toContain("Deleted Sarah");
+    expect(selected.toolCalls).toEqual(["delete_memory"]);
+    expect(selected.outbound.text).toContain("Deleted Sarah");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Sara Kim"]);
   });
 
@@ -2283,14 +2616,14 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Srah");
     expect(result.outbound.text).toContain("Sarah");
     expect(result.outbound.text).toContain("Sara Kim");
-    expect(result.outbound.text).toContain("Reply 1 or 2");
+    expect(result.outbound.text).toContain("Which one do you want to delete");
     expect(result.trace).toMatchObject({
       strictMode: true,
       routeSource: "deterministic",
       fallbackUsed: false,
       route: { intent: "delete_memory_request" },
       policyDecision: "clarify",
-      activeWorkflowKind: "pending_delete_confirm",
+      activeWorkflowKind: "pending_delete_disambiguation",
       selectedTool: "lookup_memory_target",
       toolCalls: ["lookup_memory_target"]
     });
@@ -2298,14 +2631,8 @@ describe("interpreted relationship agent", () => {
 
     const selected = await agent.handleMessage(inbound("1"));
 
-    expect(selected.toolCalls).toEqual([]);
-    expect(selected.outbound.text).toContain("Delete this from Friendy memory?");
-    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
-
-    const confirmed = await agent.handleMessage(inbound("yes"));
-
-    expect(confirmed.toolCalls).toEqual(["delete_memory"]);
-    expect(confirmed.outbound.text).toContain("Deleted Sarah");
+    expect(selected.toolCalls).toEqual(["delete_memory"]);
+    expect(selected.outbound.text).toContain("Deleted Sarah");
     expect(repo.listMemories(fixtureUser.id).map((memory) => memory.displayName)).toEqual(["Sara Kim"]);
   });
 

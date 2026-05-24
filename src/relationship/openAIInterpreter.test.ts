@@ -264,7 +264,13 @@ describe("openai message interpreter", () => {
       });
     };
 
-    const interpreter = createOpenAIInterpreter({ apiKey: "test-key", model: "model", strictMode: false, fetchImpl });
+    const interpreter = createOpenAIInterpreter({
+      apiKey: "test-key",
+      model: "model",
+      strictMode: false,
+      fetchImpl,
+      logger: { error() {} }
+    });
     const result = await interpreter.interpret({ message: inbound });
 
     expect(calls).toBe(2);
@@ -281,7 +287,8 @@ describe("openai message interpreter", () => {
         jsonResponse({
           choices: [{ message: { content: JSON.stringify({ intent: "capture_memory", confidence: 2 }) } }]
         }),
-      fallback: createRuleBasedInterpreter()
+      fallback: createRuleBasedInterpreter(),
+      logger: { error() {} }
     });
 
     const result = await interpreter.interpret({
@@ -355,6 +362,7 @@ describe("openai message interpreter", () => {
 
   it("throws invalid schema errors in strict mode without calling fallback", async () => {
     let fallbackCalls = 0;
+    const errorLogs: string[] = [];
     const interpreter = createOpenAIInterpreter({
       apiKey: "test-key",
       model: "model",
@@ -367,6 +375,11 @@ describe("openai message interpreter", () => {
         async interpret() {
           fallbackCalls += 1;
           return createRuleBasedInterpreter().interpret({ message: inbound });
+        }
+      },
+      logger: {
+        error(message, details) {
+          errorLogs.push(`${String(message)} ${String(details)}`);
         }
       }
     });
@@ -384,6 +397,47 @@ describe("openai message interpreter", () => {
         modelErrorCode: "INVALID_ROUTE_SCHEMA"
       }
     });
+    expect(fallbackCalls).toBe(0);
+    expect(errorLogs.join("\n")).toContain("[friendy:openai_interpreter:invalid_output]");
+    expect(errorLogs.join("\n")).toContain('\\"intent\\":\\"capture_memory\\"');
+    expect(errorLogs.join("\n")).toContain('\\"confidence\\":2');
+    expect(errorLogs.join("\n")).toContain("validationError");
+  });
+
+  it("recovers invalid schema output into a safe deterministic list_people route", async () => {
+    let fallbackCalls = 0;
+    const interpreter = createOpenAIInterpreter({
+      apiKey: "test-key",
+      model: "model",
+      strictMode: true,
+      fetchImpl: async () =>
+        jsonResponse({
+          choices: [{ message: { content: JSON.stringify({ intent: "capture_memory", confidence: 2 }) } }]
+        }),
+      fallback: {
+        async interpret() {
+          fallbackCalls += 1;
+          return createRuleBasedInterpreter().interpret({ message: inbound });
+        }
+      },
+      logger: { error() {} }
+    });
+
+    const result = await interpreter.interpret({
+      message: {
+        ...inbound,
+        text: "What are all the people I know?"
+      }
+    });
+
+    expect(result.interpretation.intent).toBe("list_people");
+    expect(result.interpretation.search?.mode).toBe("list_people");
+    expect(result.routeSource).toBe("deterministic");
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.fallbackReason).toBe("invalid_model_schema_recovered");
+    expect(result.modelRequested).toBe("model");
+    expect(result.modelResponseSchemaValid).toBe(false);
+    expect(result.modelErrorCode).toBe("INVALID_ROUTE_SCHEMA");
     expect(fallbackCalls).toBe(0);
   });
 

@@ -47,6 +47,12 @@ export type ActiveWorkflow =
       openedAt: string;
     }
   | {
+      kind: "pending_delete_disambiguation";
+      query: string;
+      candidates: Array<{ memoryId: string; memoryIds?: string[]; displayName: string; detail?: string }>;
+      openedAt: string;
+    }
+  | {
       kind: "pending_delete_confirm";
       memoryId: string;
       displayName: string;
@@ -118,8 +124,11 @@ export type LegacyConversationContext = {
   lastSearch?: SearchContext;
   activeMemoryId?: string;
   pendingDelete?: {
-    memoryId: string;
-    displayName: string;
+    memoryId?: string;
+    memoryIds?: string[];
+    displayName?: string;
+    query?: string;
+    options?: Array<{ memoryId: string; memoryIds?: string[]; displayName: string; detail?: string }>;
   };
   recentPeople: string[];
 };
@@ -194,15 +203,7 @@ export function migrateFromLegacyContext(
         }
       : undefined;
 
-  const activeWorkflow = legacy.pendingDelete
-    ? ({
-        kind: "pending_delete_confirm" as const,
-        memoryId: legacy.pendingDelete.memoryId,
-        displayName: legacy.pendingDelete.displayName,
-        query: legacy.pendingDelete.displayName,
-        openedAt: now
-      } satisfies ActiveWorkflow)
-    : undefined;
+  const activeWorkflow = activeWorkflowFromLegacyPendingDelete(legacy.pendingDelete, now);
 
   return {
     ...session,
@@ -210,5 +211,35 @@ export function migrateFromLegacyContext(
     lastSearch: legacy.lastSearch,
     activeMemoryId: legacy.activeMemoryId,
     carryover
+  };
+}
+
+function activeWorkflowFromLegacyPendingDelete(
+  pendingDelete: LegacyConversationContext["pendingDelete"],
+  now: string
+): ActiveWorkflow | undefined {
+  if (!pendingDelete) {
+    return undefined;
+  }
+
+  if (pendingDelete.options?.length) {
+    return {
+      kind: "pending_delete_disambiguation",
+      query: pendingDelete.query ?? pendingDelete.displayName ?? "",
+      candidates: pendingDelete.options,
+      openedAt: now
+    };
+  }
+
+  if (!pendingDelete.memoryId || !pendingDelete.displayName) {
+    return undefined;
+  }
+
+  return {
+    kind: "pending_delete_confirm",
+    memoryId: pendingDelete.memoryId,
+    displayName: pendingDelete.displayName,
+    query: pendingDelete.query ?? pendingDelete.displayName,
+    openedAt: now
   };
 }

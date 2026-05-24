@@ -15,15 +15,47 @@ Confirm the current agent can:
 
 ## Current Result
 
+2026-05-24 live Sarah Fan append-memory follow-up:
+
+- Fixed the live case `For Sarah Fan beside I met her during photon residency ii, she is also a community lead there`.
+- `search.filters: null` from OpenAI strict structured output now validates and normalizes to no filters instead of throwing.
+- Relationship-memory edits now support bounded append semantics through `update_memory` with `mode: "append"`, preserving existing notes and appending the new fact after explicit confirmation.
+- The Sarah Fan wording routes through existing target lookup, asks to add the new fact, and updates only after `yes`.
+- Added `sarah-fan-beside-role-update-regression`; verification passed with focused tests 4 files/136 tests, `npm run eval:agent` 49/49, `npm run build`, full `npm test` 74 files/581 tests, and `git diff --check`.
+- Follow-up live log showed `List me everyone` / `List everyone` could be model-routed with `search.topK: 1`, causing broad inventory to show only Sarah even while `Do I know anyone from testing friendy?` could find Testing. Those everyone-list requests now bypass the model deterministically.
+- Follow-up live log also showed `Sarah Fan is also a community leader too` created a duplicate manual memory instead of editing. Named `is also` person facts now ask for append confirmation and do not create duplicate memory.
+- Added `sarah-fan-named-role-update-regression`; verification passed with focused router/interpreted/eval tests 3 files/106 tests, `npm run eval:agent` 50/50, `npm run build`, full `npm test` 74 files/588 tests, and `git diff --check`.
+
+2026-05-24 relationship-memory routing/delete cleanup:
+
+- Added a central deterministic route boundary for broad people inventory and bulk delete/clear confirmation detection.
+- Added target-query cleanup and conservative short-name matching so natural delete targets like `Z2 please` resolve to `Z2` without matching `Z`.
+- Delete/update target lookup now groups duplicate display names before fuzzy matching and deduplicates ambiguity options. A matched person delete stores all associated memory ids and deletes only after explicit confirmation.
+- Single-person delete confirmation now asks `Do you want me to forget <name>?` and still accepts `no`/`cancel` to clear the pending action.
+- `list_people` stores a short-lived recent people list for exact-name follow-up deletes.
+- Invalid OpenAI schema recovery is limited to safe deterministic `list_people` routes; invalid model output never recovers into destructive actions.
+- Trace metadata now records model-call state, raw/cleaned target query, lookup projection, match reason, confirmation requirement, and invalid-schema recovery when available.
+- Verification passed: focused relationship tests passed 3 files/102 tests; focused router/cleanup/OpenAI/composer tests passed 4 files/46 tests; full `npm test` passed 74 files/577 tests; `npm run eval:agent` passed 48/48 with 0 unsafe mutations and 0 hallucinations; `npm run build` passed; `git diff --check` passed.
+
+2026-05-24 duplicate exact-name delete follow-up:
+
+- Fixed the live-critical delete case where duplicate exact display names could be collapsed into one person-level delete target.
+- Exact duplicate-name deletes now ask a numbered disambiguation question with context snippets instead of asking to forget the name as a whole.
+- The pending delete workflow stores concrete memory IDs. Replying `1` deletes only the first candidate ID; replying `both`/`all` deletes all candidate IDs from the disambiguation payload.
+- The bounded delete tool still rejects raw display names at the tool boundary; deletion remains by stored memory ID only.
+- Added `duplicate-exact-name-delete-disambiguation-regression`; verification passed with focused relationship tests 3 files/108 tests, focused composer/tools/session/eval tests 4 files/67 tests, full `npm test` 74 files/591 tests, `npm run eval:agent` 51/51 with 0 unsafe mutations and 0 hallucinations, `npm run build`, and `git diff --check`.
+
 2026-05-24 live list formatting and bulk delete follow-up:
 
 - `list_people` replies now use `<name> - <context>` bullets for saved people, matching the requested iMessage list format.
 - Multi-person event recall replies such as `Who did I meet during the photon residency?` now use the same `<name> - <context>` bullet format instead of compact comma-separated prose.
-- Second-person contact inventory wording such as `What people do you know yet in my contact?` now routes deterministically to `list_people`, so it no longer depends on OpenAI producing a valid structured route for broad list requests.
+- Broad contact inventory wording such as `What are all the people I know?`, `Who are all the people I know?`, `Show everyone I know`, `What do you remember?`, and `What people do you know yet in my contact?` now routes deterministically to `list_people`, so it no longer depends on OpenAI producing a valid structured route for broad list requests.
+- Filtered list wording such as `List me in bullet of all people I met testing friendy` remains list-like for pending-contact safety, but still goes through model interpretation so filters are preserved.
 - `Can you delete everyone for me?` now opens a confirmation flow and only deletes all saved Friendy memories through the bounded `clear_memories` tool after `yes`.
 - Empty clear/delete-all requests now say `You haven't saved anyone in Friendy memory yet.`
-- Added `delete-everyone-confirmation-regression`; the `list-all-contact-recall` eval now freezes the live second-person inventory wording and asserts deterministic routing. `npm run eval:agent` passed 48/48 required cases with 0 unsafe mutations and 0 hallucinations.
-- Verification passed: focused RED/GREEN cases, focused routing/eval suite 5 files/101 tests, `npm run eval:agent`, full `npm test` 72 files/544 tests, and `npm run build`.
+- OpenAI invalid structured-output failures now log `[friendy:openai_interpreter:invalid_output]` with the requested model, raw model output, and validation error before Friendy throws the same strict schema error. This is a diagnostic-only change so the next live schema failure includes the evidence needed to fix the route/schema mismatch.
+- Added `delete-everyone-confirmation-regression`; the `list-all-contact-recall` eval now freezes live inventory variants and asserts deterministic routing. `npm run eval:agent` passed 48/48 required cases with 0 unsafe mutations and 0 hallucinations.
+- Verification passed: focused RED/GREEN cases, `npm run eval:agent`, full `npm test` 72 files/549 tests, `npm run build`, and `git diff --check`.
 
 2026-05-24 OpenAI provider naming cleanup:
 

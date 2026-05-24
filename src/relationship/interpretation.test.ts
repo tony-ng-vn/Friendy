@@ -123,6 +123,43 @@ describe("message interpretation contract", () => {
     expect(interpretation.dateContext).toBeUndefined();
   });
 
+  it("accepts nullable search filters from strict structured model output", () => {
+    const interpretation = validateMessageInterpretation({
+      intent: "clarify",
+      confidence: 0.9,
+      domain: "relationship_memory",
+      conversationRelation: "starts_new_relationship_task",
+      target: null,
+      extractedContext: "User asks to add that Sarah is also the community lead.",
+      search: {
+        mode: "lookup_person",
+        semanticQuery: "Sarah",
+        exactTerms: ["Sarah"],
+        filters: null,
+        topK: 10
+      },
+      people: [
+        {
+          name: "Sarah",
+          aliases: [],
+          companyOrSchool: "",
+          classYear: "",
+          project: "",
+          role: ""
+        }
+      ],
+      event: { name: "", dateText: "", location: "" },
+      dateContext: null,
+      contextNote: "Add role: community lead for Sarah.",
+      query: "",
+      tags: ["community lead", "role"],
+      needsClarification: true,
+      clarificationQuestion: "Which Sarah do you mean?"
+    });
+
+    expect(interpretation.search?.filters).toBeUndefined();
+  });
+
   it("rejects malformed interpretations before tools execute", () => {
     expect(() =>
       validateMessageInterpretation({
