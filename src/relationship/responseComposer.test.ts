@@ -315,9 +315,7 @@ describe("relationship response composer", () => {
   it("formats single-match delete confirmation without exposing memory ids", () => {
     const reply = composeDeleteMemorySingleConfirmReply({ displayName: "Unnamed Contact" });
 
-    expect(reply).toBe(
-      "I found Unnamed Contact. Delete this from Friendy memory?\nReply yes to confirm or no to cancel."
-    );
+    expect(reply).toBe("Do you want me to forget Unnamed Contact?\nReply yes to confirm or no to cancel.");
     expect(composeDeleteMemoryConfirmReply({ matches: [{ displayName: "Unnamed Contact" }] })).toBe(reply);
     expectNoInternalLanguage(reply);
   });
@@ -333,10 +331,10 @@ describe("relationship response composer", () => {
 
     expect(reply).toBe(
       [
-        'I found two possible matches for "Srah":',
-        "1. Sarah — met at Photon dinner",
-        "2. Sara Kim — met at recruiting meetup",
-        "Reply 1 or 2, or say cancel."
+        'I found multiple possible matches for "Srah":',
+        "1. Sarah - met at Photon dinner",
+        "2. Sara Kim - met at recruiting meetup",
+        "Which one do you want to delete, or should I delete both?"
       ].join("\n")
     );
     expectNoInternalLanguage(reply);

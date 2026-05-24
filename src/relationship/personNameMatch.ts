@@ -4,6 +4,8 @@
  * Scores exact match highest, then substring and token-level Levenshtein — used by
  * `memoryTargetLookup` and interpreted-agent disambiguation, not for memory search ranking.
  */
+import { cleanMemoryTargetQuery } from "./targetQueryCleanup";
+
 export type DisplayNameMatch = {
   displayName: string;
   score: number;
@@ -41,7 +43,7 @@ function levenshteinDistance(left: string, right: string): number {
 
 /** Ranks saved display names against a fuzzy user-provided delete/search target. */
 export function rankDisplayNameMatches(query: string, displayNames: string[]): DisplayNameMatch[] {
-  const normalizedQuery = normalizeDisplayName(query);
+  const normalizedQuery = normalizeDisplayName(cleanMemoryTargetQuery(query));
   if (!normalizedQuery) {
     return [];
   }
@@ -50,6 +52,10 @@ export function rankDisplayNameMatches(query: string, displayNames: string[]): D
     const normalizedName = normalizeDisplayName(displayName);
     if (normalizedName === normalizedQuery) {
       return { displayName, score: 100 };
+    }
+
+    if (isShortNameOrQuery(normalizedName, normalizedQuery)) {
+      return { displayName, score: 0 };
     }
 
     if (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
@@ -91,4 +97,8 @@ export function rankDisplayNameMatches(query: string, displayNames: string[]): D
   });
 
   return scored.filter((item) => item.score > 0).sort((left, right) => right.score - left.score);
+}
+
+function isShortNameOrQuery(normalizedName: string, normalizedQuery: string): boolean {
+  return normalizedName.length <= 2 || normalizedQuery.length <= 2;
 }

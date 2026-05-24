@@ -255,15 +255,20 @@ const searchPlanSchema = z
     semanticQuery: z.string().default(""),
     exactTerms: z.array(z.string()).default([]),
     filters: z
-      .object({
-        personName: z.string().optional(),
-        eventName: z.string().optional(),
-        topic: z.string().optional(),
-        companyOrSchool: z.string().optional(),
-        dateText: z.string().optional(),
-        tags: z.array(z.string()).optional()
-      })
-      .strict()
+      .preprocess(
+        (value) => (value === null ? undefined : value),
+        z
+          .object({
+            personName: z.string().optional(),
+            eventName: z.string().optional(),
+            topic: z.string().optional(),
+            companyOrSchool: z.string().optional(),
+            dateText: z.string().optional(),
+            tags: z.array(z.string()).optional()
+          })
+          .strict()
+          .optional()
+      )
       .optional(),
     topK: z.number().int().positive().max(20).optional()
   })

@@ -551,6 +551,24 @@ describe("relationship tools", () => {
     });
   });
 
+  it("can append a new fact to a memory without replacing the existing note", () => {
+    const { repo, tools, memory } = seededMemoryHarness("I met her during Photon Residency II");
+
+    const updated = tools.update_memory(memory.userId, memory.id, "she is also a community lead there", {
+      reason: "user_note_added",
+      userText: "For Sarah Fan beside I met her during photon residency ii, she is also a community lead there",
+      now: "2026-05-24T08:51:38.645Z",
+      mode: "append"
+    });
+
+    expect(updated.contextNote).toBe("I met her during Photon Residency II; she is also a community lead there");
+    expect(tools.search_memories(memory.userId, "community lead")[0].memory.id).toBe(memory.id);
+    expect(repo.listMemoryRevisions(memory.id).at(-1)).toMatchObject({
+      reason: "user_note_added",
+      userText: "For Sarah Fan beside I met her during photon residency ii, she is also a community lead there"
+    });
+  });
+
   it("soft deletes a memory through a bounded tool", () => {
     const { repo, tools, memory } = seededMemoryHarness("building recruiting agents");
 
@@ -565,6 +583,12 @@ describe("relationship tools", () => {
       reason: "deleted",
       userText: "forget Maya"
     });
+  });
+
+  it("rejects raw display names at the delete boundary", () => {
+    const { tools, memory } = seededMemoryHarness("building recruiting agents");
+
+    expect(() => tools.delete_memory(memory.userId, memory.displayName)).toThrow("Memory not found for user");
   });
 
   it("clears all visible memories through a bounded tool", () => {

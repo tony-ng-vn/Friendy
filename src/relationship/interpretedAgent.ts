@@ -65,10 +65,12 @@ import {
   isPendingPromptContextReply,
   isRelationshipMetaRouteMessage
 } from "./scopeBoundary";
-import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
+import { isEventRecallQuestion } from "./listPeopleRecall";
+import { isBulkDeleteMemoryRequest, routeDeterministicRelationshipRequest } from "./deterministicRouter";
 import { rankDisplayNameMatches } from "./personNameMatch";
 import { validateRequiredToolAvailability, validateRoutePolicy, type ValidatedRoutePolicy } from "./routePolicyValidator";
 import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerInputEnvelope";
+import { cleanMemoryTargetQuery } from "./targetQueryCleanup";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
@@ -92,8 +94,8 @@ import type {
 type RelationshipTools = ReturnType<typeof createRelationshipTools>;
 type CandidateIntake = ReturnType<typeof createCandidateIntake>;
 type MemoryMutationRequest =
-  | { kind: "delete"; query: string }
-  | { kind: "update"; query?: string; contextNote: string };
+  | { kind: "delete"; query: string; rawQuery?: string }
+  | { kind: "update"; query?: string; rawQuery?: string; contextNote: string; mode?: "replace" | "append" };
 type ManualMemoryCreateRequest = {
   displayName: string;
   contextNote: string;
@@ -106,6 +108,11 @@ type SearchContext = {
   originalQuery: string;
   candidateMemoryIds: string[];
   lastQuestion: string;
+};
+type LastPeopleListContext = {
+  createdAt: string;
+  expiresAt: string;
+  people: Array<{ displayName: string; memoryIds: string[] }>;
 };
 type MemorySearchRequest = {
   userId: string;
@@ -121,6 +128,14 @@ type MemorySearchRequest = {
 type AgentReplyDraft = {
   text: string;
   expressionBundle?: ExpressionFactBundle;
+  lastPeopleList?: Array<{ displayName: string; memoryIds: string[] }>;
+};
+type MemoryMutationTraceMetadata = {
+  targetQueryRaw?: string;
+  targetQueryCleaned?: string;
+  lookupProjection?: string;
+  matchReason?: string;
+  requiresConfirmation?: boolean;
 };
 
 /** Optional post-tool copy polish layer; must not change routing or tool outcomes. */
@@ -167,19 +182,22 @@ type ConversationContext = {
   activeMemoryId?: string;
   pendingDelete?: {
     memoryId?: string;
+    memoryIds?: string[];
     displayName?: string;
     query?: string;
     allMemoryIds?: string[];
-    options?: Array<{ memoryId: string; displayName: string }>;
+    options?: Array<{ memoryId: string; memoryIds?: string[]; displayName: string; detail?: string }>;
   };
   pendingUpdate?: {
     memoryId?: string;
     displayName?: string;
     proposedContextNote: string;
+    mode?: "replace" | "append";
     query?: string;
     options?: Array<{ memoryId: string; displayName: string }>;
   };
   reminderState?: PendingReminderState;
+  lastPeopleList?: LastPeopleListContext;
   recentPeople: string[];
 };
 
@@ -391,13 +409,15 @@ export function createInterpretedRelationshipAgent({
               memoryId: selected.memoryId,
               displayName: selected.displayName,
               proposedContextNote: turnContext.pendingUpdate.proposedContextNote,
+              mode: turnContext.pendingUpdate.mode,
               query: turnContext.pendingUpdate.query
             }
           };
           conversationContexts.set(message.userId, nextContext);
           const outboundText = composeUpdateMemoryConfirmReply({
             displayName: selected.displayName,
-            proposedContextNote: turnContext.pendingUpdate.proposedContextNote
+            proposedContextNote: turnContext.pendingUpdate.proposedContextNote,
+            mode: turnContext.pendingUpdate.mode
           });
           const interaction = addInteractionWithTrace(repo, strictMode, {
             id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
@@ -448,7 +468,8 @@ export function createInterpretedRelationshipAgent({
           const updated = tools.update_memory(message.userId, memory.id, pendingUpdate.proposedContextNote, {
             reason: "user_correction",
             userText: message.text,
-            now: now()
+            now: now(),
+            mode: pendingUpdate.mode
           });
           outboundText = composeMemoryUpdateReply({ memory: updated });
         }
@@ -493,21 +514,37 @@ export function createInterpretedRelationshipAgent({
       }
 
       if (turnContext.pendingDelete?.options && !turnContext.pendingDelete.memoryId) {
+        const selectedOptions = isDeleteBothDisambiguationReply(message.text)
+          ? turnContext.pendingDelete.options
+          : undefined;
         const selectedIndex = parseNumberedSelection(message.text);
         const selected = selectedIndex === undefined ? undefined : turnContext.pendingDelete.options[selectedIndex];
-        if (selected) {
-          const nextContext = {
-            ...turnContext,
-            pendingDelete: {
-              memoryId: selected.memoryId,
-              displayName: selected.displayName,
-              query: turnContext.pendingDelete.query
-            }
-          };
-          conversationContexts.set(message.userId, nextContext);
-          const outboundText = composeDeleteMemoryConfirmReply({
-            matches: [{ displayName: selected.displayName }]
-          });
+        const candidatesToDelete = selectedOptions ?? (selected ? [selected] : undefined);
+        if (candidatesToDelete?.length) {
+          const memoryIds = [
+            ...new Set(candidatesToDelete.flatMap((candidate) => candidate.memoryIds ?? [candidate.memoryId]))
+          ];
+          const memoryIdSet = new Set(memoryIds);
+          const memories = repo.listMemories(message.userId).filter((memory) => memoryIdSet.has(memory.id));
+          const toolCalls: AgentToolCall[] = [];
+
+          for (const memory of memories) {
+            toolCalls.push("delete_memory");
+            tools.delete_memory(message.userId, memory.id, {
+              userText: message.text,
+              now: now()
+            });
+          }
+
+          const displayName = candidatesToDelete[0]?.displayName ?? turnContext.pendingDelete.query ?? "that person";
+          const outboundText =
+            memories.length === 0
+              ? composeNoMatchReply()
+              : memories.length === 1
+                ? composeMemoryDeleteReply({ memory: memories[0] })
+                : `Deleted ${memories.length} ${displayName} memories from Friendy memory.`;
+
+          conversationContexts.set(message.userId, { ...turnContext, pendingDelete: undefined });
           const interaction = addInteractionWithTrace(repo, strictMode, {
             id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
             userId: message.userId,
@@ -515,17 +552,18 @@ export function createInterpretedRelationshipAgent({
             spaceId: message.spaceId,
             inboundText: message.text,
             interpretedIntentJson: {
-              intent: "delete_memory_request",
+              intent: "delete_memory",
               domain: "relationship_memory",
               conversationRelation: "answers_open_workflow",
-              target: { memoryId: selected.memoryId },
+              target: memories.length === 1 ? { memoryId: memories[0].id } : { memoryIds },
               confidence: 1,
-              traceReason: "User selected a memory from pending delete disambiguation.",
-              policyDecision: { decision: "clarify", suppressPendingReminder: true },
-              activeWorkflowKind: "pending_delete_confirm"
+              traceReason: "User selected memory id targets from pending delete disambiguation.",
+              policyDecision: { decision: "allow", suppressPendingReminder: true },
+              activeWorkflowKind: "pending_delete_disambiguation",
+              selectedTool: "delete_memory"
             },
             outboundText,
-            toolCalls: [],
+            toolCalls,
             modelUsed: "deterministic-scope",
             confidence: 1,
             latencyMs: Date.now() - startedAt,
@@ -539,7 +577,7 @@ export function createInterpretedRelationshipAgent({
               spaceId: message.spaceId,
               text: outboundText
             },
-            toolCalls: [],
+            toolCalls,
             interaction,
             trace: traceFromInteraction(interaction)
           };
@@ -570,6 +608,64 @@ export function createInterpretedRelationshipAgent({
             target: { memoryIds: deletedMemoryIds },
             confidence: 1,
             traceReason: "User confirmed a pending delete-all-memory request.",
+            policyDecision: { decision: "allow", suppressPendingReminder: true },
+            activeWorkflowKind: "pending_delete_confirm",
+            selectedTool: "delete_memory"
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
+      if (turnContext.pendingDelete?.memoryIds && isConfirmationReply(message.text)) {
+        const toolCalls: AgentToolCall[] = [];
+        const pendingDelete = turnContext.pendingDelete;
+        const pendingIds = new Set(pendingDelete.memoryIds);
+        const memories = repo.listMemories(message.userId).filter((item) => pendingIds.has(item.id));
+        let outboundText = composeNoMatchReply();
+
+        for (const memory of memories) {
+          toolCalls.push("delete_memory");
+          tools.delete_memory(message.userId, memory.id, {
+            userText: message.text,
+            now: now()
+          });
+        }
+
+        if (memories.length > 0) {
+          outboundText = composeMemoryDeleteReply({ memory: memories[0] });
+        }
+
+        conversationContexts.set(message.userId, { ...turnContext, pendingDelete: undefined });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: "delete_memory",
+            domain: "relationship_memory",
+            conversationRelation: "answers_open_workflow",
+            target: { memoryIds: pendingDelete.memoryIds },
+            confidence: 1,
+            traceReason: "User confirmed a pending person-level delete-memory request.",
             policyDecision: { decision: "allow", suppressPendingReminder: true },
             activeWorkflowKind: "pending_delete_confirm",
             selectedTool: "delete_memory"
@@ -650,7 +746,12 @@ export function createInterpretedRelationshipAgent({
       }
 
       const memoryMutationRequest = detectMemoryMutationRequest(message.text);
-      if (!memoryMutationRequest && isDeleteAllMemoryRequest(message.text)) {
+      const deterministicRoute = routeDeterministicRelationshipRequest({
+        text: message.text,
+        hasActiveMemoryWorkflow: Boolean(turnContext.pendingDelete || turnContext.pendingUpdate)
+      });
+
+      if (!memoryMutationRequest && deterministicRoute?.kind === "delete_all_memories") {
         const memories = repo.listMemories(message.userId);
         const outboundText =
           memories.length === 0 ? composeNoSavedMemoryReply() : composeDeleteAllMemoryConfirmReply({ count: memories.length });
@@ -726,9 +827,14 @@ export function createInterpretedRelationshipAgent({
             memoryMutationRequest,
             confidence: 1,
             activeWorkflowKind:
-              memoryMutationRequest.kind === "delete" ? "pending_delete_confirm" : "pending_update_confirm",
+              memoryMutationRequest.kind === "delete"
+                ? mutation.nextContext.pendingDelete?.options?.length
+                  ? "pending_delete_disambiguation"
+                  : "pending_delete_confirm"
+                : "pending_update_confirm",
             selectedTool: toolCalls[0],
-            policyDecision: mutationPolicyDecision
+            policyDecision: mutationPolicyDecision,
+            ...mutation.trace
           },
           outboundText,
           toolCalls,
@@ -1216,7 +1322,9 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      if (shouldBypassModelForListPeopleRecall(message.text)) {
+      const preModelDeterministicRoute =
+        deterministicRoute ?? routeDeterministicRelationshipRequest({ text: message.text });
+      if (preModelDeterministicRoute?.kind === "list_people") {
         const interpretation: MessageInterpretation = {
           intent: "list_people",
           confidence: 1,
@@ -1240,11 +1348,11 @@ export function createInterpretedRelationshipAgent({
         const toolCalls: AgentToolCall[] = [];
         const reply = executeInterpretation(message, interpretation, repo, tools, candidateIntake, toolCalls, pendingState);
         const expressionResult = await polishAgentReply(reply, expression);
-        conversationContexts.set(message.userId, {
+        conversationContexts.set(message.userId, rememberLastPeopleList({
           ...clearSearchContext(turnContext),
           activeMemoryId: undefined,
           reminderState: turnContext.reminderState ?? {}
-        });
+        }, reply, now()));
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -1339,6 +1447,8 @@ export function createInterpretedRelationshipAgent({
           modelRequested: interpreted.modelRequested,
           modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
           modelErrorCode: interpreted.modelErrorCode,
+          invalidModelSchemaRecovery:
+            interpreted.fallbackReason === "invalid_model_schema_recovered" ? interpretation.intent : undefined,
           route: interpretation,
           policyDecision: routePolicy.decision,
           suppressedPendingReminder: routePolicy.suppressPendingReminder,
@@ -1370,6 +1480,8 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            invalidModelSchemaRecovery:
+              interpreted.fallbackReason === "invalid_model_schema_recovered" ? interpretation.intent : undefined,
             modelRequested: interpreted.modelRequested,
             modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
             modelErrorCode: interpreted.modelErrorCode,
@@ -1432,6 +1544,8 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            invalidModelSchemaRecovery:
+              interpreted.fallbackReason === "invalid_model_schema_recovered" ? interpretation.intent : undefined,
             modelRequested: interpreted.modelRequested,
             modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
             modelErrorCode: interpreted.modelErrorCode,
@@ -1445,8 +1559,13 @@ export function createInterpretedRelationshipAgent({
             pendingReminderReason: "not_search_interrupt",
             suppressedPendingReminder: true,
             activeWorkflowKind:
-              interpretedMutationRequest.kind === "delete" ? "pending_delete_confirm" : "pending_update_confirm",
-            selectedTool: toolCalls[0]
+              interpretedMutationRequest.kind === "delete"
+                ? mutation.nextContext.pendingDelete?.options?.length
+                  ? "pending_delete_disambiguation"
+                  : "pending_delete_confirm"
+                : "pending_update_confirm",
+            selectedTool: toolCalls[0],
+            ...mutation.trace
           },
           outboundText: mutation.outboundText,
           toolCalls,
@@ -1523,6 +1642,7 @@ export function createInterpretedRelationshipAgent({
       if (interpretation.intent === "delete_memory_request") {
         nextContext = attachPendingDeleteContext(message, interpretation, repo, nextContext);
       }
+      nextContext = rememberLastPeopleList(nextContext, replyDraft, now());
       conversationContexts.set(message.userId, nextContext);
 
       const interaction = addInteractionWithTrace(repo, strictMode, {
@@ -1537,6 +1657,8 @@ export function createInterpretedRelationshipAgent({
             routeSource: interpreted.routeSource,
             fallbackUsed: interpreted.fallbackUsed,
             fallbackReason: interpreted.fallbackReason,
+            invalidModelSchemaRecovery:
+              interpreted.fallbackReason === "invalid_model_schema_recovered" ? interpretation.intent : undefined,
             modelRequested: interpreted.modelRequested,
             modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
             modelErrorCode: interpreted.modelErrorCode,
@@ -1858,7 +1980,14 @@ function traceFromInteractionFields(interaction: AgentInteraction, strictMode: b
     selectedTool: selectedToolFromInteraction(interaction),
     modelRequested: modelRequestedFromInteraction(interaction),
     modelResponseSchemaValid: modelResponseSchemaValidFromInteraction(interaction),
-    modelErrorCode: modelErrorCodeFromInteraction(interaction)
+    modelErrorCode: modelErrorCodeFromInteraction(interaction),
+    modelCalled: modelCalledFromInteraction(interaction),
+    targetQueryRaw: stringMetadataFromInteraction(interaction, "targetQueryRaw"),
+    targetQueryCleaned: stringMetadataFromInteraction(interaction, "targetQueryCleaned"),
+    lookupProjection: stringMetadataFromInteraction(interaction, "lookupProjection"),
+    matchReason: stringMetadataFromInteraction(interaction, "matchReason"),
+    requiresConfirmation: booleanMetadataFromInteraction(interaction, "requiresConfirmation"),
+    invalidModelSchemaRecovery: stringMetadataFromInteraction(interaction, "invalidModelSchemaRecovery")
   });
 }
 
@@ -1984,27 +2113,6 @@ function composeStartedReplyWithQueuedContacts(baseReply: string, pendingCandida
   return `${baseReply}\n\n${footer}`;
 }
 
-function shouldBypassModelForListPeopleRecall(text: string): boolean {
-  if (!isListPeopleRecall(text)) {
-    return false;
-  }
-
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/\bu\b/g, "you")
-    .replace(/[?.!]+$/g, "")
-    .replace(/\s+/g, " ");
-
-  return [
-    /^list(?: me)? (?:all|every|everyone|everybody|the) (?:people|persons?|contacts?) i (?:met|know|saved|remember)$/,
-    /^list(?: me)? (?:all|every|everyone|everybody|the) (?:people|persons?|contacts?)$/,
-    /^what (?:person|people|contacts?) do i (?:know|have|met|saved|remember)(?: so far)?$/,
-    /^what (?:person|people|contacts?) do you (?:know|have|remember)(?: (?:yet|so far))?(?: (?:in|from))? my (?:contact|contacts|network)$/,
-    /^who do i (?:know|have|met|saved|remember)$/
-  ].some((pattern) => pattern.test(normalized));
-}
-
 function suppressedPendingReminderFromInteraction(interaction: AgentInteraction): boolean | undefined {
   if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
     return undefined;
@@ -2058,6 +2166,7 @@ function activeWorkflowKindFromInteraction(interaction: AgentInteraction): Frien
   if (
     kind === "pending_contact_confirm" ||
     kind === "duplicate_resolution" ||
+    kind === "pending_delete_disambiguation" ||
     kind === "pending_delete_confirm" ||
     kind === "pending_update_confirm" ||
     kind === "none"
@@ -2105,6 +2214,28 @@ function modelErrorCodeFromInteraction(interaction: AgentInteraction): FriendyTr
 
   const modelErrorCode = (interaction.interpretedIntentJson as { modelErrorCode?: unknown }).modelErrorCode;
   return typeof modelErrorCode === "string" ? modelErrorCode : undefined;
+}
+
+function modelCalledFromInteraction(interaction: AgentInteraction): boolean {
+  return routeSourceFromModel(interaction.modelUsed) === "llm";
+}
+
+function stringMetadataFromInteraction(interaction: AgentInteraction, key: string): string | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const value = (interaction.interpretedIntentJson as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function booleanMetadataFromInteraction(interaction: AgentInteraction, key: string): boolean | undefined {
+  if (typeof interaction.interpretedIntentJson !== "object" || interaction.interpretedIntentJson === null) {
+    return undefined;
+  }
+
+  const value = (interaction.interpretedIntentJson as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function hardSafetyDecisionFromRoute(value: unknown): "reject" | undefined {
@@ -2229,6 +2360,10 @@ function parseNumberedSelection(value: string): number | undefined {
   return Number.isInteger(index) && index >= 0 ? index : undefined;
 }
 
+function isDeleteBothDisambiguationReply(value: string): boolean {
+  return /^(?:both|delete both|all|delete all)$/iu.test(value.trim());
+}
+
 function isMemoryMutationCancelReply(value: string): boolean {
   return /^(?:no|nope|cancel|cancel it|never mind|nevermind|stop|don't|do not)$/iu.test(value.trim());
 }
@@ -2349,19 +2484,35 @@ function executeMemoryMutationRequest(
   toolCalls: AgentToolCall[],
   now: string,
   strictMode: boolean
-): { outboundText: string; nextContext: ConversationContext } {
+): { outboundText: string; nextContext: ConversationContext; trace: MemoryMutationTraceMetadata } {
+  const targetQueryRaw = request.rawQuery ?? request.query;
+  const targetQueryCleaned = request.query ? cleanMemoryTargetQuery(request.query) : undefined;
   if (request.kind === "delete") {
     toolCalls.push("lookup_memory_target");
-    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "delete", includeContext: true });
+    const lookup = tools.lookup_memory_target(message.userId, targetQueryCleaned ?? request.query, {
+      operation: "delete",
+      includeContext: true,
+      recentPeople: validLastPeopleList(context, now)?.people
+    });
+    const baseTrace = {
+      targetQueryRaw,
+      targetQueryCleaned,
+      lookupProjection: lookup.kind === "single" || lookup.kind === "ambiguous" ? "grouped_people" : "none",
+      matchReason: lookup.kind === "single" ? lookup.matchedVia : lookup.kind,
+      requiresConfirmation: lookup.kind === "single" || lookup.kind === "ambiguous"
+    };
     if (lookup.kind === "none") {
-      return { outboundText: composeNoMatchReply(), nextContext: context };
+      return { outboundText: composeNoMatchReply(), nextContext: context, trace: baseTrace };
     }
 
     if (lookup.kind === "ambiguous") {
       return {
         outboundText: composeDeleteMemoryDisambiguationReply({
           query: lookup.query,
-          options: lookup.options.map((option) => ({ displayName: option.displayName }))
+          options: lookup.options.map((option) => ({
+            displayName: option.displayName,
+            detail: option.detail
+          }))
         }),
         nextContext: {
           ...context,
@@ -2369,10 +2520,13 @@ function executeMemoryMutationRequest(
             query: lookup.query,
             options: lookup.options.map((option) => ({
               memoryId: option.memoryId,
-              displayName: option.displayName
+              memoryIds: option.memoryIds,
+              displayName: option.displayName,
+              detail: option.detail
             }))
           }
-        }
+        },
+        trace: baseTrace
       };
     }
 
@@ -2384,17 +2538,30 @@ function executeMemoryMutationRequest(
         ...clearSearchContext(context),
         pendingDelete: {
           memoryId: lookup.memoryId,
+          memoryIds: lookup.memoryIds ?? [lookup.memoryId],
           displayName: lookup.displayName
         }
-      }
+      },
+      trace: baseTrace
     };
   }
 
   if (request.kind === "update" && request.query) {
     toolCalls.push("lookup_memory_target");
-    const lookup = tools.lookup_memory_target(message.userId, request.query, { operation: "update", includeContext: true });
+    const lookup = tools.lookup_memory_target(message.userId, targetQueryCleaned ?? request.query, {
+      operation: "update",
+      includeContext: true,
+      recentPeople: validLastPeopleList(context, now)?.people
+    });
+    const baseTrace = {
+      targetQueryRaw,
+      targetQueryCleaned,
+      lookupProjection: lookup.kind === "single" || lookup.kind === "ambiguous" ? "grouped_people" : "none",
+      matchReason: lookup.kind === "single" ? lookup.matchedVia : lookup.kind,
+      requiresConfirmation: lookup.kind === "single" || lookup.kind === "ambiguous"
+    };
     if (lookup.kind === "none") {
-      return { outboundText: composeNoMatchReply(), nextContext: context };
+      return { outboundText: composeNoMatchReply(), nextContext: context, trace: baseTrace };
     }
 
     if (lookup.kind === "ambiguous") {
@@ -2413,14 +2580,16 @@ function executeMemoryMutationRequest(
               displayName: option.displayName
             }))
           }
-        }
+        },
+        trace: baseTrace
       };
     }
 
     return {
       outboundText: composeUpdateMemoryConfirmReply({
         displayName: lookup.displayName,
-        proposedContextNote: request.contextNote
+        proposedContextNote: request.contextNote,
+        mode: request.mode
       }),
       nextContext: {
         ...clearSearchContext(context),
@@ -2428,15 +2597,17 @@ function executeMemoryMutationRequest(
           memoryId: lookup.memoryId,
           displayName: lookup.displayName,
           query: request.query,
-          proposedContextNote: request.contextNote
+          proposedContextNote: request.contextNote,
+          mode: request.mode
         }
-      }
+      },
+      trace: baseTrace
     };
   }
 
   const target = resolveMemoryMutationTarget(message, request, repo, tools, context, toolCalls, message.receivedAt);
   if (target.kind === "none") {
-    return { outboundText: composeNoMatchReply(), nextContext: context };
+    return { outboundText: composeNoMatchReply(), nextContext: context, trace: { requiresConfirmation: false } };
   }
 
   if (target.kind === "ambiguous") {
@@ -2457,14 +2628,15 @@ function executeMemoryMutationRequest(
         })
       );
     }
-    return { outboundText: target.message, nextContext: context };
+    return { outboundText: target.message, nextContext: context, trace: { matchReason: "ambiguous", requiresConfirmation: true } };
   }
 
   const memory = target.memory;
   return {
     outboundText: composeUpdateMemoryConfirmReply({
       displayName: memory.displayName,
-      proposedContextNote: request.contextNote
+      proposedContextNote: request.contextNote,
+      mode: request.mode
     }),
     nextContext: {
       ...clearSearchContext(context),
@@ -2472,9 +2644,11 @@ function executeMemoryMutationRequest(
       pendingUpdate: {
         memoryId: memory.id,
         displayName: memory.displayName,
-        proposedContextNote: request.contextNote
+        proposedContextNote: request.contextNote,
+        mode: request.mode
       }
-    }
+    },
+    trace: { matchReason: "active_or_recent_search", requiresConfirmation: true }
   };
 }
 
@@ -2528,7 +2702,7 @@ function resolveMemoryMutationTarget(
 
 function detectMemoryMutationRequest(text: string): MemoryMutationRequest | undefined {
   const trimmed = text.trim();
-  if (isDeleteAllMemoryRequest(trimmed)) {
+  if (isBulkDeleteMemoryRequest(trimmed)) {
     return undefined;
   }
 
@@ -2539,15 +2713,25 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
     const query = cleanMemoryMutationTarget(contextChangeMatch[1]);
     const contextNote = cleanMemoryMutationContext(contextChangeMatch[2]);
     if (query && contextNote) {
-      return { kind: "update", query, contextNote };
+      return { kind: "update", query, rawQuery: contextChangeMatch[1].trim(), contextNote };
     }
+  }
+
+  const forPersonAlsoUpdate = detectForPersonAlsoUpdate(trimmed);
+  if (forPersonAlsoUpdate) {
+    return forPersonAlsoUpdate;
+  }
+
+  const namedAlsoUpdate = detectNamedAlsoUpdate(trimmed);
+  if (namedAlsoUpdate) {
+    return namedAlsoUpdate;
   }
 
   const deleteMatch = trimmed.match(/^(?:delete|remove|forget)\s+(.+?)(?:\s+memory)?$/i);
   if (deleteMatch) {
-    const query = deleteMatch[1].trim();
+    const query = cleanMemoryTargetQuery(deleteMatch[1]);
     if (query.length > 0 && !/\b(previous|system|instruction|rules?)\b/i.test(query)) {
-      return { kind: "delete", query };
+      return { kind: "delete", query, rawQuery: deleteMatch[1].trim() };
     }
   }
 
@@ -2556,7 +2740,7 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
     const query = leadingActuallyMatch[1].trim();
     const contextNote = leadingActuallyMatch[2].trim();
     if (query.length > 0 && contextNote.length > 0 && !/^(she|he|they|them|her|him)$/i.test(query)) {
-      return { kind: "update", query, contextNote };
+      return { kind: "update", query: cleanMemoryTargetQuery(query), rawQuery: query, contextNote };
     }
   }
 
@@ -2573,28 +2757,87 @@ function detectMemoryMutationRequest(text: string): MemoryMutationRequest | unde
     const query = updateMatch[1].trim();
     const contextNote = updateMatch[2].trim();
     if (query.length > 0 && contextNote.length > 0) {
-      return { kind: "update", query, contextNote };
+      return { kind: "update", query: cleanMemoryTargetQuery(query), rawQuery: query, contextNote };
     }
   }
 
   return undefined;
 }
 
-function isDeleteAllMemoryRequest(text: string): boolean {
-  const normalized = text
-    .trim()
-    .toLowerCase()
-    .replace(/\bu\b/g, "you")
-    .replace(/[?.!]+$/g, "")
-    .replace(/\s+/g, " ");
-  return /\b(delete|remove|forget)\b/.test(normalized) && /\b(everyone|everybody|all people|all contacts|all memories)\b/.test(normalized);
+function detectForPersonAlsoUpdate(text: string): MemoryMutationRequest | undefined {
+  const match = text.match(/^for\s+(.+?)\s+((?:besides?|also)\b.+)$/i);
+  const rawQuery = match?.[1]?.trim();
+  const rawContext = match?.[2]?.trim();
+  if (!rawQuery || !rawContext || !isConservativeMemoryPersonTarget(rawQuery)) {
+    return undefined;
+  }
+
+  const contextNote = buildForPersonAlsoContext(rawContext);
+  if (!contextNote) {
+    return undefined;
+  }
+
+  return {
+    kind: "update",
+    query: cleanMemoryTargetQuery(rawQuery),
+    rawQuery,
+    contextNote,
+    mode: "append"
+  };
+}
+
+function detectNamedAlsoUpdate(text: string): MemoryMutationRequest | undefined {
+  const match = text.match(/^(.+?)\s+(?:is|are|was|were)\s+also\s+(.+?)\s*(?:too)?[?.!]*$/i);
+  const rawQuery = match?.[1]?.trim();
+  const rawFact = match?.[2]?.trim();
+  if (!rawQuery || !rawFact || !isConservativeMemoryPersonTarget(rawQuery)) {
+    return undefined;
+  }
+
+  const fact = cleanMemoryMutationContext(rawFact.replace(/\s+too$/i, ""));
+  if (!fact) {
+    return undefined;
+  }
+
+  return {
+    kind: "update",
+    query: cleanMemoryTargetQuery(rawQuery),
+    rawQuery,
+    contextNote: `is also ${fact}`,
+    mode: "append"
+  };
+}
+
+function isConservativeMemoryPersonTarget(value: string): boolean {
+  const tokens = value.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens.length > 4) {
+    return false;
+  }
+
+  return tokens.every((token) => /^[a-z][a-z0-9.'-]*$/i.test(token));
+}
+
+function buildForPersonAlsoContext(value: string): string | undefined {
+  const stripped = value.replace(/^(?:besides?|also)\b\s*/i, "").trim();
+  if (!looksLikeRelationshipAppendContext(stripped)) {
+    return undefined;
+  }
+
+  const parts = stripped.split(/\s*,\s*/).map(cleanMemoryMutationContext).filter(Boolean);
+  const contextNote = parts.length > 1 ? parts.at(-1) : parts[0];
+  const cleaned = cleanMemoryMutationContext(contextNote ?? "");
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function looksLikeRelationshipAppendContext(value: string): boolean {
+  return (
+    /\bi\s+met\s+(?:him|her|them)?\b/i.test(value) ||
+    /(?:^|[;,.]\s*)(?:she|he|they|her|him|them)\s+(?:is|are|was|were|has|have)\b/i.test(value)
+  );
 }
 
 function cleanMemoryMutationTarget(value: string): string {
-  return value
-    .trim()
-    .replace(/^["'`/]+|["'`/]+$/g, "")
-    .replace(/\s+/g, " ");
+  return cleanMemoryTargetQuery(value);
 }
 
 function cleanMemoryMutationContext(value: string): string {
@@ -2612,15 +2855,17 @@ function memoryMutationRequestFromInterpretation(
   interpretation: MessageInterpretation
 ): MemoryMutationRequest | undefined {
   if (interpretation.intent === "delete_memory_request") {
-    const query = extractDeleteTargetQuery(message.text, interpretation);
-    return query ? { kind: "delete", query } : undefined;
+    const rawQuery = extractDeleteTargetQuery(message.text, interpretation);
+    const query = cleanMemoryTargetQuery(rawQuery);
+    return query ? { kind: "delete", query, rawQuery } : undefined;
   }
 
   if (interpretation.intent === "update_memory") {
-    const query = interpretation.target?.displayName || interpretation.query.trim();
+    const rawQuery = interpretation.target?.displayName || interpretation.query;
+    const query = cleanMemoryTargetQuery(rawQuery);
     const contextNote = interpretation.contextNote.trim();
     if (query && contextNote) {
-      return { kind: "update", query, contextNote };
+      return { kind: "update", query, rawQuery, contextNote };
     }
   }
 
@@ -2779,8 +3024,40 @@ function validRecentSearchCandidateIds(context: ConversationContext, now: string
   return context.lastSearch.candidateMemoryIds;
 }
 
+function validLastPeopleList(context: ConversationContext, now: string): LastPeopleListContext | undefined {
+  if (!context.lastPeopleList) {
+    return undefined;
+  }
+
+  const nowMs = Date.parse(now);
+  const expiresAtMs = Date.parse(context.lastPeopleList.expiresAt);
+  if (Number.isNaN(nowMs) || Number.isNaN(expiresAtMs) || nowMs > expiresAtMs) {
+    return undefined;
+  }
+
+  return context.lastPeopleList;
+}
+
 function clearSearchContext(context: ConversationContext): ConversationContext {
   return { ...context, lastSearch: undefined };
+}
+
+function rememberLastPeopleList(context: ConversationContext, reply: AgentReplyDraft, now: string): ConversationContext {
+  if (!reply.lastPeopleList) {
+    return context;
+  }
+
+  const nowMs = Date.parse(now);
+  const createdAt = Number.isNaN(nowMs) ? new Date().toISOString() : new Date(nowMs).toISOString();
+  const expiresAt = new Date((Number.isNaN(nowMs) ? Date.now() : nowMs) + SEARCH_CONTEXT_TTL_MS).toISOString();
+  return {
+    ...context,
+    lastPeopleList: {
+      createdAt,
+      expiresAt,
+      people: reply.lastPeopleList
+    }
+  };
 }
 
 function isSearchContextReset(text: string): boolean {
@@ -3026,10 +3303,17 @@ function listPeople(
       tags: interpretation.search?.filters?.tags ?? interpretation.tags
     }
   });
-  return replyDraft(composeListPeopleReply({
+  const text = composeListPeopleReply({
     result,
     preferBullets: /\b(?:bullet|bullets|list)\b/i.test(message.text)
-  }));
+  });
+  return {
+    ...replyDraft(text),
+    lastPeopleList: result.people.map((person) => ({
+      displayName: person.displayName,
+      memoryIds: person.memories.map((memory) => memory.memoryId)
+    }))
+  };
 }
 
 function replyDraft(text: string, expressionBundle?: ExpressionFactBundle): AgentReplyDraft {
@@ -3085,10 +3369,10 @@ async function polishAgentReply(
         expressionUsed: true,
         expressionValidationPassed: false,
         expressionFallbackReason: "api_error"
+            }
+          };
+        }
       }
-    };
-  }
-}
 
 function expressionMetadata(result: ExpressionComposerResult): ExpressionMetadata {
   return {

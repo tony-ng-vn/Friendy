@@ -12,6 +12,7 @@ import {
   validateMessageInterpretation
 } from "./interpretation";
 import { buildInterpreterSystemPrompt, buildStructuredOutputInstructions } from "./behaviorContract";
+import { routeDeterministicRelationshipRequest } from "./deterministicRouter";
 import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
 import { FriendyStrictModeError, type FriendyStrictModeErrorCode } from "./strictMode";
 import { createFriendyTrace } from "./trace";
@@ -38,9 +39,14 @@ export type MessageInterpreterResult = {
   interpretation: MessageInterpretation;
   modelUsed: string;
   error: string;
-  routeSource: "llm" | "fallback";
+  routeSource: "llm" | "fallback" | "deterministic";
   fallbackUsed: boolean;
-  fallbackReason?: "missing_model_api_key" | "model_interpreter_failed" | "invalid_model_output" | "explicit_fallback";
+  fallbackReason?:
+    | "missing_model_api_key"
+    | "model_interpreter_failed"
+    | "invalid_model_output"
+    | "invalid_model_schema_recovered"
+    | "explicit_fallback";
   modelRequested?: string;
   modelResponseSchemaValid?: boolean;
   modelErrorCode?: FriendyStrictModeErrorCode;
@@ -60,6 +66,8 @@ type OpenAIInterpreterOptions = {
   fetchImpl?: FetchLike;
   /** Rule-based interpreter used only when strictMode is explicitly disabled. */
   fallback?: MessageInterpreter;
+  /** Diagnostic sink for invalid model output; defaults to console. */
+  logger?: Pick<Console, "error">;
 };
 
 /**
@@ -84,7 +92,8 @@ export function createOpenAIInterpreter({
   provider = "openai",
   strictMode = true,
   fetchImpl = fetch,
-  fallback = createRuleBasedInterpreter()
+  fallback = createRuleBasedInterpreter(),
+  logger = console
 }: OpenAIInterpreterOptions): MessageInterpreter {
   return {
     async interpret(input) {
@@ -126,6 +135,23 @@ export function createOpenAIInterpreter({
         } catch (error) {
           lastError = error instanceof Error ? error.message : String(error);
           fallbackReason = isInvalidModelOutputError(error) ? "invalid_model_output" : "model_interpreter_failed";
+          if (fallbackReason === "invalid_model_output") {
+            logInvalidModelOutput({ logger, model, error });
+            const recovered = recoverSafeDeterministicInterpretation(input.message.text);
+            if (recovered) {
+              return {
+                interpretation: recovered,
+                modelUsed: model,
+                error: lastError,
+                routeSource: "deterministic",
+                fallbackUsed: false,
+                fallbackReason: "invalid_model_schema_recovered",
+                modelRequested: model,
+                modelResponseSchemaValid: false,
+                modelErrorCode: "INVALID_ROUTE_SCHEMA"
+              };
+            }
+          }
           const code = fallbackReason === "invalid_model_output" ? "INVALID_ROUTE_SCHEMA" : "MODEL_INTERPRETATION_FAILED";
           throwStrictInterpreterError({
             strictMode,
@@ -157,6 +183,34 @@ export function createOpenAIInterpreter({
       };
     }
   };
+}
+
+function recoverSafeDeterministicInterpretation(text: string): MessageInterpretation | undefined {
+  const route = routeDeterministicRelationshipRequest({ text });
+  if (route?.kind !== "list_people") {
+    return undefined;
+  }
+
+  return validateMessageInterpretation({
+    intent: "list_people",
+    confidence: 1,
+    domain: "relationship_memory",
+    conversationRelation: "starts_new_relationship_task",
+    search: {
+      mode: "list_people",
+      semanticQuery: text,
+      exactTerms: [],
+      topK: 20
+    },
+    people: [],
+    event: { name: "", dateText: "", location: "" },
+    dateContext: undefined,
+    contextNote: "",
+    query: text,
+    tags: [],
+    needsClarification: false,
+    clarificationQuestion: ""
+  });
 }
 
 /** Deterministic local fallback for tests and fixtures when model calls fail or are not configured. */
@@ -206,12 +260,52 @@ function throwStrictInterpreterError(input: {
 }
 
 function isInvalidModelOutputError(error: unknown): boolean {
+  if (error instanceof InvalidOpenAIModelOutputError) {
+    return true;
+  }
+
   if (error instanceof SyntaxError) {
     return true;
   }
 
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("Invalid message interpretation") || message.includes("JSON");
+}
+
+class InvalidOpenAIModelOutputError extends Error {
+  readonly rawOutput: string;
+  readonly validationError: string;
+
+  constructor(rawOutput: string, validationError: unknown) {
+    const message = validationError instanceof Error ? validationError.message : String(validationError);
+    super(`Invalid message interpretation from OpenAI: ${message}`);
+    this.name = "InvalidOpenAIModelOutputError";
+    this.rawOutput = rawOutput;
+    this.validationError = message;
+  }
+}
+
+function logInvalidModelOutput({
+  logger,
+  model,
+  error
+}: {
+  logger: Pick<Console, "error">;
+  model: string;
+  error: unknown;
+}): void {
+  if (!(error instanceof InvalidOpenAIModelOutputError)) {
+    return;
+  }
+
+  logger.error(
+    "[friendy:openai_interpreter:invalid_output]",
+    JSON.stringify({
+      model,
+      rawOutput: error.rawOutput,
+      validationError: error.validationError
+    })
+  );
 }
 
 async function callOpenAI({
@@ -240,8 +334,30 @@ async function callOpenAI({
 
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
   const content = payload.choices?.[0]?.message?.content;
-  const parsed = typeof content === "string" ? JSON.parse(content) : content;
-  return validateMessageInterpretation(parsed);
+  let parsed: unknown;
+  try {
+    parsed = typeof content === "string" ? JSON.parse(content) : content;
+  } catch (error) {
+    throw new InvalidOpenAIModelOutputError(serializeModelOutputForLog(content), error);
+  }
+
+  try {
+    return validateMessageInterpretation(parsed);
+  } catch (error) {
+    throw new InvalidOpenAIModelOutputError(serializeModelOutputForLog(parsed), error);
+  }
+}
+
+function serializeModelOutputForLog(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function buildChatCompletionsBody({

@@ -151,6 +151,77 @@ describe("lookupMemoryTarget", () => {
     });
   });
 
+  it("cleans natural language wrapper text before matching display names", () => {
+    const memories = [
+      memory("memory_z", "Z"),
+      memory("memory_z2", "Z2"),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "delete Z2 please",
+      memories,
+    });
+
+    expect(result).toEqual({
+      kind: "single",
+      memoryId: "memory_z2",
+      displayName: "Z2",
+      score: 100,
+      matchedVia: "exact",
+    });
+  });
+
+  it("returns separate exact duplicate-name delete targets so the caller can disambiguate", () => {
+    const memories = [
+      memory("memory_z_1", "Z", { contextNote: "met at dinner" }),
+      memory("memory_z_2", "Z", { contextNote: "works on Friendy" }),
+      memory("memory_z2", "Z2", { contextNote: "met at AI dinner" }),
+      memory("memory_z_3", "Z", { contextNote: "from testing" }),
+      memory("memory_sarah", "Sarah Fan", { contextNote: "community lead" }),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "Z",
+      memories,
+      operation: "delete",
+    });
+
+    expect(result).toEqual({
+      kind: "ambiguous",
+      query: "Z",
+      options: [
+        { memoryId: "memory_z_1", displayName: "Z", detail: "met at dinner", score: 100 },
+        { memoryId: "memory_z_2", displayName: "Z", detail: "works on Friendy", score: 100 },
+        { memoryId: "memory_z_3", displayName: "Z", detail: "from testing", score: 100 },
+      ],
+    });
+  });
+
+  it("deduplicates ambiguous options by display name", () => {
+    const memories = [
+      memory("memory_sarah_1", "Sarah", { contextNote: "met at Photon dinner" }),
+      memory("memory_sarah_2", "Sarah", { contextNote: "knows hardware founders" }),
+      memory("memory_sara_kim", "Sara Kim", { contextNote: "met at recruiting meetup" }),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "Srah",
+      memories,
+    });
+
+    expect(result).toEqual({
+      kind: "ambiguous",
+      query: "Srah",
+      options: [
+        { memoryId: "memory_sarah_1", memoryIds: ["memory_sarah_1", "memory_sarah_2"], displayName: "Sarah", score: 74 },
+        { memoryId: "memory_sara_kim", displayName: "Sara Kim", score: 73 },
+      ],
+    });
+  });
+
   it("ignores memories for other users and deleted memories", () => {
     const memories = [
       memory("memory_unnamed", "Unnamed Contact"),

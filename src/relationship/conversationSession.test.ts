@@ -111,4 +111,47 @@ describe("conversation session", () => {
     expect(session.carryover?.recentPeople).toHaveLength(10);
     expect(session.carryover?.recentPeople[0]).toBe("Person 2");
   });
+
+  it("migrates pending delete disambiguation candidates into active workflow state", () => {
+    const session = migrateFromLegacyContext(
+      { userId: "user_1", platform: "terminal" },
+      {
+        pendingDelete: {
+          query: "Sarah Fan",
+          options: [
+            {
+              memoryId: "memory_sarah_photon",
+              displayName: "Sarah Fan",
+              detail: "I met you during Photon Residency II"
+            },
+            {
+              memoryId: "memory_sarah_leader",
+              displayName: "Sarah Fan",
+              detail: "is also a community leader"
+            }
+          ]
+        },
+        recentPeople: []
+      },
+      "2026-05-20T12:10:00.000Z"
+    );
+
+    expect(session.activeWorkflow).toEqual({
+      kind: "pending_delete_disambiguation",
+      query: "Sarah Fan",
+      candidates: [
+        {
+          memoryId: "memory_sarah_photon",
+          displayName: "Sarah Fan",
+          detail: "I met you during Photon Residency II"
+        },
+        {
+          memoryId: "memory_sarah_leader",
+          displayName: "Sarah Fan",
+          detail: "is also a community leader"
+        }
+      ],
+      openedAt: "2026-05-20T12:10:00.000Z"
+    });
+  });
 });
