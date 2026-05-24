@@ -136,8 +136,8 @@ export type RelationshipRepository = {
   ): RelationshipMemory;
   ignoreCandidate(candidateId: string): void;
   listMemories(userId?: string): RelationshipMemory[];
-  listMemorySearchDocuments(userId?: string): MemorySearchDocument[];
-  searchMemoryDocuments?(userId: string, query: string, terms: string[]): RetrievalCandidate[];
+  listMemorySearchDocuments(userId?: string, contactId?: string): MemorySearchDocument[];
+  searchMemoryDocuments?(userId: string, query: string, terms: string[], contactId?: string): RetrievalCandidate[];
   addMemory(memory: RelationshipMemory): RelationshipMemory;
   updateMemory(memoryId: string, updates: UpdateMemoryInput): RelationshipMemory;
   deleteMemory(memoryId: string, input: DeleteMemoryInput): RelationshipMemory;
@@ -339,11 +339,12 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       return userId ? visibleMemories.filter((memory) => memory.userId === userId) : [...visibleMemories];
     },
 
-    listMemorySearchDocuments(userId?: string): MemorySearchDocument[] {
+    listMemorySearchDocuments(userId?: string, contactId?: string): MemorySearchDocument[] {
       const visibleMemories = memories.filter((memory) => !memory.deletedAt);
-      return (userId ? visibleMemories.filter((memory) => memory.userId === userId) : visibleMemories).map(
+      const scopedMemories = (userId ? visibleMemories.filter((memory) => memory.userId === userId) : visibleMemories).map(
         buildMemorySearchDocument
       );
+      return contactId ? scopedMemories.filter((document) => document.contactId === contactId) : scopedMemories;
     },
 
     addMemory(memory: RelationshipMemory): RelationshipMemory {

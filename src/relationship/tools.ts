@@ -167,7 +167,7 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       return { duplicateGroups: result.duplicateGroups };
     },
 
-    search_memories(userId: string, query: string): MemorySearchResult[] {
+    search_memories(userId: string, query: string, options: { contactId?: string } = {}): MemorySearchResult[] {
       const queryAnalysis = analyzeSearchQuery(query);
       if (queryAnalysis.isListAll) {
         return repo.listMemories(userId).map((memory) => ({
@@ -178,11 +178,14 @@ export function createRelationshipTools(repo: RelationshipRepository) {
       }
 
       const repositoryCandidates = groupRetrievalCandidates(
-        repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
+        (options.contactId
+          ? repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms, options.contactId)
+          : repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms)) ?? []
       );
 
       const scored = repo
         .listMemories(userId)
+        .filter((memory) => !options.contactId || memory.personId === options.contactId || memory.candidateId === options.contactId)
         .map((memory) => mergeRepositoryCandidates(scoreMemory(memory, queryAnalysis), repositoryCandidates.get(memory.id) ?? [], queryAnalysis))
         .filter((result) => result.score > 0)
         .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
