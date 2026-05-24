@@ -480,6 +480,16 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       });
     },
 
+    listAppleContactLinksForPerson(userId: string, personId: string): AppleContactLink[] {
+      return readRows<AppleContactLink>(
+        db
+          .prepare(
+            "SELECT raw_json FROM apple_contact_links WHERE user_id = ? AND person_id = ? ORDER BY linked_at, id"
+          )
+          .all(userId, personId)
+      );
+    },
+
     findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined {
       const link = readOptionalRow<AppleContactLink>(
         db

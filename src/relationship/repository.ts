@@ -151,6 +151,7 @@ export type RelationshipRepository = {
   listInteractions(userId?: string): AgentInteraction[];
   createPersonIdentity(input: CreatePersonIdentityInput): PersonIdentity;
   linkAppleContact(input: LinkAppleContactInput): AppleContactLink;
+  listAppleContactLinksForPerson(userId: string, personId: string): AppleContactLink[];
   findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined;
   findPeopleByDisplayNameNormalized(userId: string, displayName: string): PersonIdentity[];
   attachCandidateToPerson(candidateId: string, personId: string): ContactCandidate;
@@ -452,6 +453,12 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       };
       appleContactLinks.push(link);
       return link;
+    },
+
+    listAppleContactLinksForPerson(userId: string, personId: string): AppleContactLink[] {
+      return appleContactLinks
+        .filter((link) => link.userId === userId && link.personId === personId)
+        .sort((left, right) => left.linkedAt.localeCompare(right.linkedAt) || left.id.localeCompare(right.id));
     },
 
     findPersonByMethodFingerprint(userId: string, methodFingerprint: string): PersonIdentity | undefined {

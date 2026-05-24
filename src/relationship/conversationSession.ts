@@ -6,6 +6,7 @@
  * Persisted via `conversationSessionStore`; helpers here stay pure projections.
  */
 import type { TemporalContext } from "./temporalContext";
+import type { AppleContactFields } from "./contacts/macContactsAdapter";
 import type { AgentPlatform } from "./types";
 
 export const MAX_ROUTE_HISTORY = 10;
@@ -64,6 +65,25 @@ export type ActiveWorkflow =
       memoryId: string;
       displayName: string;
       proposedContextNote: string;
+      openedAt: string;
+    }
+  | {
+      kind: "pending_apple_contact_create";
+      displayName: string;
+      fields: AppleContactFields;
+      openedAt: string;
+    }
+  | {
+      kind: "pending_apple_contact_update";
+      displayName: string;
+      id: string;
+      patch: AppleContactFields;
+      openedAt: string;
+    }
+  | {
+      kind: "pending_apple_contact_delete";
+      displayName: string;
+      id: string;
       openedAt: string;
     };
 

@@ -37,7 +37,8 @@ const routerContext: RouterInputEnvelope = {
   domainStateSummary: {
     pendingCandidates: [],
     knownPeopleNamed: [],
-    possibleDuplicates: []
+    possibleDuplicates: [],
+    linkedAppleContacts: []
   },
   availableTools: [],
   availableRouteCapabilities: ["search_memory", "answer_pending_contact_prompt"]
@@ -118,6 +119,7 @@ describe("openai message interpreter", () => {
       "frameId",
       "candidateId",
       "memoryId",
+      "appleContactIdentifier",
       "displayName"
     ]);
     expect(body.response_format.json_schema.schema.properties.search.required).toEqual([

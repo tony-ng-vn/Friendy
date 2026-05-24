@@ -12,8 +12,9 @@
 - [x] Add Apple-specific interpretation intents and prompt/policy contract.
 - [x] Expose Apple Contact tools and intents through route capability lists.
 - [x] Add confirmation workflow state for Apple Contact create/update/delete and block writes before explicit `yes`.
-- [ ] Add RED router-envelope test for linked Apple Contact metadata injection.
-- [ ] Inject linked Apple Contact metadata into the router input envelope before LLM routing.
+- [x] Add RED router-envelope test for linked Apple Contact metadata injection.
+- [x] Inject linked Apple Contact metadata into the router input envelope before LLM routing.
+- [x] Persist pending Apple Contact workflows through the conversation session store.
 - [ ] Update docs and handoff artifacts for the new actuator, adapter, tools, workflows, and verification evidence.
 - [ ] Run required verification: `npm test`, `npm run build`, `npm run eval:agent`, relevant Swift/source checks, and `git diff --check`.
 - [ ] Commit incrementally with `<scope>:<message>` and push `main` after the goal is complete.

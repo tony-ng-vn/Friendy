@@ -5,6 +5,7 @@ import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openAIInterpreter";
 import { createRelationshipRepository } from "./repository";
 import { composePendingContactsFooter } from "./responseComposer";
+import { createInMemoryConversationSessionStore } from "./conversationSessionStore";
 import type { MacContactsAdapter } from "./contacts/macContactsAdapter";
 import type { ExpressionFactBundle } from "./expressionFacts";
 import type { MessageInterpreterInput } from "./routerInputEnvelope";
@@ -192,6 +193,67 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
   });
 
+  it("persists pending Apple Contact workflows in the conversation session store", async () => {
+    let createCalls = 0;
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const sessionStore = createInMemoryConversationSessionStore();
+    const adapter = fakeAppleContactsAdapter({
+      createAppleContact: async () => {
+        createCalls += 1;
+        return { identifier: "apple_contact_anna" };
+      }
+    });
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+    const firstAgent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      sessionStore,
+      interpreter: modelInterpreter({
+        intent: "request_apple_contact_create",
+        domain: "contact_management",
+        conversationRelation: "starts_new_contact_management_task",
+        appleContact: {
+          fields: {
+            givenName: "Anna",
+            familyName: "Lee",
+            phoneNumbers: [{ label: "mobile", value: "+14155551234" }]
+          }
+        },
+        people: [{ name: "Anna Lee", aliases: [], companyOrSchool: "", classYear: "", project: "", role: "" }]
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    await firstAgent.handleMessage(inbound("Add Anna Lee to my Apple Contacts with 415-555-1234"));
+
+    expect(sessionStore.getSession({ userId: fixtureUser.id, platform: "terminal" })?.activeWorkflow).toMatchObject({
+      kind: "pending_apple_contact_create",
+      displayName: "Anna Lee"
+    });
+
+    const secondAgent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      sessionStore,
+      interpreter: {
+        async interpret() {
+          throw new Error("confirmation should use the durable pending workflow");
+        }
+      },
+      strictMode: false,
+      now: () => "2026-05-20T12:01:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const confirmed = await secondAgent.handleMessage(inbound("yes", "2026-05-20T12:01:00.000Z"));
+
+    expect(confirmed.outbound.text).toBe("Saved Anna Lee to Apple Contacts.");
+    expect(createCalls).toBe(1);
+    expect(sessionStore.getSession({ userId: fixtureUser.id, platform: "terminal" })?.activeWorkflow).toBeUndefined();
+  });
+
   it("requires an Apple Contact identifier before opening update confirmation", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const adapter = fakeAppleContactsAdapter();
@@ -254,6 +316,123 @@ describe("interpreted relationship agent", () => {
     expect(confirmed.outbound.text).toBe("Deleted Anna Lee from Apple Contacts.");
     expect(confirmed.toolCalls).toEqual(["delete_apple_contact"]);
     expect(deletedIds).toEqual(["apple_contact_anna"]);
+  });
+
+  it("injects linked Apple Contact metadata into the router envelope before interpretation", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Anna Lee",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+    const candidate = repo.createCandidateFromDetectedContact({
+      ...fixtureDetectedContact,
+      userId: fixtureUser.id,
+      displayName: "Anna Lee",
+      phoneNumbers: ["+15550101020"],
+      emails: ["anna@photon.example"]
+    });
+    repo.attachCandidateToPerson(candidate.id, person.id);
+    const memory = repo.confirmCandidate(candidate.id, "Met at Photon Residency Dinner");
+    repo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      contactIdentifier: "apple_contact_anna",
+      methodFingerprint: "fingerprint_anna",
+      displayNameSnapshot: "Anna Lee",
+      linkedAt: "2026-05-23T12:01:00.000Z"
+    });
+    const appleReadInputs: Array<{ id?: string; query?: string }> = [];
+    const adapter = fakeAppleContactsAdapter({
+      getAppleContact: async (input) => {
+        appleReadInputs.push(input);
+        return {
+          ok: true as const,
+          contacts: [
+            {
+              identifier: "apple_contact_anna",
+              givenName: "Anna",
+              familyName: "Lee",
+              organizationName: "Photon",
+              jobTitle: "Founder",
+              note: "Prefers work email for intros",
+              phoneNumbers: [],
+              emailAddresses: [{ label: "work", value: "anna@photon.example" }],
+              postalAddresses: []
+            }
+          ]
+        };
+      }
+    });
+    let capturedInput: MessageInterpreterInput | undefined;
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret(input: MessageInterpreterInput) {
+          capturedInput = input;
+          return {
+            modelUsed: "test-model",
+            error: "",
+            routeSource: "llm" as const,
+            fallbackUsed: false,
+            modelRequested: "test-model",
+            modelResponseSchemaValid: true,
+            interpretation: fullInterpretation({
+              intent: "search_memory",
+              domain: "relationship_memory",
+              conversationRelation: "starts_new_relationship_task",
+              query: "Anna Lee",
+              search: {
+                mode: "lookup_person",
+                semanticQuery: "Anna Lee",
+                exactTerms: ["anna", "lee"],
+                filters: {},
+                topK: 5
+              }
+            })
+          };
+        }
+      },
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("What do I know about Anna Lee?"));
+    const linkedAppleContacts = (
+      capturedInput?.routerContext?.domainStateSummary as {
+        linkedAppleContacts?: Array<{
+          personId: string;
+          displayName: string;
+          contactIdentifier: string;
+          contact: {
+            jobTitle?: string;
+            organizationName?: string;
+            emailAddresses?: Array<{ label?: string; value: string }>;
+            note?: string;
+          };
+        }>;
+      }
+    ).linkedAppleContacts;
+
+    expect(result.toolCalls).toContain("search_memories");
+    expect(appleReadInputs).toEqual([{ id: "apple_contact_anna" }]);
+    expect(linkedAppleContacts).toEqual([
+      {
+        personId: person.id,
+        displayName: "Anna Lee",
+        contactIdentifier: "apple_contact_anna",
+        contact: expect.objectContaining({
+          jobTitle: "Founder",
+          organizationName: "Photon",
+          emailAddresses: [{ label: "work", value: "anna@photon.example" }],
+          note: "Prefers work email for intros"
+        })
+      }
+    ]);
+    expect(memory.personId).toBe(person.id);
   });
 
   it("asks same-or-different on start when a queued contact matches a saved display name", async () => {

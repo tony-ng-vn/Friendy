@@ -69,11 +69,18 @@ import { isEventRecallQuestion } from "./listPeopleRecall";
 import { isBulkDeleteMemoryRequest, routeDeterministicRelationshipRequest } from "./deterministicRouter";
 import { rankDisplayNameMatches } from "./personNameMatch";
 import { validateRequiredToolAvailability, validateRoutePolicy, type ValidatedRoutePolicy } from "./routePolicyValidator";
-import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerInputEnvelope";
+import { buildRouterInputEnvelope, type RouterLinkedAppleContact, type RouterRouteCapability } from "./routerInputEnvelope";
 import { cleanMemoryTargetQuery } from "./targetQueryCleanup";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
-import type { AppleContactFields } from "./contacts/macContactsAdapter";
+import type { AppleContact, AppleContactFields } from "./contacts/macContactsAdapter";
+import {
+  emptySession,
+  touchUpdatedAt,
+  type ActiveWorkflow,
+  type ConversationSessionKey
+} from "./conversationSession";
+import type { ConversationSessionStore } from "./conversationSessionStore";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
 import { FriendyStrictModeError } from "./strictMode";
 import {
@@ -180,6 +187,7 @@ type InterpretedRelationshipAgentOptions = {
   interpreter: MessageInterpreter;
   expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
+  sessionStore?: ConversationSessionStore;
   strictMode?: boolean;
   now?: () => string;
   timezone?: string;
@@ -284,6 +292,7 @@ export function createInterpretedRelationshipAgent({
   interpreter,
   expression,
   onboarding,
+  sessionStore,
   strictMode = true,
   now = () => new Date().toISOString(),
   timezone = "UTC"
@@ -294,8 +303,14 @@ export function createInterpretedRelationshipAgent({
   return {
     async handleMessage(message: InboundAgentMessage): Promise<InterpretedAgentResult> {
       const startedAt = Date.now();
+      const sessionKey = conversationSessionKeyFromMessage(message);
       const existingContext = conversationContexts.get(message.userId) ?? { recentPeople: [] };
-      let turnContext = existingContext;
+      let turnContext: ConversationContext = {
+        ...existingContext,
+        pendingAppleContact:
+          existingContext.pendingAppleContact ??
+          pendingAppleContactWorkflowFromSession(sessionStore?.getSession(sessionKey)?.activeWorkflow)
+      };
       const onboardingControl = detectOnboardingControl(message.text);
       if (onboardingControl) {
         onboarding?.applyControl(onboardingControl);
@@ -392,6 +407,7 @@ export function createInterpretedRelationshipAgent({
         const workflow = turnContext.pendingAppleContact;
         const outboundText = `Cancelled. I won't change ${workflow.displayName} in Apple Contacts.`;
         conversationContexts.set(message.userId, { ...turnContext, pendingAppleContact: undefined });
+        persistPendingAppleContactWorkflow(sessionStore, sessionKey, undefined, now());
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -434,6 +450,7 @@ export function createInterpretedRelationshipAgent({
         const toolCalls: AgentToolCall[] = [];
         const outboundText = await executePendingAppleContactWorkflow(workflow, tools, toolCalls);
         conversationContexts.set(message.userId, { ...turnContext, pendingAppleContact: undefined });
+        persistPendingAppleContactWorkflow(sessionStore, sessionKey, undefined, now());
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -473,12 +490,11 @@ export function createInterpretedRelationshipAgent({
       }
 
       if (isAppleContactManagementText(message.text)) {
-        const routerContext = buildRouterInputEnvelope({
+        const routerContext = await buildRouterInputEnvelopeForMessage({
           message,
           conversationState: pendingState,
-          memories: repo.listMemories(message.userId),
-          availableTools: ROUTER_AVAILABLE_TOOLS,
-          availableRouteCapabilities: ROUTER_AVAILABLE_ROUTE_CAPABILITIES
+          repo,
+          tools
         });
         const interpreted = await interpreter.interpret({ message, routerContext });
         if (strictMode && interpreted.fallbackUsed) {
@@ -516,6 +532,7 @@ export function createInterpretedRelationshipAgent({
             ? { ...turnContext, pendingAppleContact: appleContactRequest.workflow }
             : turnContext;
         conversationContexts.set(message.userId, nextContext);
+        persistPendingAppleContactWorkflow(sessionStore, sessionKey, nextContext.pendingAppleContact, now());
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -1589,12 +1606,11 @@ export function createInterpretedRelationshipAgent({
         };
       }
 
-      const routerContext = buildRouterInputEnvelope({
+      const routerContext = await buildRouterInputEnvelopeForMessage({
         message,
         conversationState: pendingState,
-        memories: repo.listMemories(message.userId),
-        availableTools: ROUTER_AVAILABLE_TOOLS,
-        availableRouteCapabilities: ROUTER_AVAILABLE_ROUTE_CAPABILITIES
+        repo,
+        tools
       });
       const interpreted = await interpreter.interpret({ message, routerContext });
       if (strictMode && interpreted.fallbackUsed) {
@@ -1717,6 +1733,7 @@ export function createInterpretedRelationshipAgent({
           ? { ...turnContext, pendingAppleContact: appleContactRequest.workflow }
           : { ...turnContext, pendingAppleContact: undefined };
         conversationContexts.set(message.userId, nextContext);
+        persistPendingAppleContactWorkflow(sessionStore, sessionKey, nextContext.pendingAppleContact, now());
         const interaction = addInteractionWithTrace(repo, strictMode, {
           id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
           userId: message.userId,
@@ -1957,6 +1974,194 @@ function policyBlockOutboundText(
     case "unsupported":
       return policy.outboundText;
   }
+}
+
+function conversationSessionKeyFromMessage(message: InboundAgentMessage): ConversationSessionKey {
+  return {
+    userId: message.userId,
+    platform: message.platform,
+    spaceId: message.spaceId
+  };
+}
+
+function persistPendingAppleContactWorkflow(
+  sessionStore: ConversationSessionStore | undefined,
+  key: ConversationSessionKey,
+  workflow: PendingAppleContactWorkflow | undefined,
+  updatedAt: string
+): void {
+  if (!sessionStore) {
+    return;
+  }
+
+  const session = sessionStore.getSession(key) ?? emptySession(key, updatedAt);
+  sessionStore.upsertSession(
+    touchUpdatedAt(
+      {
+        ...session,
+        activeWorkflow: workflow ? activeWorkflowFromPendingAppleContact(workflow) : undefined
+      },
+      updatedAt
+    )
+  );
+}
+
+function activeWorkflowFromPendingAppleContact(workflow: PendingAppleContactWorkflow): ActiveWorkflow {
+  if (workflow.kind === "create") {
+    return {
+      kind: "pending_apple_contact_create",
+      displayName: workflow.displayName,
+      fields: workflow.fields,
+      openedAt: workflow.openedAt
+    };
+  }
+
+  if (workflow.kind === "update") {
+    return {
+      kind: "pending_apple_contact_update",
+      displayName: workflow.displayName,
+      id: workflow.id,
+      patch: workflow.patch,
+      openedAt: workflow.openedAt
+    };
+  }
+
+  return {
+    kind: "pending_apple_contact_delete",
+    displayName: workflow.displayName,
+    id: workflow.id,
+    openedAt: workflow.openedAt
+  };
+}
+
+function pendingAppleContactWorkflowFromSession(
+  workflow: ActiveWorkflow | undefined
+): PendingAppleContactWorkflow | undefined {
+  if (!workflow) {
+    return undefined;
+  }
+
+  if (workflow.kind === "pending_apple_contact_create") {
+    return {
+      kind: "create",
+      displayName: workflow.displayName,
+      fields: workflow.fields,
+      openedAt: workflow.openedAt
+    };
+  }
+
+  if (workflow.kind === "pending_apple_contact_update") {
+    return {
+      kind: "update",
+      displayName: workflow.displayName,
+      id: workflow.id,
+      patch: workflow.patch,
+      openedAt: workflow.openedAt
+    };
+  }
+
+  if (workflow.kind === "pending_apple_contact_delete") {
+    return {
+      kind: "delete",
+      displayName: workflow.displayName,
+      id: workflow.id,
+      openedAt: workflow.openedAt
+    };
+  }
+
+  return undefined;
+}
+
+async function buildRouterInputEnvelopeForMessage({
+  message,
+  conversationState,
+  repo,
+  tools
+}: {
+  message: InboundAgentMessage;
+  conversationState: ConversationState;
+  repo: RelationshipRepository;
+  tools: RelationshipTools;
+}) {
+  const memories = repo.listMemories(message.userId);
+  const linkedAppleContacts = await collectLinkedAppleContactContext(message, memories, repo, tools);
+
+  return buildRouterInputEnvelope({
+    message,
+    conversationState,
+    memories,
+    linkedAppleContacts,
+    availableTools: ROUTER_AVAILABLE_TOOLS,
+    availableRouteCapabilities: ROUTER_AVAILABLE_ROUTE_CAPABILITIES
+  });
+}
+
+async function collectLinkedAppleContactContext(
+  message: InboundAgentMessage,
+  memories: RelationshipMemory[],
+  repo: RelationshipRepository,
+  tools: RelationshipTools
+): Promise<RouterLinkedAppleContact[]> {
+  const matchedPeople = new Map<string, { personId: string; displayName: string }>();
+
+  for (const memory of memories) {
+    if (!memory.personId || !messageMentionsDisplayName(message.text, memory.displayName)) {
+      continue;
+    }
+    if (!matchedPeople.has(memory.personId)) {
+      matchedPeople.set(memory.personId, { personId: memory.personId, displayName: memory.displayName });
+    }
+  }
+
+  const linkedContacts: RouterLinkedAppleContact[] = [];
+  const seenContactIdentifiers = new Set<string>();
+
+  for (const person of matchedPeople.values()) {
+    for (const link of repo.listAppleContactLinksForPerson(message.userId, person.personId)) {
+      const contactIdentifier = link.contactIdentifier?.trim();
+      if (!contactIdentifier || seenContactIdentifiers.has(contactIdentifier)) {
+        continue;
+      }
+
+      const contact = await readLinkedAppleContact(contactIdentifier, tools);
+      if (!contact) {
+        continue;
+      }
+
+      seenContactIdentifiers.add(contactIdentifier);
+      linkedContacts.push({
+        personId: person.personId,
+        displayName: person.displayName,
+        contactIdentifier,
+        contact
+      });
+    }
+  }
+
+  return linkedContacts;
+}
+
+async function readLinkedAppleContact(contactIdentifier: string, tools: RelationshipTools): Promise<AppleContact | undefined> {
+  try {
+    const result = await tools.read_apple_contact({ id: contactIdentifier });
+    return result.contacts.find((contact) => contact.identifier === contactIdentifier) ?? result.contacts[0];
+  } catch {
+    return undefined;
+  }
+}
+
+function messageMentionsDisplayName(text: string, displayName: string): boolean {
+  const normalizedText = normalizePersonReference(text);
+  const normalizedName = normalizePersonReference(displayName);
+  return Boolean(normalizedName) && ` ${normalizedText} `.includes(` ${normalizedName} `);
+}
+
+function normalizePersonReference(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isAppleContactManagementText(text: string): boolean {

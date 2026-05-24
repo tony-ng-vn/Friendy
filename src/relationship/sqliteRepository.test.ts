@@ -1049,6 +1049,41 @@ describe("sqlite relationship repository", () => {
     expect(secondRepo.findPeopleByDisplayNameNormalized(fixtureUser.id, "testing 3")).toEqual([person]);
   });
 
+  it("lists persisted Apple Contact links for a person by internal person id", () => {
+    const dbPath = tempDatabasePath();
+    const firstRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    const person = firstRepo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Anna Lee",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+    const otherPerson = firstRepo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Maya Chen",
+      createdAt: "2026-05-23T12:01:00.000Z"
+    });
+    const link = firstRepo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      contactIdentifier: "apple_contact_anna",
+      methodFingerprint: computeMethodFingerprint({ emails: ["anna@example.com"] }),
+      displayNameSnapshot: "Anna Lee",
+      linkedAt: "2026-05-23T12:02:00.000Z"
+    });
+    firstRepo.linkAppleContact({
+      personId: otherPerson.id,
+      userId: fixtureUser.id,
+      contactIdentifier: "apple_contact_maya",
+      methodFingerprint: computeMethodFingerprint({ emails: ["maya@example.com"] }),
+      displayNameSnapshot: "Maya Chen",
+      linkedAt: "2026-05-23T12:03:00.000Z"
+    });
+
+    const secondRepo = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+
+    expect(secondRepo.listAppleContactLinksForPerson(fixtureUser.id, person.id)).toEqual([link]);
+  });
+
   it("backfills personId on existing memories without person rows", () => {
     const dbPath = tempDatabasePath();
     const candidateId = "candidate_backfill_person";

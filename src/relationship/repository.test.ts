@@ -421,6 +421,38 @@ describe("relationship repository", () => {
     expect(repo.findPeopleByDisplayNameNormalized(fixtureUser.id, "  testing   3 ")).toEqual([person]);
   });
 
+  it("lists Apple Contact links for a person by internal person id", () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const person = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Anna Lee",
+      createdAt: "2026-05-23T12:00:00.000Z"
+    });
+    const otherPerson = repo.createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Maya Chen",
+      createdAt: "2026-05-23T12:01:00.000Z"
+    });
+    const link = repo.linkAppleContact({
+      personId: person.id,
+      userId: fixtureUser.id,
+      contactIdentifier: "apple_contact_anna",
+      methodFingerprint: computeMethodFingerprint({ emails: ["anna@example.com"] }),
+      displayNameSnapshot: "Anna Lee",
+      linkedAt: "2026-05-23T12:02:00.000Z"
+    });
+    repo.linkAppleContact({
+      personId: otherPerson.id,
+      userId: fixtureUser.id,
+      contactIdentifier: "apple_contact_maya",
+      methodFingerprint: computeMethodFingerprint({ emails: ["maya@example.com"] }),
+      displayNameSnapshot: "Maya Chen",
+      linkedAt: "2026-05-23T12:03:00.000Z"
+    });
+
+    expect(repo.listAppleContactLinksForPerson(fixtureUser.id, person.id)).toEqual([link]);
+  });
+
   it("attaches a candidate to an existing person", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

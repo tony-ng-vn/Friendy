@@ -77,6 +77,29 @@
   - `npm test -- src/relationship/interpretedAgent.test.ts -t "Apple Contact"` passed with 4 matching tests.
   - `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/interpretation.test.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/routePolicyValidator.test.ts src/relationship/tools.test.ts src/relationship/contacts/macContactsAdapter.test.ts` passed with 153 tests.
 
+## Apple Contact Context Sync RED
+
+- Date: 2026-05-24
+- Added repository and interpreted-agent tests requiring Apple Contact links to be retrievable by Friendy `personId` and requiring linked Apple Contact metadata to be read before interpreter routing.
+- RED runs:
+  - `npm test -- src/relationship/repository.test.ts -t "Apple Contact links"` failed because `repo.listAppleContactLinksForPerson` did not exist.
+  - `npm test -- src/relationship/sqliteRepository.test.ts -t "Apple Contact links"` failed because SQLite repository did not expose the same API.
+  - `npm test -- src/relationship/interpretedAgent.test.ts -t "injects linked Apple Contact metadata"` failed because no Apple Contact read occurred before interpretation.
+
+## Apple Contact Context Sync GREEN
+
+- Date: 2026-05-24
+- Added `listAppleContactLinksForPerson(userId, personId)` to in-memory and SQLite repositories.
+- Added `linkedAppleContacts` to the router input envelope and automatic pre-routing reads for named Friendy people with linked Apple Contact identifiers.
+- Added durable Apple Contact workflow storage through `ConversationSessionStore.activeWorkflow`, so a fresh agent instance can resume a pending Apple Contact confirmation.
+- Focused green runs:
+  - `npm test -- src/relationship/repository.test.ts -t "Apple Contact links"` passed.
+  - `npm test -- src/relationship/sqliteRepository.test.ts -t "Apple Contact links"` passed.
+  - `npm test -- src/relationship/interpretedAgent.test.ts -t "injects linked Apple Contact metadata"` passed.
+  - `npm test -- src/relationship/interpretedAgent.test.ts -t "persists pending Apple Contact workflows"` passed.
+  - `npm test -- src/relationship/repository.test.ts src/relationship/sqliteRepository.test.ts src/relationship/interpretedAgent.test.ts src/relationship/routerInputEnvelope.test.ts src/relationship/conversationSession.test.ts src/relationship/conversationSessionStore.test.ts` passed with 169 tests.
+  - `npm run build` passed.
+
 # Friendy List People Tool
 
 ## GREEN

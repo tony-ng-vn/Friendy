@@ -7,6 +7,7 @@
  */
 import type { MessageInterpretation } from "./interpretation";
 import type { ConversationState } from "./conversationState";
+import type { AppleContact } from "./contacts/macContactsAdapter";
 import type { AgentToolCall, ContactCandidate, InboundAgentMessage, RelationshipMemory } from "./types";
 
 export type RouterRouteCapability = MessageInterpretation["intent"];
@@ -63,9 +64,31 @@ export type RouterInputEnvelope = {
       candidateIds: string[];
       reason: "same_display_name";
     }>;
+    linkedAppleContacts: RouterLinkedAppleContact[];
   };
   availableTools: AgentToolCall[];
   availableRouteCapabilities: RouterRouteCapability[];
+};
+
+export type RouterLinkedAppleContact = {
+  personId: string;
+  displayName: string;
+  contactIdentifier: string;
+  contact: Pick<
+    AppleContact,
+    | "identifier"
+    | "givenName"
+    | "familyName"
+    | "middleName"
+    | "nickname"
+    | "organizationName"
+    | "departmentName"
+    | "jobTitle"
+    | "note"
+    | "phoneNumbers"
+    | "emailAddresses"
+    | "postalAddresses"
+  >;
 };
 
 /** Interpreter input: inbound message plus optional structured router envelope. */
@@ -86,6 +109,7 @@ export function buildRouterInputEnvelope(_input: {
   memories: RelationshipMemory[];
   availableTools: AgentToolCall[];
   availableRouteCapabilities: RouterRouteCapability[];
+  linkedAppleContacts?: RouterLinkedAppleContact[];
   recentAgentMessages?: RouterInputEnvelope["conversationState"]["recentAgentMessages"];
   recentEntityRefs?: RouterInputEnvelope["conversationState"]["recentEntityRefs"];
   lastListResultIds?: string[];
@@ -102,7 +126,8 @@ export function buildRouterInputEnvelope(_input: {
     },
     domainStateSummary: {
       pendingCandidates: buildPendingCandidateSummary(_input.conversationState),
-      ...buildKnownPeopleSummary(_input.message.text, _input.conversationState, _input.memories)
+      ...buildKnownPeopleSummary(_input.message.text, _input.conversationState, _input.memories),
+      linkedAppleContacts: buildLinkedAppleContacts(_input.linkedAppleContacts)
     },
     availableTools: sortTools(_input.availableTools),
     availableRouteCapabilities: sortRouteCapabilities(_input.availableRouteCapabilities)
@@ -118,6 +143,7 @@ const MAX_RECENT_ENTITY_REFS = 12;
 const MAX_LAST_LIST_RESULT_IDS = 20;
 const MAX_LAST_TOOL_ERRORS = 6;
 const MAX_IDS_PER_NAME = 12;
+const MAX_LINKED_APPLE_CONTACTS = 6;
 const MAX_ENVELOPE_BYTES = 8 * 1024;
 
 const ROUTE_CAPABILITY_ORDER = [
@@ -235,6 +261,43 @@ function buildKnownPeopleSummary(
   return { knownPeopleNamed, possibleDuplicates };
 }
 
+function buildLinkedAppleContacts(
+  contacts: RouterLinkedAppleContact[] | undefined
+): RouterInputEnvelope["domainStateSummary"]["linkedAppleContacts"] {
+  return (contacts ?? []).slice(0, MAX_LINKED_APPLE_CONTACTS).map((contact) => ({
+    personId: truncateId(contact.personId),
+    displayName: normalizeAndTruncate(contact.displayName),
+    contactIdentifier: truncateId(contact.contactIdentifier),
+    contact: {
+      identifier: truncateId(contact.contact.identifier),
+      givenName: truncateContactText(contact.contact.givenName),
+      familyName: truncateContactText(contact.contact.familyName),
+      middleName: truncateContactText(contact.contact.middleName),
+      nickname: truncateContactText(contact.contact.nickname),
+      organizationName: truncateContactText(contact.contact.organizationName),
+      departmentName: truncateContactText(contact.contact.departmentName),
+      jobTitle: truncateContactText(contact.contact.jobTitle),
+      note: truncateContactText(contact.contact.note),
+      phoneNumbers: contact.contact.phoneNumbers.slice(0, 6).map((item) => ({
+        ...(item.label ? { label: truncateContactText(item.label) } : {}),
+        value: truncateContactText(item.value)
+      })),
+      emailAddresses: contact.contact.emailAddresses.slice(0, 6).map((item) => ({
+        ...(item.label ? { label: truncateContactText(item.label) } : {}),
+        value: truncateContactText(item.value)
+      })),
+      postalAddresses: contact.contact.postalAddresses.slice(0, 3).map((item) => ({
+        ...(item.label ? { label: truncateContactText(item.label) } : {}),
+        ...(item.street ? { street: truncateContactText(item.street) } : {}),
+        ...(item.city ? { city: truncateContactText(item.city) } : {}),
+        ...(item.state ? { state: truncateContactText(item.state) } : {}),
+        ...(item.postalCode ? { postalCode: truncateContactText(item.postalCode) } : {}),
+        ...(item.country ? { country: truncateContactText(item.country) } : {})
+      }))
+    }
+  }));
+}
+
 function addNameRecord(
   grouped: Map<string, { displayName: string; memoryIds: string[]; candidateIds: string[] }>,
   displayName: string,
@@ -276,6 +339,11 @@ function normalizeAndTruncate(value: string, maxLength = MAX_TEXT_LENGTH): strin
   }
 
   return normalized.slice(0, maxLength).trim();
+}
+
+function truncateContactText(value: string | undefined, maxLength = MAX_TEXT_LENGTH): string {
+  const normalized = (value ?? "").trim().replace(/\s+/g, " ");
+  return normalized.length <= maxLength ? normalized : normalized.slice(0, maxLength).trim();
 }
 
 function redactSensitiveText(value: string): string {
