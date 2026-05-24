@@ -124,4 +124,53 @@ describe("redacted runtime trace", () => {
     expect(JSON.stringify(trace)).not.toContain("Photon Residency II");
     expect(JSON.stringify(trace)).not.toContain("sarah@example.com");
   });
+
+  it("preserves pending reminder decision metadata without raw text", () => {
+    const trace = buildRedactedInteractionTrace({
+      inboundText: "Who did I meet at Photon while Sarah Fan is still pending?",
+      interpretedIntentJson: {
+        intent: "search_memory",
+        confidence: 0.94,
+        search: {
+          mode: "event_recall",
+          exactTerms: ["Photon"]
+        },
+        target: {
+          displayName: "Sarah Fan"
+        },
+        policyDecision: { decision: "allow" }
+      },
+      toolCalls: ["search_memories"],
+      outboundText:
+        "You met Maya at Photon Dinner.\n\nPending contact: I still need context for Sarah Fan before I can save them.",
+      friendyTrace: {
+        strictMode: true,
+        routeSource: "deterministic",
+        fallbackUsed: false,
+        route: {
+          intent: "search_memory",
+          confidence: 0.94,
+          searchMode: "event_recall",
+          exactTerms: ["Photon"],
+          target: {
+            hasDisplayName: true
+          }
+        },
+        policyDecision: "allow",
+        suppressedPendingReminder: false,
+        pendingReminderDecision: "appended_footer",
+        pendingReminderReason: "eligible_search_interrupt",
+        toolCalls: ["search_memories"]
+      },
+      now: "2026-05-22T12:00:00.000Z"
+    });
+
+    const serialized = JSON.stringify(trace);
+    expect(trace.pendingReminderDecision).toBe("appended_footer");
+    expect(trace.pendingReminderReason).toBe("eligible_search_interrupt");
+    expect(serialized).not.toContain("Sarah Fan");
+    expect(serialized).not.toContain("Maya");
+    expect(serialized).not.toContain("Photon Dinner");
+    expect(serialized).not.toContain("I still need context");
+  });
 });

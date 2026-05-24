@@ -34,6 +34,8 @@ export type FriendyTrace = {
   route?: FriendyRouteTrace;
   policyDecision?: FriendyPolicyDecision;
   suppressedPendingReminder?: boolean;
+  pendingReminderDecision?: "suppressed" | "deferred" | "appended_footer";
+  pendingReminderReason?: string;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -54,6 +56,8 @@ export function createFriendyTrace(input: {
   route?: unknown;
   policyDecision?: FriendyPolicyDecision;
   suppressedPendingReminder?: boolean;
+  pendingReminderDecision?: "suppressed" | "deferred" | "appended_footer";
+  pendingReminderReason?: string;
   activeFrameId?: string;
   activeCandidateId?: string;
   activeMemoryId?: string;
@@ -73,6 +77,8 @@ export function createFriendyTrace(input: {
     route: routeTraceFromUnknown(input.route),
     policyDecision: input.policyDecision,
     suppressedPendingReminder: input.suppressedPendingReminder,
+    pendingReminderDecision: input.pendingReminderDecision,
+    pendingReminderReason: input.pendingReminderReason,
     activeFrameId: input.activeFrameId,
     activeCandidateId: input.activeCandidateId,
     activeMemoryId: input.activeMemoryId,
