@@ -65,7 +65,7 @@ describe("relationship tools", () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const adapter: MacContactsAdapter = {
       getAppleContact: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         contacts: [
           {
             identifier: "apple_contact_anna",

@@ -30,6 +30,9 @@ export const messageInterpretationJsonSchema = {
         "update_memory",
         "delete_memory",
         "draft_message",
+        "request_apple_contact_create",
+        "request_apple_contact_update",
+        "request_apple_contact_delete",
         "request_contact_create",
         "request_contact_edit",
         "request_contact_delete",
@@ -78,7 +81,124 @@ export const messageInterpretationJsonSchema = {
         frameId: { type: "string" },
         candidateId: { type: "string" },
         memoryId: { type: "string" },
+        appleContactIdentifier: { type: "string" },
         displayName: { type: "string" }
+      }
+    },
+    appleContact: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        id: { type: "string" },
+        query: { type: "string" },
+        fields: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            givenName: { type: "string" },
+            familyName: { type: "string" },
+            middleName: { type: "string" },
+            nickname: { type: "string" },
+            organizationName: { type: "string" },
+            departmentName: { type: "string" },
+            jobTitle: { type: "string" },
+            note: { type: "string" },
+            phoneNumbers: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  value: { type: "string" }
+                },
+                required: ["label", "value"]
+              }
+            },
+            emailAddresses: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  value: { type: "string" }
+                },
+                required: ["label", "value"]
+              }
+            },
+            postalAddresses: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  street: { type: "string" },
+                  city: { type: "string" },
+                  state: { type: "string" },
+                  postalCode: { type: "string" },
+                  country: { type: "string" }
+                },
+                required: ["label", "street", "city", "state", "postalCode", "country"]
+              }
+            }
+          }
+        },
+        patch: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            givenName: { type: "string" },
+            familyName: { type: "string" },
+            middleName: { type: "string" },
+            nickname: { type: "string" },
+            organizationName: { type: "string" },
+            departmentName: { type: "string" },
+            jobTitle: { type: "string" },
+            note: { type: "string" },
+            phoneNumbers: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  value: { type: "string" }
+                },
+                required: ["label", "value"]
+              }
+            },
+            emailAddresses: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  value: { type: "string" }
+                },
+                required: ["label", "value"]
+              }
+            },
+            postalAddresses: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  street: { type: "string" },
+                  city: { type: "string" },
+                  state: { type: "string" },
+                  postalCode: { type: "string" },
+                  country: { type: "string" }
+                },
+                required: ["label", "street", "city", "state", "postalCode", "country"]
+              }
+            }
+          }
+        }
       }
     },
     extractedContext: {
@@ -229,6 +349,9 @@ const routeIntentSchema = z.enum([
   "update_memory",
   "delete_memory",
   "draft_message",
+  "request_apple_contact_create",
+  "request_apple_contact_update",
+  "request_apple_contact_delete",
   "request_contact_create",
   "request_contact_edit",
   "request_contact_delete",
@@ -274,6 +397,49 @@ const searchPlanSchema = z
   })
   .strict();
 
+const appleContactLabeledValueSchema = z
+  .object({
+    label: z.string().optional(),
+    value: z.string().trim().min(1)
+  })
+  .strict();
+
+const appleContactPostalAddressSchema = z
+  .object({
+    label: z.string().optional(),
+    street: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    postalCode: z.string().optional(),
+    country: z.string().optional()
+  })
+  .strict();
+
+const appleContactFieldsSchema = z
+  .object({
+    givenName: z.string().optional(),
+    familyName: z.string().optional(),
+    middleName: z.string().optional(),
+    nickname: z.string().optional(),
+    organizationName: z.string().optional(),
+    departmentName: z.string().optional(),
+    jobTitle: z.string().optional(),
+    note: z.string().optional(),
+    phoneNumbers: z.array(appleContactLabeledValueSchema).optional(),
+    emailAddresses: z.array(appleContactLabeledValueSchema).optional(),
+    postalAddresses: z.array(appleContactPostalAddressSchema).optional()
+  })
+  .strict();
+
+const appleContactPlanSchema = z
+  .object({
+    id: z.string().optional(),
+    query: z.string().optional(),
+    fields: appleContactFieldsSchema.nullable().optional(),
+    patch: appleContactFieldsSchema.nullable().optional()
+  })
+  .strict();
+
 /** Zod schema mirroring `messageInterpretationJsonSchema` for runtime validation. */
 export const messageInterpretationSchema = z
   .object({
@@ -286,12 +452,14 @@ export const messageInterpretationSchema = z
         frameId: z.string().optional(),
         candidateId: z.string().optional(),
         memoryId: z.string().optional(),
+        appleContactIdentifier: z.string().optional(),
         displayName: z.string().optional()
       })
       .strict()
       .nullable()
       .optional(),
     extractedContext: z.string().optional(),
+    appleContact: appleContactPlanSchema.nullable().optional(),
     search: searchPlanSchema.nullable().optional(),
     people: z.array(personInterpretationSchema).default([]),
     event: eventInterpretationSchema.default({ name: "", dateText: "", location: "" }),

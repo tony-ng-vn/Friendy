@@ -35,6 +35,10 @@ export function decideHardSafety(text: string): HardSafetyDecision {
     return reject("coding_task", CODING_REDIRECT);
   }
 
+  if (isAppleContactManagement(lower)) {
+    return allow("apple_contact_management");
+  }
+
   if (isMathTask(lower)) {
     return reject("math_task", GENERAL_TASK_REDIRECT);
   }
@@ -77,6 +81,12 @@ function isGeneralKnowledgeTask(text: string): boolean {
 
 function isGenericAdviceTask(text: string): boolean {
   return /\b(how do i|how can i|tips for)\b.*\b(charismatic|make friends|be popular|people like me)\b/.test(text);
+}
+
+function isAppleContactManagement(text: string): boolean {
+  return /\b(add|create|save|update|edit|change|delete|remove)\b.*\b(apple contacts?|contacts app|mac contacts?|native contacts?)\b/.test(
+    text
+  );
 }
 
 function looksLikePeopleMemoryQuery(text: string): boolean {

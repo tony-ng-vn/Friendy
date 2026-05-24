@@ -75,4 +75,24 @@ describe("route policy validator", () => {
     const decision = validateRoutePolicy(route("explain_agent_state"), state);
     expect(decision).toMatchObject({ decision: "allow", suppressPendingReminder: true });
   });
+
+  it("allows Apple Contact mutation intents to open confirmation workflows", () => {
+    for (const intent of [
+      "request_apple_contact_create",
+      "request_apple_contact_update",
+      "request_apple_contact_delete"
+    ] as const) {
+      const decision = validateRoutePolicy(route(intent, { domain: "contact_management" }), emptyState);
+      expect(decision).toMatchObject({ decision: "allow", suppressPendingReminder: true });
+    }
+  });
+
+  it("keeps legacy generic contact-management intents unsupported", () => {
+    const decision = validateRoutePolicy(route("request_contact_edit", { domain: "contact_management" }), emptyState);
+
+    expect(decision).toMatchObject({
+      decision: "unsupported",
+      outboundText: expect.stringContaining("Apple Contacts")
+    });
+  });
 });

@@ -8,9 +8,10 @@
 - [x] Implement `src/relationship/contacts/macContactsAdapter.ts`.
 - [x] Add RED tool tests for `read_apple_contact`, `add_apple_contact`, `update_apple_contact`, and `delete_apple_contact`.
 - [x] Expose Apple Contact tools through `src/relationship/tools.ts`.
-- [ ] Expose Apple Contact tools and intents through route capability lists.
-- [ ] Add RED interpretation/prompt tests for Apple Contact mutation intents and confirmation rules.
-- [ ] Add confirmation workflow state for Apple Contact create/update/delete and block writes before explicit `yes`.
+- [x] Add RED interpretation/prompt tests for Apple Contact mutation intents and confirmation rules.
+- [x] Add Apple-specific interpretation intents and prompt/policy contract.
+- [x] Expose Apple Contact tools and intents through route capability lists.
+- [x] Add confirmation workflow state for Apple Contact create/update/delete and block writes before explicit `yes`.
 - [ ] Add RED router-envelope test for linked Apple Contact metadata injection.
 - [ ] Inject linked Apple Contact metadata into the router input envelope before LLM routing.
 - [ ] Update docs and handoff artifacts for the new actuator, adapter, tools, workflows, and verification evidence.

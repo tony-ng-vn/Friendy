@@ -73,6 +73,7 @@ import { buildRouterInputEnvelope, type RouterRouteCapability } from "./routerIn
 import { cleanMemoryTargetQuery } from "./targetQueryCleanup";
 import { parseTemporalContext, type TemporalContext } from "./temporalContext";
 import { normalizeMemorySearchQuery, type MemorySearchResult, type createRelationshipTools } from "./tools";
+import type { AppleContactFields } from "./contacts/macContactsAdapter";
 import { buildRedactedInteractionTrace, type AgentTrace } from "./runtime/runtimeTrace";
 import { FriendyStrictModeError } from "./strictMode";
 import {
@@ -101,6 +102,26 @@ type ManualMemoryCreateRequest = {
   contextNote: string;
   eventTitle?: string;
 };
+type PendingAppleContactWorkflow =
+  | {
+      kind: "create";
+      displayName: string;
+      fields: AppleContactFields;
+      openedAt: string;
+    }
+  | {
+      kind: "update";
+      displayName: string;
+      id: string;
+      patch: AppleContactFields;
+      openedAt: string;
+    }
+  | {
+      kind: "delete";
+      displayName: string;
+      id: string;
+      openedAt: string;
+    };
 type SearchContext = {
   searchContextId: string;
   createdAt: string;
@@ -196,6 +217,7 @@ type ConversationContext = {
     query?: string;
     options?: Array<{ memoryId: string; displayName: string }>;
   };
+  pendingAppleContact?: PendingAppleContactWorkflow;
   reminderState?: PendingReminderState;
   lastPeopleList?: LastPeopleListContext;
   recentPeople: string[];
@@ -211,6 +233,10 @@ const SEARCH_CONTEXT_TTL_MS = 15 * 60 * 1000;
 const ROUTER_AVAILABLE_TOOLS = [
   "list_people",
   "find_duplicate_people",
+  "read_apple_contact",
+  "add_apple_contact",
+  "update_apple_contact",
+  "delete_apple_contact",
   "search_memories",
   "lookup_memory_target",
   "list_pending_candidates",
@@ -233,6 +259,9 @@ const ROUTER_AVAILABLE_ROUTE_CAPABILITIES = [
   "duplicate_audit",
   "delete_memory_request",
   "update_memory",
+  "request_apple_contact_create",
+  "request_apple_contact_update",
+  "request_apple_contact_delete",
   "manual_memory_create",
   "explain_agent_state",
   "explain_pending_workflow",
@@ -358,6 +387,184 @@ export function createInterpretedRelationshipAgent({
         spaceId: message.spaceId,
         pendingCandidates: repo.listPendingCandidates(message.userId)
       });
+
+      if (turnContext.pendingAppleContact && isMemoryMutationCancelReply(message.text)) {
+        const workflow = turnContext.pendingAppleContact;
+        const outboundText = `Cancelled. I won't change ${workflow.displayName} in Apple Contacts.`;
+        conversationContexts.set(message.userId, { ...turnContext, pendingAppleContact: undefined });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: appleContactIntentForWorkflow(workflow),
+            domain: "contact_management",
+            conversationRelation: "answers_open_workflow",
+            target: "id" in workflow ? { appleContactIdentifier: workflow.id } : undefined,
+            confidence: 1,
+            traceReason: "User cancelled a pending Apple Contact request.",
+            policyDecision: { decision: "allow", suppressPendingReminder: true },
+            activeWorkflowKind: activeWorkflowKindForAppleContact(workflow)
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
+      if (turnContext.pendingAppleContact && isConfirmationReply(message.text)) {
+        const workflow = turnContext.pendingAppleContact;
+        const toolCalls: AgentToolCall[] = [];
+        const outboundText = await executePendingAppleContactWorkflow(workflow, tools, toolCalls);
+        conversationContexts.set(message.userId, { ...turnContext, pendingAppleContact: undefined });
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            intent: appleContactIntentForWorkflow(workflow),
+            domain: "contact_management",
+            conversationRelation: "answers_open_workflow",
+            target: "id" in workflow ? { appleContactIdentifier: workflow.id } : undefined,
+            confidence: 1,
+            traceReason: "User confirmed a pending Apple Contact request.",
+            policyDecision: { decision: "allow", suppressPendingReminder: true },
+            activeWorkflowKind: activeWorkflowKindForAppleContact(workflow),
+            selectedTool: toolCalls[0]
+          },
+          outboundText,
+          toolCalls,
+          modelUsed: "deterministic-scope",
+          confidence: 1,
+          latencyMs: Date.now() - startedAt,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls,
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
+
+      if (isAppleContactManagementText(message.text)) {
+        const routerContext = buildRouterInputEnvelope({
+          message,
+          conversationState: pendingState,
+          memories: repo.listMemories(message.userId),
+          availableTools: ROUTER_AVAILABLE_TOOLS,
+          availableRouteCapabilities: ROUTER_AVAILABLE_ROUTE_CAPABILITIES
+        });
+        const interpreted = await interpreter.interpret({ message, routerContext });
+        if (strictMode && interpreted.fallbackUsed) {
+          throw new FriendyStrictModeError(
+            "FALLBACK_USED",
+            "Fallback interpreter is not allowed in Friendy strict mode.",
+            createFriendyTrace({
+              strictMode: true,
+              routeSource: "fallback",
+              fallbackUsed: true,
+              fallbackReason: interpreted.fallbackReason,
+              route: interpreted.interpretation,
+              policyDecision: "reject",
+              modelRequested: interpreted.modelRequested,
+              modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+              modelErrorCode: interpreted.modelErrorCode,
+              toolCalls: []
+            })
+          );
+        }
+        const interpretation = interpreted.interpretation;
+        const basePolicy = validateRoutePolicy(interpretation, pendingState);
+        const routePolicy =
+          basePolicy.decision !== "allow"
+            ? basePolicy
+            : validateRequiredToolAvailability(interpretation, tools as Record<AgentToolCall, unknown>) ?? basePolicy;
+        const appleContactRequest =
+          routePolicy.decision === "allow" ? appleContactWorkflowFromInterpretation(interpretation, now()) : undefined;
+        const outboundText =
+          routePolicy.decision === "allow"
+            ? appleContactRequest?.outboundText ?? composeNoMatchReply()
+            : policyBlockOutboundText(routePolicy as Exclude<ValidatedRoutePolicy, { decision: "allow" }>);
+        const nextContext =
+          routePolicy.decision === "allow" && appleContactRequest?.workflow
+            ? { ...turnContext, pendingAppleContact: appleContactRequest.workflow }
+            : turnContext;
+        conversationContexts.set(message.userId, nextContext);
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...interpretation,
+            interpretation,
+            routeSource: interpreted.routeSource,
+            fallbackUsed: interpreted.fallbackUsed,
+            fallbackReason: interpreted.fallbackReason,
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
+            policyDecision: {
+              decision: routePolicy.decision === "allow" && appleContactRequest?.workflow ? "clarify" : routePolicy.decision,
+              reason: appleContactRequest?.reason ?? routePolicy.reason,
+              suppressPendingReminder: true
+            },
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true,
+            activeWorkflowKind: appleContactRequest?.workflow
+              ? activeWorkflowKindForAppleContact(appleContactRequest.workflow)
+              : undefined,
+            requiresConfirmation: Boolean(appleContactRequest?.workflow)
+          },
+          outboundText,
+          toolCalls: [],
+          modelUsed: interpreted.modelUsed,
+          confidence: interpretation.confidence,
+          latencyMs: Date.now() - startedAt,
+          error: interpreted.error,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
 
       if ((turnContext.pendingUpdate || turnContext.pendingDelete) && isMemoryMutationCancelReply(message.text)) {
         const pendingKind = turnContext.pendingUpdate ? "update" : "delete";
@@ -1504,6 +1711,61 @@ export function createInterpretedRelationshipAgent({
         reason: `Allowed route ${interpretation.intent}.`,
         suppressPendingReminder: false
       };
+      const appleContactRequest = appleContactWorkflowFromInterpretation(interpretation, now());
+      if (appleContactRequest) {
+        const nextContext = appleContactRequest.workflow
+          ? { ...turnContext, pendingAppleContact: appleContactRequest.workflow }
+          : { ...turnContext, pendingAppleContact: undefined };
+        conversationContexts.set(message.userId, nextContext);
+        const interaction = addInteractionWithTrace(repo, strictMode, {
+          id: `interaction_${now().replace(/[^0-9a-z]/gi, "")}_${repo.listInteractions().length + 1}`,
+          userId: message.userId,
+          platform: message.platform,
+          spaceId: message.spaceId,
+          inboundText: message.text,
+          interpretedIntentJson: {
+            ...interpretation,
+            interpretation,
+            routeSource: interpreted.routeSource,
+            fallbackUsed: interpreted.fallbackUsed,
+            fallbackReason: interpreted.fallbackReason,
+            modelRequested: interpreted.modelRequested,
+            modelResponseSchemaValid: interpreted.modelResponseSchemaValid,
+            modelErrorCode: interpreted.modelErrorCode,
+            policyDecision: {
+              decision: appleContactRequest.workflow ? "clarify" : "clarify",
+              reason: appleContactRequest.reason,
+              suppressPendingReminder: true
+            },
+            pendingReminderDecision: "suppressed",
+            pendingReminderReason: "not_search_interrupt",
+            suppressedPendingReminder: true,
+            activeWorkflowKind: appleContactRequest.workflow
+              ? activeWorkflowKindForAppleContact(appleContactRequest.workflow)
+              : undefined,
+            requiresConfirmation: Boolean(appleContactRequest.workflow)
+          },
+          outboundText: appleContactRequest.outboundText,
+          toolCalls: [],
+          modelUsed: interpreted.modelUsed,
+          confidence: interpretation.confidence,
+          latencyMs: Date.now() - startedAt,
+          error: interpreted.error,
+          createdAt: now()
+        });
+
+        return {
+          outbound: {
+            userId: message.userId,
+            platform: message.platform,
+            spaceId: message.spaceId,
+            text: appleContactRequest.outboundText
+          },
+          toolCalls: [],
+          interaction,
+          trace: traceFromInteraction(interaction)
+        };
+      }
       const interpretedMutationRequest = memoryMutationRequestFromInterpretation(message, interpretation);
       if (interpretedMutationRequest) {
         const toolCalls: AgentToolCall[] = [];
@@ -1695,6 +1957,169 @@ function policyBlockOutboundText(
     case "unsupported":
       return policy.outboundText;
   }
+}
+
+function isAppleContactManagementText(text: string): boolean {
+  return /\b(add|create|save|update|edit|change|delete|remove)\b.*\b(apple contacts?|contacts app|mac contacts?|native contacts?)\b/i.test(
+    text
+  );
+}
+
+function appleContactWorkflowFromInterpretation(
+  interpretation: MessageInterpretation,
+  openedAt: string
+):
+  | { workflow: PendingAppleContactWorkflow; outboundText: string; reason: string }
+  | { workflow: undefined; outboundText: string; reason: string }
+  | undefined {
+  if (
+    interpretation.intent !== "request_apple_contact_create" &&
+    interpretation.intent !== "request_apple_contact_update" &&
+    interpretation.intent !== "request_apple_contact_delete"
+  ) {
+    return undefined;
+  }
+
+  const displayName = appleContactDisplayName(interpretation);
+
+  if (interpretation.intent === "request_apple_contact_create") {
+    const fields = interpretation.appleContact?.fields ?? undefined;
+    if (!fields) {
+      return {
+        workflow: undefined,
+        outboundText: "What Apple Contact details should I save?",
+        reason: "Apple Contact create request is missing fields."
+      };
+    }
+
+    return {
+      workflow: {
+        kind: "create",
+        displayName,
+        fields,
+        openedAt
+      },
+      outboundText: `I can add ${displayName} to your Apple Contacts. Reply "yes" to save.`,
+      reason: "Apple Contact create requires explicit confirmation."
+    };
+  }
+
+  if (interpretation.intent === "request_apple_contact_update") {
+    const id = appleContactIdentifierFromInterpretation(interpretation);
+    if (!id) {
+      return {
+        workflow: undefined,
+        outboundText: "I need the Apple Contact identifier before I can update that contact.",
+        reason: "Apple Contact update request is missing identifier."
+      };
+    }
+    const patch = interpretation.appleContact?.patch ?? undefined;
+    if (!patch) {
+      return {
+        workflow: undefined,
+        outboundText: `What should I update for ${displayName} in Apple Contacts?`,
+        reason: "Apple Contact update request is missing patch fields."
+      };
+    }
+
+    return {
+      workflow: {
+        kind: "update",
+        displayName,
+        id,
+        patch,
+        openedAt
+      },
+      outboundText: `I can update ${displayName} in your Apple Contacts. Reply "yes" to save.`,
+      reason: "Apple Contact update requires explicit confirmation."
+    };
+  }
+
+  const id = appleContactIdentifierFromInterpretation(interpretation);
+  if (!id) {
+    return {
+      workflow: undefined,
+      outboundText: "I need the Apple Contact identifier before I can delete that contact.",
+      reason: "Apple Contact delete request is missing identifier."
+    };
+  }
+
+  return {
+    workflow: {
+      kind: "delete",
+      displayName,
+      id,
+      openedAt
+    },
+    outboundText: `I can delete ${displayName} from your Apple Contacts. Reply "yes" to confirm.`,
+    reason: "Apple Contact delete requires explicit confirmation."
+  };
+}
+
+async function executePendingAppleContactWorkflow(
+  workflow: PendingAppleContactWorkflow,
+  tools: RelationshipTools,
+  toolCalls: AgentToolCall[]
+): Promise<string> {
+  if (workflow.kind === "create") {
+    toolCalls.push("add_apple_contact");
+    await tools.add_apple_contact(workflow.fields);
+    return `Saved ${workflow.displayName} to Apple Contacts.`;
+  }
+
+  if (workflow.kind === "update") {
+    toolCalls.push("update_apple_contact");
+    await tools.update_apple_contact(workflow.id, workflow.patch);
+    return `Updated ${workflow.displayName} in Apple Contacts.`;
+  }
+
+  toolCalls.push("delete_apple_contact");
+  await tools.delete_apple_contact(workflow.id);
+  return `Deleted ${workflow.displayName} from Apple Contacts.`;
+}
+
+function appleContactIdentifierFromInterpretation(interpretation: MessageInterpretation): string {
+  return (
+    interpretation.appleContact?.id?.trim() ||
+    interpretation.target?.appleContactIdentifier?.trim() ||
+    ""
+  );
+}
+
+function appleContactDisplayName(interpretation: MessageInterpretation): string {
+  const personName = interpretation.people[0]?.name?.trim();
+  if (personName) {
+    return personName;
+  }
+
+  const displayName = interpretation.target?.displayName?.trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  const fields = interpretation.appleContact?.fields ?? interpretation.appleContact?.patch;
+  const name = [fields?.givenName, fields?.familyName].filter(Boolean).join(" ").trim();
+  return name || "that contact";
+}
+
+function appleContactIntentForWorkflow(workflow: PendingAppleContactWorkflow): MessageInterpretation["intent"] {
+  if (workflow.kind === "create") {
+    return "request_apple_contact_create";
+  }
+  if (workflow.kind === "update") {
+    return "request_apple_contact_update";
+  }
+  return "request_apple_contact_delete";
+}
+
+function activeWorkflowKindForAppleContact(workflow: PendingAppleContactWorkflow): FriendyTrace["activeWorkflowKind"] {
+  if (workflow.kind === "create") {
+    return "pending_apple_contact_create";
+  }
+  if (workflow.kind === "update") {
+    return "pending_apple_contact_update";
+  }
+  return "pending_apple_contact_delete";
 }
 
 function attachPendingDeleteContext(
@@ -2301,6 +2726,9 @@ function activeWorkflowKindFromInteraction(interaction: AgentInteraction): Frien
     kind === "pending_delete_disambiguation" ||
     kind === "pending_delete_confirm" ||
     kind === "pending_update_confirm" ||
+    kind === "pending_apple_contact_create" ||
+    kind === "pending_apple_contact_update" ||
+    kind === "pending_apple_contact_delete" ||
     kind === "none"
   ) {
     return kind;

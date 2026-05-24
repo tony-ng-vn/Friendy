@@ -10,6 +10,7 @@ import { isListPeopleRecall } from "./listPeopleRecall";
 export type ScopeCapability =
   | "relationship_recall"
   | "relationship_memory_write"
+  | "contact_management"
   | "candidate_confirmation"
   | "candidate_ignore"
   | "message_drafting"
@@ -111,6 +112,10 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
 
   if (isExplicitRelationshipMemory(lower)) {
     return inScope("relationship_memory_write", "User is explicitly asking Friendy to remember relationship context.");
+  }
+
+  if (isAppleContactManagement(lower)) {
+    return inScope("contact_management", "User is asking Friendy to manage Apple Contacts.");
   }
 
   if (isRelationshipDraft(lower)) {
@@ -228,6 +233,12 @@ function isExplicitRelationshipMemory(text: string): boolean {
   }
 
   return /^(remember|met|i met|i remember)\b/.test(text) || /\b(i also met|also met|i met)\b/.test(text);
+}
+
+function isAppleContactManagement(text: string): boolean {
+  return /\b(add|create|save|update|edit|change|delete|remove)\b.*\b(apple contacts?|contacts app|mac contacts?|native contacts?)\b/.test(
+    text
+  );
 }
 
 function isRelationshipDraft(text: string): boolean {

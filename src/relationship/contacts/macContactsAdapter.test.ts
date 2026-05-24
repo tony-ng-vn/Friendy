@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createMacContactsAdapter,
   runMacContactsCommand,
-  type MacContactsCommand
+  type MacContactsCommand,
+  type SpawnedMacContactsProcess
 } from "./macContactsAdapter";
 
 describe("macOS Contacts adapter", () => {
@@ -63,7 +64,7 @@ describe("macOS Contacts adapter", () => {
 
   it("spawns the Swift actuator flag, writes JSON to stdin, and parses one JSON stdout result", async () => {
     const child = fakeChildProcess();
-    const spawnProcess = vi.fn(() => child.process);
+    const spawnProcess = vi.fn(() => child.process as unknown as SpawnedMacContactsProcess);
     const command: MacContactsCommand = { action: "READ", query: "Anna" };
 
     const resultPromise = runMacContactsCommand(command, {
@@ -80,7 +81,7 @@ describe("macOS Contacts adapter", () => {
 
   it("rejects failed actuator results without leaking raw Contacts access into tests", async () => {
     const child = fakeChildProcess();
-    const spawnProcess = vi.fn(() => child.process);
+    const spawnProcess = vi.fn(() => child.process as unknown as SpawnedMacContactsProcess);
 
     const resultPromise = runMacContactsCommand(
       { action: "UPDATE", id: "apple_contact_1", patch: { note: "met at AI dinner" } },

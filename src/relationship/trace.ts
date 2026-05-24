@@ -17,6 +17,9 @@ export type ActiveWorkflowKind =
   | "pending_delete_disambiguation"
   | "pending_delete_confirm"
   | "pending_update_confirm"
+  | "pending_apple_contact_create"
+  | "pending_apple_contact_update"
+  | "pending_apple_contact_delete"
   | "none";
 
 export type FriendyRouteTrace = {

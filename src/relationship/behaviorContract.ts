@@ -15,6 +15,7 @@ export const BEHAVIOR_CONTRACT_RULES = [
   "narrow_follow_up_clues_against_previous_search",
   "pending_contact_prompt_has_highest_context_priority",
   "manual_add_as_creates_relationship_memory",
+  "apple_contacts_mutations_require_confirmation",
   "event_recall_is_not_list_all",
   "stay_relationship_memory_scoped",
   "avoid_scary_runtime_language"
@@ -38,6 +39,8 @@ export function buildInterpreterSystemPrompt(): string {
     "Route who-did-I-meet-at/during/from questions as event_recall, not list_people.",
     "Route list/inventory/bullet requests as list_people.",
     "Route add/save/remember Person as/is/from/at context as manual_memory_create.",
+    "Apple Contacts are separate from Friendy memory; route Apple Contacts create/update/delete requests to Apple-specific intents only.",
+    "Never imply Apple Contacts were changed from the first route. Apple Contacts mutations require explicit user confirmation before tools run.",
     "Stay scoped to relationship memory and people the user has met."
   ].join(" ");
 }
@@ -47,7 +50,7 @@ export function buildStructuredOutputInstructions(): string {
   return [
     "Return JSON that matches the provided schema.",
     "Emit exactly one schema-supported intent.",
-    "Supported current intents include capture_memory, answer_pending_contact_prompt, capture_pending_contact_context, explain_pending_workflow, explain_agent_state, conversation_repair, duplicate_audit, delete_memory_request, list_people, search_memory, manual_memory_create, update_memory, delete_memory, ignore_candidate, clarify, reject, and unknown.",
+    "Supported current intents include capture_memory, answer_pending_contact_prompt, capture_pending_contact_context, explain_pending_workflow, explain_agent_state, conversation_repair, duplicate_audit, delete_memory_request, list_people, search_memory, manual_memory_create, update_memory, delete_memory, request_apple_contact_create, request_apple_contact_update, request_apple_contact_delete, ignore_candidate, clarify, reject, and unknown.",
     "Do not include prose outside the JSON response."
   ].join(" ");
 }

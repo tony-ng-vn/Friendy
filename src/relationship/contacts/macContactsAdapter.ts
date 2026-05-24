@@ -61,7 +61,7 @@ export type MacContactsErrorResult = {
 
 export type MacContactsResult = MacContactsReadResult | MacContactsMutationResult | MacContactsErrorResult;
 
-type SpawnedMacContactsProcess = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on">;
+export type SpawnedMacContactsProcess = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on">;
 
 export type MacContactsCommandRunner = (command: MacContactsCommand) => Promise<MacContactsResult>;
 

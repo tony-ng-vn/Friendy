@@ -160,6 +160,37 @@ describe("message interpretation contract", () => {
     expect(interpretation.search?.filters).toBeUndefined();
   });
 
+  it("accepts Apple Contact mutation intents with identifier-first payloads", () => {
+    const interpretation = validateMessageInterpretation({
+      intent: "request_apple_contact_update",
+      confidence: 0.93,
+      domain: "contact_management",
+      conversationRelation: "starts_new_contact_management_task",
+      target: {
+        appleContactIdentifier: "apple_contact_anna"
+      },
+      appleContact: {
+        id: "apple_contact_anna",
+        patch: {
+          jobTitle: "Founder",
+          emailAddresses: [{ label: "work", value: "anna@example.com" }]
+        }
+      },
+      people: [{ name: "Anna Lee", aliases: [], companyOrSchool: "", classYear: "", project: "", role: "" }],
+      event: { name: "", dateText: "", location: "" },
+      dateContext: null,
+      contextNote: "",
+      query: "",
+      tags: [],
+      needsClarification: false,
+      clarificationQuestion: ""
+    });
+
+    expect(interpretation.intent).toBe("request_apple_contact_update");
+    expect(interpretation.target?.appleContactIdentifier).toBe("apple_contact_anna");
+    expect(interpretation.appleContact?.patch?.jobTitle).toBe("Founder");
+  });
+
   it("rejects malformed interpretations before tools execute", () => {
     expect(() =>
       validateMessageInterpretation({

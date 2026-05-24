@@ -16,6 +16,11 @@ describe("Friendy behavior contract", () => {
   it("keeps product rules separate from structured output instructions", () => {
     expect(buildInterpreterSystemPrompt()).toContain("Friendy is a personal relationship memory agent");
     expect(buildInterpreterSystemPrompt()).toContain("Calendar guesses are suggestions");
+    expect(buildInterpreterSystemPrompt()).toContain("Apple Contacts");
+    expect(buildInterpreterSystemPrompt()).toContain("explicit user confirmation");
     expect(buildStructuredOutputInstructions()).toContain("Return JSON that matches the provided schema");
+    expect(buildStructuredOutputInstructions()).toContain("request_apple_contact_create");
+    expect(buildStructuredOutputInstructions()).toContain("request_apple_contact_update");
+    expect(buildStructuredOutputInstructions()).toContain("request_apple_contact_delete");
   });
 });

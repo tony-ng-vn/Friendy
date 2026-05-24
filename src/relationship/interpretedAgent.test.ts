@@ -5,6 +5,7 @@ import { createOnboardingStateController } from "./onboardingState";
 import { createRuleBasedInterpreter } from "./openAIInterpreter";
 import { createRelationshipRepository } from "./repository";
 import { composePendingContactsFooter } from "./responseComposer";
+import type { MacContactsAdapter } from "./contacts/macContactsAdapter";
 import type { ExpressionFactBundle } from "./expressionFacts";
 import type { MessageInterpreterInput } from "./routerInputEnvelope";
 import { FriendyStrictModeError } from "./strictMode";
@@ -143,6 +144,116 @@ describe("interpreted relationship agent", () => {
     expect(started.outbound.text).toContain("Where did you meet them?");
     expect(interpreterCalls).toBe(0);
     expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("opens Apple Contact create confirmation and only mutates after yes", async () => {
+    let createCalls = 0;
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const adapter = fakeAppleContactsAdapter({
+      createAppleContact: async () => {
+        createCalls += 1;
+        return { identifier: "apple_contact_anna" };
+      }
+    });
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "request_apple_contact_create",
+        domain: "contact_management",
+        conversationRelation: "starts_new_contact_management_task",
+        appleContact: {
+          fields: {
+            givenName: "Anna",
+            familyName: "Lee",
+            phoneNumbers: [{ label: "mobile", value: "+14155551234" }]
+          }
+        },
+        people: [{ name: "Anna Lee", aliases: [], companyOrSchool: "", classYear: "", project: "", role: "" }]
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const request = await agent.handleMessage(inbound("Add Anna Lee to my Apple Contacts with 415-555-1234"));
+
+    expect(request.outbound.text).toBe('I can add Anna Lee to your Apple Contacts. Reply "yes" to save.');
+    expect(request.toolCalls).toEqual([]);
+    expect(createCalls).toBe(0);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.outbound.text).toBe("Saved Anna Lee to Apple Contacts.");
+    expect(confirmed.toolCalls).toEqual(["add_apple_contact"]);
+    expect(createCalls).toBe(1);
+    expect(repo.listMemories(fixtureUser.id)).toEqual([]);
+  });
+
+  it("requires an Apple Contact identifier before opening update confirmation", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const adapter = fakeAppleContactsAdapter();
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "request_apple_contact_update",
+        domain: "contact_management",
+        conversationRelation: "starts_new_contact_management_task",
+        appleContact: {
+          patch: { jobTitle: "Founder" }
+        },
+        people: [{ name: "Anna Lee", aliases: [], companyOrSchool: "", classYear: "", project: "", role: "" }]
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Update Anna Lee in Apple Contacts"));
+
+    expect(result.outbound.text).toBe("I need the Apple Contact identifier before I can update that contact.");
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it("deletes Apple Contacts by stored identifier only after confirmation", async () => {
+    const deletedIds: string[] = [];
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const adapter = fakeAppleContactsAdapter({
+      deleteAppleContact: async (id: string) => {
+        deletedIds.push(id);
+        return { identifier: id, deleted: true };
+      }
+    });
+    const tools = createRelationshipTools(repo, { appleContacts: adapter });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "request_apple_contact_delete",
+        domain: "contact_management",
+        conversationRelation: "starts_new_contact_management_task",
+        target: { appleContactIdentifier: "apple_contact_anna", displayName: "Anna Lee" },
+        appleContact: { id: "apple_contact_anna" },
+        people: [{ name: "Anna Lee", aliases: [], companyOrSchool: "", classYear: "", project: "", role: "" }]
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const request = await agent.handleMessage(inbound("Delete Anna Lee from Apple Contacts"));
+    expect(request.outbound.text).toBe('I can delete Anna Lee from your Apple Contacts. Reply "yes" to confirm.');
+    expect(request.toolCalls).toEqual([]);
+    expect(deletedIds).toEqual([]);
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+    expect(confirmed.outbound.text).toBe("Deleted Anna Lee from Apple Contacts.");
+    expect(confirmed.toolCalls).toEqual(["delete_apple_contact"]);
+    expect(deletedIds).toEqual(["apple_contact_anna"]);
   });
 
   it("asks same-or-different on start when a queued contact matches a saved display name", async () => {
@@ -2820,6 +2931,16 @@ function modelInterpreter(overrides: Partial<Parameters<typeof fullInterpretatio
   };
 }
 
+function fakeAppleContactsAdapter(overrides: Partial<MacContactsAdapter> = {}): MacContactsAdapter {
+  return {
+    getAppleContact: async () => ({ ok: true, contacts: [] }),
+    createAppleContact: async () => ({ identifier: "apple_contact_fake" }),
+    updateAppleContact: async (id: string) => ({ identifier: id }),
+    deleteAppleContact: async (id: string) => ({ identifier: id, deleted: true }),
+    ...overrides
+  };
+}
+
 function may23StrictInterpreter() {
   return {
     async interpret(input: MessageInterpreterInput) {
@@ -2895,11 +3016,32 @@ function fullInterpretation(overrides: Partial<{
     | "ignore_candidate"
     | "clarify"
     | "unknown"
+    | "request_apple_contact_create"
+    | "request_apple_contact_update"
+    | "request_apple_contact_delete"
     | "request_contact_edit";
   confidence: number;
   domain: "relationship_memory" | "contact_management";
-  conversationRelation: "starts_new_relationship_task" | "continues_previous_search" | "answers_open_workflow" | "asks_about_open_workflow";
-  target: { displayName?: string };
+  conversationRelation:
+    | "starts_new_relationship_task"
+    | "starts_new_contact_management_task"
+    | "continues_previous_search"
+    | "answers_open_workflow"
+    | "asks_about_open_workflow";
+  target: { displayName?: string; appleContactIdentifier?: string };
+  appleContact: {
+    id?: string;
+    fields?: {
+      givenName?: string;
+      familyName?: string;
+      phoneNumbers?: Array<{ label?: string; value: string }>;
+    };
+    patch?: {
+      jobTitle?: string;
+      familyName?: string;
+    };
+  };
+  people: Array<{ name: string; aliases: string[]; companyOrSchool: string; classYear: string; project: string; role: string }>;
   query: string;
   search: {
     mode: "lookup_person" | "list_people" | "list_related_people" | "event_recall" | "semantic_recall";

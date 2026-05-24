@@ -47,6 +47,36 @@
 - Mutation tool boundaries require a non-empty Apple Contact identifier for update/delete before calling the adapter.
 - Focused green run: `npm test -- src/relationship/tools.test.ts` passed with 36 tests.
 
+## Apple Contact Routing Contract RED
+
+- Date: 2026-05-24
+- Added interpretation, behavior-contract, and route-policy tests for Apple-specific intents (`request_apple_contact_create`, `request_apple_contact_update`, `request_apple_contact_delete`), identifier-first payloads, and prompt text requiring explicit confirmation.
+- RED run: `npm test -- src/relationship/interpretation.test.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/routePolicyValidator.test.ts` failed because the interpretation schema lacks Apple intents/payloads, the prompt does not mention Apple Contacts confirmation, and Apple mutation routes do not suppress pending reminders.
+
+## Apple Contact Routing Contract GREEN
+
+- Date: 2026-05-24
+- Added Apple-specific intents and an `appleContact` payload to the interpretation contract, with `target.appleContactIdentifier` for identifier-first mutation routes.
+- Updated the interpreter behavior contract to explain Apple Contacts as a separate store and require explicit confirmation before mutation tools run.
+- Apple mutation intents now suppress pending-contact reminders so confirmation prompts stay focused.
+- Focused green run: `npm test -- src/relationship/interpretation.test.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/routePolicyValidator.test.ts` passed with 18 tests.
+
+## Apple Contact Confirmation Workflow RED
+
+- Date: 2026-05-24
+- Added interpreted-agent tests for Apple Contact create confirmation gating, missing-identifier update clarification, and delete-by-stored-identifier after explicit `yes`.
+- RED run: `npm test -- src/relationship/interpretedAgent.test.ts -t "Apple Contact"` failed because contact-management text is still filtered by scope/no-match paths and no Apple Contact pending workflow exists.
+
+## Apple Contact Confirmation Workflow GREEN
+
+- Date: 2026-05-24
+- Added Apple Contact tool/capability entries to the interpreted router envelope lists.
+- Added pending Apple Contact create/update/delete workflow state in the interpreted agent. Initial Apple Contact mutation routes ask for confirmation and do not call tools; an explicit later `yes` executes the stored adapter-backed mutation and clears the workflow.
+- Added identifier-first clarification for update/delete routes without a `CNContact.identifier`.
+- Focused green runs:
+  - `npm test -- src/relationship/interpretedAgent.test.ts -t "Apple Contact"` passed with 4 matching tests.
+  - `npm test -- src/relationship/interpretedAgent.test.ts src/relationship/interpretation.test.ts src/relationship/__tests__/behaviorContract.test.ts src/relationship/routePolicyValidator.test.ts src/relationship/tools.test.ts src/relationship/contacts/macContactsAdapter.test.ts` passed with 153 tests.
+
 # Friendy List People Tool
 
 ## GREEN
