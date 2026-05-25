@@ -14,7 +14,7 @@ import {
   type MacContactsAdapter
 } from "./contacts/macContactsAdapter";
 import { createCandidateId } from "./eventMapper";
-import { isListPeopleRecall } from "./listPeopleRecall";
+import { isEventRecallQuestion, isListPeopleRecall } from "./listPeopleRecall";
 import { lookupMemoryTarget, type MemoryTargetLookupResult } from "./memoryTargetLookup";
 import { buildMemorySearchDocument, scoreMemorySearchDocument, type RetrievalCandidate } from "./memorySearchDocument";
 import { extractTags, type RelationshipRepository } from "./repository";
@@ -46,6 +46,7 @@ export type InternalListPeopleRequest = ListPeopleRequest & {
     eventName?: string;
     topic?: string;
     tags?: string[];
+    personId?: string;
   };
 };
 
@@ -89,6 +90,12 @@ export type ListPeopleResult = {
   unsupportedSources?: ListPeopleSource[];
 };
 
+/** Result of resolving one named person and returning grouped memory summaries. */
+export type ListPeopleDetailResult =
+  | { kind: "found"; person: ListedPerson }
+  | { kind: "ambiguous"; options: Array<{ displayName: string; score: number }>; personQuery: string }
+  | { kind: "none"; personQuery: string };
+
 export type LookupMemoryTargetOptions = {
   operation?: "delete" | "update";
   minScore?: number;
@@ -117,6 +124,7 @@ type CreateManualMemoryOptions = {
   dateContext?: RelationshipDateContext;
   idempotencyKey?: string;
   createdFromInteractionId?: string;
+  personId?: string;
 };
 
 type UpdateMemoryOptions = {
@@ -170,6 +178,61 @@ export function createRelationshipTools(repo: RelationshipRepository, options: R
       return listPeopleFromRepository(repo, userId, request);
     },
 
+    list_people_detail(
+      userId: string,
+      personQuery: string,
+      options: Pick<LookupMemoryTargetOptions, "recentPeople"> = {}
+    ): ListPeopleDetailResult {
+      const lookup = lookupMemoryTarget({
+        userId,
+        query: personQuery,
+        memories: repo.listMemories(userId),
+        recentPeople: options.recentPeople
+      });
+
+      if (lookup.kind === "ambiguous") {
+        return {
+          kind: "ambiguous",
+          personQuery,
+          options: lookup.options.map((option) => ({
+            displayName: option.displayName,
+            score: option.score
+          }))
+        };
+      }
+
+      if (lookup.kind === "single") {
+        const resolvedPersonId = repo
+          .listMemories(userId)
+          .find((memory) => memory.id === lookup.memoryId)?.personId;
+        const result = listPeopleFromRepository(repo, userId, {
+          source: "friendy_memory",
+          limit: 5,
+          dedupeByPerson: true,
+          includePending: false,
+          filter: resolvedPersonId
+            ? { personId: resolvedPersonId }
+            : { exactTerms: lookup.displayName.split(/\s+/).filter(Boolean) }
+        });
+
+        if (result.people.length === 0) {
+          return { kind: "none", personQuery };
+        }
+
+        if (result.people.length > 1) {
+          return {
+            kind: "ambiguous",
+            personQuery,
+            options: result.people.map((person) => ({ displayName: person.displayName, score: lookup.score }))
+          };
+        }
+
+        return { kind: "found", person: result.people[0] };
+      }
+
+      return resolveListPeopleDetailFromSearch(repo, userId, personQuery, searchMemoriesFromRepository(repo, userId, personQuery));
+    },
+
     find_duplicate_people(userId: string, options: { includePending?: boolean } = {}): FindDuplicatePeopleResult {
       const result = listPeopleFromRepository(repo, userId, {
         source: "friendy_memory",
@@ -199,26 +262,7 @@ export function createRelationshipTools(repo: RelationshipRepository, options: R
     },
 
     search_memories(userId: string, query: string): MemorySearchResult[] {
-      const queryAnalysis = analyzeSearchQuery(query);
-      if (queryAnalysis.isListAll) {
-        return repo.listMemories(userId).map((memory) => ({
-          memory,
-          score: 1,
-          reason: "list-all relationship recall"
-        }));
-      }
-
-      const repositoryCandidates = groupRetrievalCandidates(
-        repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
-      );
-
-      const scored = repo
-        .listMemories(userId)
-        .map((memory) => mergeRepositoryCandidates(scoreMemory(memory, queryAnalysis), repositoryCandidates.get(memory.id) ?? [], queryAnalysis))
-        .filter((result) => result.score > 0)
-        .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
-
-      return selectSearchResults(scored, queryAnalysis).map(stripInternalScores);
+      return searchMemoriesFromRepository(repo, userId, query);
     },
 
     list_pending_candidates(userId: string) {
@@ -328,6 +372,9 @@ export function createRelationshipTools(repo: RelationshipRepository, options: R
         return existingMemory;
       }
       const candidate = repo.getCandidate(candidateId) ?? repo.createCandidateFromDetectedContact(candidateInput);
+      if (options.personId) {
+        repo.attachCandidateToPerson(candidate.id, options.personId);
+      }
 
       return repo.confirmCandidate(candidate.id, contextNote, undefined, {
         eventTitle: options.eventTitle,
@@ -414,6 +461,120 @@ function requireAppleContactIdentifier(id: string): void {
   if (!id.trim()) {
     throw new Error("Apple Contact identifier is required for mutation.");
   }
+}
+
+const LIST_PEOPLE_DETAIL_SEARCH_SCORE_GAP = 6;
+
+function searchMemoriesFromRepository(
+  repo: RelationshipRepository,
+  userId: string,
+  query: string
+): MemorySearchResult[] {
+  const queryAnalysis = analyzeSearchQuery(query);
+  if (queryAnalysis.isListAll) {
+    return repo.listMemories(userId).map((memory) => ({
+      memory,
+      score: 1,
+      reason: "list-all relationship recall"
+    }));
+  }
+
+  const repositoryCandidates = groupRetrievalCandidates(
+    repo.searchMemoryDocuments?.(userId, query, queryAnalysis.terms) ?? []
+  );
+
+  const scored = repo
+    .listMemories(userId)
+    .map((memory) =>
+      mergeRepositoryCandidates(
+        scoreMemory(memory, queryAnalysis),
+        repositoryCandidates.get(memory.id) ?? [],
+        queryAnalysis
+      )
+    )
+    .filter((result) => result.score > 0)
+    .sort((a, b) => b.score - a.score || b.specificScore - a.specificScore);
+
+  return selectSearchResults(scored, queryAnalysis).map(stripInternalScores);
+}
+
+/**
+ * Resolves a clue-based person lookup (role, company, event fragment) via field-aware search
+ * instead of requiring every raw query token to appear in stored memory text.
+ */
+function resolveListPeopleDetailFromSearch(
+  repo: RelationshipRepository,
+  userId: string,
+  personQuery: string,
+  matches: MemorySearchResult[]
+): ListPeopleDetailResult {
+  if (matches.length === 0) {
+    return { kind: "none", personQuery };
+  }
+
+  type PersonGroup = {
+    personId?: string;
+    displayName: string;
+    topScore: number;
+  };
+
+  const groups = new Map<string, PersonGroup>();
+  for (const { memory, score } of matches) {
+    const key = memory.personId ?? `name:${normalizedPersonName(memory.displayName)}`;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        personId: memory.personId,
+        displayName: memory.displayName,
+        topScore: score
+      });
+      continue;
+    }
+
+    existing.topScore = Math.max(existing.topScore, score);
+  }
+
+  const ranked = [...groups.values()].sort((left, right) => right.topScore - left.topScore);
+  const runnerUpScore = ranked[1]?.topScore ?? 0;
+  const scoreGap = ranked[0].topScore - runnerUpScore;
+  const hasClearWinner =
+    ranked.length === 1 ||
+    scoreGap >= LIST_PEOPLE_DETAIL_SEARCH_SCORE_GAP ||
+    (ranked[0].topScore >= 6 && runnerUpScore <= 1);
+  if (ranked.length > 1 && !hasClearWinner) {
+    return {
+      kind: "ambiguous",
+      personQuery,
+      options: ranked.slice(0, 3).map((group) => ({
+        displayName: group.displayName,
+        score: group.topScore
+      }))
+    };
+  }
+
+  const winner = ranked[0];
+  const listed = listPeopleFromRepository(repo, userId, {
+    source: "friendy_memory",
+    limit: 20,
+    dedupeByPerson: true,
+    includePending: false,
+    filter: winner.personId
+      ? { personId: winner.personId }
+      : { exactTerms: winner.displayName.split(/\s+/).filter(Boolean) }
+  });
+
+  const person =
+    listed.people.find(
+      (candidate) =>
+        (winner.personId && candidate.personId === winner.personId) ||
+        normalizedPersonName(candidate.displayName) === normalizedPersonName(winner.displayName)
+    ) ?? listed.people[0];
+
+  if (!person) {
+    return { kind: "none", personQuery };
+  }
+
+  return { kind: "found", person };
 }
 
 function listPeopleFromRepository(
@@ -553,6 +714,10 @@ function buildDuplicateGroups(groups: MemoryGroup[], pendingCandidates: PendingC
 }
 
 function memoryMatchesListFilter(memory: RelationshipMemory, filter: InternalListPeopleRequest["filter"]): boolean {
+  if (filter?.personId) {
+    return memory.personId === filter.personId;
+  }
+
   const terms = meaningfulListTerms(filter);
   if (terms.length === 0) {
     return true;
@@ -826,7 +991,8 @@ function analyzeSearchQuery(rawQuery: string): SearchQueryAnalysis {
 
   return {
     terms,
-    isEventWide: /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery),
+    isEventWide:
+      isEventRecallQuestion(rawQuery) || /\b(who|show|list|everyone|all)\b.*\b(i\s+)?(met|meet|saved)\b/i.test(rawQuery),
     isListAll: isListPeopleRecall(rawQuery)
   };
 }
@@ -853,7 +1019,8 @@ export function normalizeMemorySearchQuery(raw: string): string {
 
 function selectSearchResults(results: InternalMemorySearchResult[], query: SearchQueryAnalysis): InternalMemorySearchResult[] {
   if (query.isEventWide) {
-    return results.slice(0, 10);
+    const eventScoped = results.filter((result) => result.coverage >= eventWideMinimumCoverage(query.terms.length));
+    return (eventScoped.length > 0 ? eventScoped : results).slice(0, 10);
   }
 
   const covered = results.filter((result) => result.coverage >= minimumCoverage(query.terms.length));
@@ -870,6 +1037,14 @@ function selectSearchResults(results: InternalMemorySearchResult[], query: Searc
   }
 
   return covered.slice(0, 3);
+}
+
+function eventWideMinimumCoverage(termCount: number): number {
+  if (termCount <= 1) {
+    return 1;
+  }
+
+  return 1;
 }
 
 function stripInternalScores(result: InternalMemorySearchResult): MemorySearchResult {
@@ -1063,8 +1238,11 @@ const GENERIC_MEMORY_QUERY_TERMS = new Set([
   "just",
   "so",
   "far",
+  "what",
+  "are",
   "while",
   "during",
+  "time",
   "was",
   "is",
   "the"

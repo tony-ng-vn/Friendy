@@ -13,10 +13,33 @@
  * - Privacy: contact methods are mapped to hashed values and redacted hints
  *   before entering repository types; raw phone/email never leave the sensor.
  */
+import { appendFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { RelationshipRepository } from "../repository";
 import { isContactAutomationActive, type OnboardingState } from "../onboardingState";
 import type { CalendarEvent, ContactCandidate, ContactCandidateDetected } from "../types";
 import { composeDuplicateResolutionPrompt } from "../responseComposer";
+
+const AGENT_DEBUG_LOG_PATH = resolve(process.cwd(), ".cursor/debug-ca2a75.log");
+
+function emitAgentDebugLog(payload: Record<string, unknown>): void {
+  if (process.env.VITEST === "true") {
+    return;
+  }
+
+  const line = JSON.stringify({ sessionId: "ca2a75", timestamp: Date.now(), ...payload });
+  try {
+    appendFileSync(AGENT_DEBUG_LOG_PATH, `${line}\n`, "utf8");
+  } catch {
+    // ignore missing log directory
+  }
+
+  fetch("http://127.0.0.1:7405/ingest/fb43d96c-a8d2-4696-9276-2b1b2d2ceca0", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ca2a75" },
+    body: line
+  }).catch(() => {});
+}
 import { scoreCalendarContext, type ScoredCalendarEvent } from "./calendarScorer";
 import { planCandidatePrompt, type CandidatePromptPlan } from "./promptPlanner";
 import { parseSensorEventLineWithMeta, type MacosSensorEvent } from "./sensorEvents";
@@ -89,6 +112,7 @@ export type RuntimeStateStore = {
   getProcessedEvent(idempotencyKey: string): ProcessedSensorEvent | undefined;
   getProcessedEventBySensorEventId(sensorEventId: string): ProcessedSensorEvent | undefined;
   recordProcessedEvent(event: ProcessedSensorEvent): void;
+  clearProcessedEventsForCandidateIds(candidateIds: string[]): void;
   runTransaction?<T>(callback: () => T): T;
   getSensorState(userId: string, sensorName: string, deviceId: string): RuntimeSensorState | undefined;
   upsertSensorState(input: {
@@ -123,14 +147,31 @@ export type FriendySensorRuntimeInput = {
   ackWriter: RuntimeAckWriter;
   logger?: RuntimeLogger;
   getOnboardingState?: () => OnboardingState;
+  getContactIntakeStartedAt?: () => string | undefined;
+  sqlitePath?: string;
   now?: () => string;
 };
 
-type FriendySensorRuntimeContext = Omit<FriendySensorRuntimeInput, "logger" | "now" | "getOnboardingState"> & {
+type FriendySensorRuntimeContext = Omit<
+  FriendySensorRuntimeInput,
+  "logger" | "now" | "getOnboardingState" | "getContactIntakeStartedAt"
+> & {
   logger: RuntimeLogger;
   getOnboardingState: () => OnboardingState;
+  getContactIntakeStartedAt?: () => string | undefined;
   now: () => string;
   preStartNotice: { sent: boolean };
+  /** Ignored/expired candidates deferred during pre-start duplicate replay; re-queued on `start`. */
+  deferredReintakeCandidateIds: Set<string>;
+  /** ISO timestamp when this foreground runtime instance started. */
+  runtimeStartedAt: string;
+  /** Resolved SQLite path for agent-visible logging (undefined in in-memory tests). */
+  sqlitePath?: string;
+};
+
+export type FriendySensorRuntime = {
+  processLine(line: string): Promise<void>;
+  requeueDeferredReintakeCandidatesOnStart(): Promise<void>;
 };
 
 /** Creates the runtime line processor wired to repository, state, prompts, and acks. */
@@ -142,8 +183,11 @@ export function createFriendySensorRuntime({
   ackWriter,
   logger = console,
   getOnboardingState = () => "active",
+  getContactIntakeStartedAt,
+  sqlitePath,
   now = () => new Date().toISOString()
-}: FriendySensorRuntimeInput) {
+}: FriendySensorRuntimeInput): FriendySensorRuntime {
+  const runtimeStartedAt = now();
   const context: FriendySensorRuntimeContext = {
     userId,
     repo,
@@ -152,11 +196,18 @@ export function createFriendySensorRuntime({
     ackWriter,
     logger,
     getOnboardingState,
+    getContactIntakeStartedAt,
     now,
-    preStartNotice: { sent: false }
+    preStartNotice: { sent: false },
+    deferredReintakeCandidateIds: new Set(),
+    runtimeStartedAt,
+    sqlitePath
   };
 
   return {
+    async requeueDeferredReintakeCandidatesOnStart(): Promise<void> {
+      await requeueDeferredReintakeCandidatesOnStart(context);
+    },
     async processLine(line: string): Promise<void> {
       const eventNow = now();
       let event: MacosSensorEvent;
@@ -209,6 +260,18 @@ export function createInMemoryRuntimeStateStore(): RuntimeStateStore {
       processedByIdempotencyKey.set(event.idempotencyKey, event);
       if (event.sensorEventId) {
         processedBySensorEventId.set(event.sensorEventId, event);
+      }
+    },
+    clearProcessedEventsForCandidateIds(candidateIds) {
+      const candidateIdSet = new Set(candidateIds);
+      for (const [idempotencyKey, event] of processedByIdempotencyKey.entries()) {
+        if (!event.candidateId || !candidateIdSet.has(event.candidateId)) {
+          continue;
+        }
+        processedByIdempotencyKey.delete(idempotencyKey);
+        if (event.sensorEventId) {
+          processedBySensorEventId.delete(event.sensorEventId);
+        }
       }
     },
     runTransaction(callback) {
@@ -275,8 +338,11 @@ async function processEvent({
   ackWriter,
   logger,
   getOnboardingState,
+  getContactIntakeStartedAt,
   now,
   preStartNotice,
+  deferredReintakeCandidateIds,
+  runtimeStartedAt,
   eventNow,
   validationStatus = "ok"
 }: FriendySensorRuntimeContext & {
@@ -287,9 +353,59 @@ async function processEvent({
   const processedAt = eventNow ?? now();
   const processed = "idempotencyKey" in event ? state.getProcessedEvent(event.idempotencyKey) : undefined;
   if (processed) {
-    if (event.type === "contact_added" && processed.candidateId) {
-      await retryPromptForDuplicateContact({ event, processed, userId, repo, sender, logger, now });
-      return;
+    if (event.type === "contact_added") {
+      if (
+        await reintakeDuplicateContactIfEligible({
+          event,
+          processed,
+          userId,
+          repo,
+          state,
+          sender,
+          logger,
+          now,
+          getOnboardingState,
+          getContactIntakeStartedAt,
+          validationStatus,
+          processedAt
+        })
+      ) {
+        return;
+      }
+
+      if (processed.candidateId) {
+        if (
+          shouldDeferDuplicateReintake(event, getOnboardingState, getContactIntakeStartedAt)
+        ) {
+          trackDeferredReintakeCandidate({
+            repo,
+            userId,
+            candidateId: processed.candidateId,
+            deferredReintakeCandidateIds
+          });
+          if (isContactAutomationActive(getOnboardingState())) {
+            await requeueDeferredReintakeCandidatesOnStart({
+              userId,
+              repo,
+              state,
+              sender,
+              ackWriter,
+              logger,
+              getOnboardingState,
+              getContactIntakeStartedAt,
+              now,
+              preStartNotice,
+              deferredReintakeCandidateIds,
+              runtimeStartedAt
+            });
+          }
+        }
+        await retryPromptForDuplicateContact({ event, processed, userId, repo, sender, logger, now });
+        recordDuplicateSensorEventAlias(state, event, processed, processedAt);
+        return;
+      }
+
+      recordDuplicateSensorEventAlias(state, event, processed, processedAt);
     }
 
     logger.info(`Duplicate sensor event ignored: ${processed.idempotencyKey}`);
@@ -559,6 +675,289 @@ function recordContactAddedSensorState({
 
 function formatPermissionStatus(contactsStatus: string, calendarStatus: string): string {
   return `contacts:${contactsStatus};calendar:${calendarStatus}`;
+}
+
+function shouldDeferDuplicateReintake(
+  event: Extract<MacosSensorEvent, { type: "contact_added" }>,
+  getOnboardingState: () => OnboardingState,
+  getContactIntakeStartedAt?: () => string | undefined
+): boolean {
+  if (!isContactAutomationActive(getOnboardingState())) {
+    return true;
+  }
+
+  const intakeStartedAt = getContactIntakeStartedAt?.();
+  if (!intakeStartedAt) {
+    return false;
+  }
+
+  return !isDetectedAtOrAfterIntakeStart(event.detectedAt, intakeStartedAt);
+}
+
+/** Earliest ISO timestamp so durable re-intake includes contacts processed before this runtime boot. */
+function earliestSensorActivitySinceForReintake(context: FriendySensorRuntimeContext): string {
+  const nowMs = Date.parse(context.now());
+  const lookbackMs = Number.isNaN(nowMs) ? Date.now() - 24 * 60 * 60 * 1000 : nowMs - 24 * 60 * 60 * 1000;
+  const lookbackIso = new Date(lookbackMs).toISOString();
+  const runtimeMs = Date.parse(context.runtimeStartedAt);
+  if (Number.isNaN(runtimeMs)) {
+    return lookbackIso;
+  }
+
+  return runtimeMs < lookbackMs ? context.runtimeStartedAt : lookbackIso;
+}
+
+function isDetectedAtOrAfterIntakeStart(detectedAt: string, intakeStartedAt: string): boolean {
+  const detectedAtMs = Date.parse(detectedAt);
+  const intakeStartedAtMs = Date.parse(intakeStartedAt);
+  if (Number.isNaN(detectedAtMs) || Number.isNaN(intakeStartedAtMs)) {
+    return detectedAt >= intakeStartedAt;
+  }
+
+  return detectedAtMs >= intakeStartedAtMs;
+}
+
+function duplicateSensorEventAliasKey(sensorEventId: string): string {
+  return `sensor_event_alias:${sensorEventId}`;
+}
+
+function recordDuplicateSensorEventAlias(
+  state: RuntimeStateStore,
+  event: Extract<MacosSensorEvent, { type: "contact_added" }>,
+  processed: ProcessedSensorEvent,
+  processedAt: string
+): void {
+  state.recordProcessedEvent({
+    idempotencyKey: duplicateSensorEventAliasKey(event.eventId),
+    sensorEventId: event.eventId,
+    sensorName: event.sensorName,
+    eventType: event.type,
+    status: "duplicate",
+    candidateId: processed.candidateId,
+    validationStatus: processed.validationStatus,
+    processedAt
+  });
+}
+
+function candidateHasMemory(repo: RelationshipRepository, userId: string, candidateId: string): boolean {
+  return repo.listMemories(userId).some((memory) => memory.candidateId === candidateId);
+}
+
+function trackDeferredReintakeCandidate({
+  repo,
+  userId,
+  candidateId,
+  deferredReintakeCandidateIds
+}: {
+  repo: RelationshipRepository;
+  userId: string;
+  candidateId: string;
+  deferredReintakeCandidateIds: Set<string>;
+}): void {
+  const candidate = repo.getCandidate(candidateId);
+  if (!candidate || (candidate.status !== "ignored" && candidate.status !== "expired")) {
+    return;
+  }
+  if (candidateHasMemory(repo, userId, candidateId)) {
+    return;
+  }
+
+  deferredReintakeCandidateIds.add(candidateId);
+  // #region agent log
+  fetch("http://127.0.0.1:7405/ingest/fb43d96c-a8d2-4696-9276-2b1b2d2ceca0", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ca2a75" },
+    body: JSON.stringify({
+      sessionId: "ca2a75",
+      location: "friendyRuntime.ts:trackDeferredReintakeCandidate",
+      message: "deferred ignored candidate for intake start requeue",
+      data: { candidateId, displayName: candidate.displayName, status: candidate.status },
+      timestamp: Date.now(),
+      hypothesisId: "C"
+    })
+  }).catch(() => {});
+  // #endregion
+}
+
+async function requeueDeferredReintakeCandidatesOnStart(context: FriendySensorRuntimeContext): Promise<void> {
+  if (!isContactAutomationActive(context.getOnboardingState())) {
+    context.logger.info(`[friendy:reintake] skipped: onboarding=${context.getOnboardingState()}`);
+    emitAgentDebugLog({
+      location: "friendyRuntime.ts:requeueDeferredReintakeCandidatesOnStart:skipped",
+      message: "requeue skipped because contact automation is inactive",
+      data: { onboardingState: context.getOnboardingState(), sqlitePath: context.sqlitePath ?? null },
+      runId: "post-fix",
+      hypothesisId: "G"
+    });
+    return;
+  }
+
+  const intakeStartedAt = context.getContactIntakeStartedAt?.() ?? context.now();
+  const sessionDeferred = [...context.deferredReintakeCandidateIds];
+  context.deferredReintakeCandidateIds.clear();
+  const durableDeferred = context.repo.listIgnoredCandidateIdsForReintake(context.userId, {
+    sensorActivitySince: earliestSensorActivitySinceForReintake(context)
+  });
+  const candidateIds = [...new Set([...sessionDeferred, ...durableDeferred])];
+
+  if (candidateIds.length > 0) {
+    context.logger.info(
+      `[friendy:reintake] requeue ${candidateIds.length} ignored contact(s) db=${context.sqlitePath ?? "unknown"} session=${sessionDeferred.length} durable=${durableDeferred.length}`
+    );
+  }
+
+  // #region agent log
+  emitAgentDebugLog({
+    location: "friendyRuntime.ts:requeueDeferredReintakeCandidatesOnStart:plan",
+    message: "requeue candidate plan",
+    data: {
+      sessionDeferred,
+      durableDeferred,
+      candidateIds,
+      runSource: process.env.VITEST === "true" ? "vitest" : "agent",
+      sqlitePath: context.sqlitePath ?? process.env.FRIENDY_SQLITE_PATH ?? null
+    },
+    runId: "post-fix",
+    hypothesisId: "F"
+  });
+  // #endregion
+
+  for (const candidateId of candidateIds) {
+    const candidate = context.repo.getCandidate(candidateId);
+    if (!candidate || (candidate.status !== "ignored" && candidate.status !== "expired")) {
+      continue;
+    }
+    if (candidateHasMemory(context.repo, context.userId, candidateId)) {
+      continue;
+    }
+
+    const reactivated = context.repo.reactivateCandidateForIntake(candidateId, { detectedAt: intakeStartedAt });
+    const persistedAfterReactivate = context.repo.getCandidate(candidateId);
+    // #region agent log
+    fetch("http://127.0.0.1:7405/ingest/fb43d96c-a8d2-4696-9276-2b1b2d2ceca0", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ca2a75" },
+      body: JSON.stringify({
+        sessionId: "ca2a75",
+        location: "friendyRuntime.ts:requeueDeferredReintakeCandidatesOnStart:reactivated",
+        message: "candidate reactivated before start prompt",
+        data: {
+          candidateId,
+          status: reactivated.status,
+          persistedStatus: persistedAfterReactivate?.status,
+          displayName: reactivated.displayName
+        },
+        timestamp: Date.now(),
+        runId: "post-fix",
+        hypothesisId: "D"
+      })
+    }).catch(() => {});
+    // #endregion
+    const scoredEvents = scoreCalendarContext({ detectedAt: intakeStartedAt, calendarMatches: [] });
+    await sendCandidatePrompt({
+      userId: context.userId,
+      repo: context.repo,
+      sender: context.sender,
+      logger: context.logger,
+      candidate: reactivated,
+      scoredEvents,
+      promptedAt: context.now()
+    });
+    const afterPrompt = context.repo.getCandidate(candidateId);
+    // #region agent log
+    fetch("http://127.0.0.1:7405/ingest/fb43d96c-a8d2-4696-9276-2b1b2d2ceca0", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ca2a75" },
+      body: JSON.stringify({
+        sessionId: "ca2a75",
+        location: "friendyRuntime.ts:requeueDeferredReintakeCandidatesOnStart:afterPrompt",
+        message: "candidate state after start requeue prompt",
+        data: {
+          candidateId,
+          status: afterPrompt?.status,
+          promptInteractionId: afterPrompt?.promptInteractionId ?? null
+        },
+        timestamp: Date.now(),
+        runId: "post-fix",
+        hypothesisId: "E"
+      })
+    }).catch(() => {});
+    // #endregion
+    context.logger.info(
+      `[friendy:reintake] Re-queued ${reactivated.displayName ?? candidateId} at intake start (status=${afterPrompt?.status ?? "unknown"})`
+    );
+    // #region agent log
+    fetch("http://127.0.0.1:7405/ingest/fb43d96c-a8d2-4696-9276-2b1b2d2ceca0", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ca2a75" },
+      body: JSON.stringify({
+        sessionId: "ca2a75",
+        location: "friendyRuntime.ts:requeueDeferredReintakeCandidatesOnStart",
+        message: "requeued deferred ignored candidate on start",
+        data: { candidateId, displayName: reactivated.displayName },
+        timestamp: Date.now(),
+        runId: "post-fix",
+        hypothesisId: "C"
+      })
+    }).catch(() => {});
+    // #endregion
+  }
+}
+
+async function reintakeDuplicateContactIfEligible({
+  event,
+  processed,
+  userId,
+  repo,
+  state,
+  sender,
+  logger,
+  now,
+  getOnboardingState,
+  getContactIntakeStartedAt,
+  validationStatus,
+  processedAt
+}: {
+  event: Extract<MacosSensorEvent, { type: "contact_added" }>;
+  processed: ProcessedSensorEvent;
+  userId: string;
+  repo: RelationshipRepository;
+  state: RuntimeStateStore;
+  sender: RuntimePromptSender;
+  logger: RuntimeLogger;
+  now: () => string;
+  getOnboardingState: () => OnboardingState;
+  getContactIntakeStartedAt?: () => string | undefined;
+  validationStatus?: ProcessedSensorEvent["validationStatus"];
+  processedAt: string;
+}): Promise<boolean> {
+  if (!processed.candidateId || !isContactAutomationActive(getOnboardingState())) {
+    return false;
+  }
+
+  const intakeStartedAt = getContactIntakeStartedAt?.();
+  if (!intakeStartedAt || !isDetectedAtOrAfterIntakeStart(event.detectedAt, intakeStartedAt)) {
+    return false;
+  }
+
+  const candidate = repo.getCandidate(processed.candidateId);
+  if (!candidate || (candidate.status !== "ignored" && candidate.status !== "expired")) {
+    return false;
+  }
+
+  const reactivated = repo.reactivateCandidateForIntake(candidate.id, { detectedAt: event.detectedAt });
+  const scoredEvents = scoreCalendarContext({
+    detectedAt: event.detectedAt,
+    calendarMatches: event.calendarMatches
+  });
+  recordContactAddedSensorState({ userId, state, event, now: processedAt });
+  recordProcessed(state, event, "candidate_created", processedAt, {
+    candidateId: reactivated.id,
+    validationStatus
+  });
+  await sendCandidatePrompt({ userId, repo, sender, logger, candidate: reactivated, scoredEvents, promptedAt: processedAt });
+  logger.info(`Re-queued ignored contact after post-start detection: ${event.idempotencyKey}`);
+  return true;
 }
 
 async function retryPromptForDuplicateContact({

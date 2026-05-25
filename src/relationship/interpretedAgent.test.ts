@@ -385,7 +385,7 @@ describe("interpreted relationship agent", () => {
               conversationRelation: "starts_new_relationship_task",
               query: "Anna Lee",
               search: {
-                mode: "lookup_person",
+                mode: "semantic_recall",
                 semanticQuery: "Anna Lee",
                 exactTerms: ["anna", "lee"],
                 filters: {},
@@ -400,7 +400,7 @@ describe("interpreted relationship agent", () => {
       timezone: "America/Los_Angeles"
     });
 
-    const result = await agent.handleMessage(inbound("What do I know about Anna Lee?"));
+    const result = await agent.handleMessage(inbound("Search my memory for Anna Lee"));
     const linkedAppleContacts = (
       capturedInput?.routerContext?.domainStateSummary as {
         linkedAppleContacts?: Array<{
@@ -1004,8 +1004,8 @@ describe("interpreted relationship agent", () => {
       policyDecision: "allow",
       toolCalls: ["list_people"]
     });
-    expect(result.outbound.text).toContain("- Testing 12");
-    expect(result.outbound.text).toContain("- Testing 12 - Met them during testing Friendy");
+    expect(result.outbound.text).toContain("1. Testing 12");
+    expect(result.outbound.text).toContain("1. Testing 12 - Met them during testing Friendy");
     expect(result.outbound.text).not.toContain("Sarah Fan");
     expect(result.outbound.text).not.toContain("I still need context for Testing 3");
   });
@@ -1031,7 +1031,7 @@ describe("interpreted relationship agent", () => {
     const result = await agent.handleMessage(inbound("List all people I met"));
 
     expect(result.toolCalls).toEqual(["list_people"]);
-    expect(result.outbound.text).toContain("- Z2");
+    expect(result.outbound.text).toContain("1. Z2");
     expect(result.trace.routeSource).toBe("deterministic");
   });
 
@@ -1323,6 +1323,55 @@ describe("interpreted relationship agent", () => {
     expect(result.outbound.text).toContain("Z3");
   });
 
+  it("treats what-are-the-people event questions as contextual event recall", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        { ...memoryFixture("Cecilia Zeng", "I met them during Photon Residency"), eventTitle: "Photon Residency" },
+        { ...memoryFixture("Sarah Fan", "goat of the photon residency II"), eventTitle: "Photon Residency II" },
+        { ...memoryFixture("Daniel", "school or company: Photon"), id: "memory_daniel_photon", eventTitle: "" },
+        { ...memoryFixture("Julie Chen", "GTM at Photon"), id: "memory_julie_photon", eventTitle: "" },
+        { ...memoryFixture("Harold", "my best friend at USF"), id: "memory_harold", eventTitle: "" }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      strictMode: true,
+      interpreter: modelInterpreter({
+        intent: "search_memory",
+        domain: "relationship_memory",
+        conversationRelation: "starts_new_relationship_task",
+        confidence: 0.92,
+        query: "Photon Residency",
+        search: {
+          mode: "semantic_recall",
+          semanticQuery: "Photon Residency",
+          exactTerms: ["photon", "residency"],
+          filters: {},
+          topK: 20
+        }
+      }),
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("What are the people I met during Photon Residency?"));
+
+    expect(result.toolCalls).toEqual(["search_memories"]);
+    expect(result.trace.route).toMatchObject({
+      intent: "search_memory",
+      searchMode: "event_recall"
+    });
+    expect(result.outbound.text).toContain("Cecilia Zeng");
+    expect(result.outbound.text).toContain("Sarah Fan");
+    expect(result.outbound.text).not.toContain("Daniel");
+    expect(result.outbound.text).not.toContain("Julie Chen");
+    expect(result.outbound.text).not.toContain("Harold");
+    expect(result.outbound.text).not.toContain("Which person do you mean?");
+  });
+
   it("captures Zhiyuan with alias, school, class year, and project context", async () => {
     const { agent, repo } = createTestAgent();
 
@@ -1611,6 +1660,64 @@ describe("interpreted relationship agent", () => {
     expect(result.trace.pendingReminderDecision).toBe("suppressed");
     expect(result.trace.pendingReminderReason).toBe("not_search_interrupt");
     expect(result.trace.suppressedPendingReminder).toBe(true);
+  });
+
+  it("asks for more memories about a person after the first pending-contact save until the user declines", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Harold",
+      phoneNumbers: ["+15550106081"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_harold", {
+      spaceId: "imessage_space_harold",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for pending-contact capture");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+    const haroldInbound = (text: string): InboundAgentMessage => ({
+      ...inbound(text),
+      spaceId: "imessage_space_harold"
+    });
+
+    const saved = await agent.handleMessage(haroldInbound("He is my best friend at USF"));
+
+    expect(interpreterCalls).toBe(0);
+    expect(saved.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(saved.outbound.text).toContain("Got it, saved Harold");
+    expect(saved.outbound.text).toContain("Anything else you want to remember about Harold?");
+
+    const added = await agent.handleMessage(haroldInbound("He also plays piano"));
+
+    expect(added.toolCalls).toEqual(["create_manual_memory"]);
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+
+    const closed = await agent.handleMessage(haroldInbound("That's it"));
+
+    expect(closed.toolCalls).not.toContain("create_manual_memory");
+    expect(closed.outbound.text).toContain("Sounds good");
+    expect(closed.outbound.text).toContain("Harold");
+    expect(closed.outbound.text).not.toContain("Anything else you want to remember");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
   });
 
   it("captures pronoun facts as context for the active pending contact before follow-up search", async () => {
@@ -1958,6 +2065,59 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("lists pending contacts when the user asks if any are waiting", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 4"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for pending-contact status inquiry");
+        }
+      }
+    });
+
+    const result = await agent.handleMessage(inbound("Are there any pending contacts?"));
+
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(result.outbound.text).toContain("Testing 4");
+    expect(result.outbound.text).not.toContain("What should I clarify");
+  });
+
+  it("falls back to pending inventory when the model misroutes a status question", async () => {
+    const repo = createRelationshipRepository({ users: [fixtureUser] });
+    const tools = createRelationshipTools(repo);
+    tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Testing 4"
+    });
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "explain_pending_workflow",
+        domain: "relationship_memory",
+        conversationRelation: "asks_about_open_workflow",
+        confidence: 0.93,
+        query: "Do u see anyone pending?"
+      })
+    });
+
+    const result = await agent.handleMessage(inbound("Do u see anyone pending?"));
+
+    expect(result.toolCalls).toEqual(["list_pending_candidates"]);
+    expect(result.outbound.text).toContain("Testing 4");
+    expect(result.outbound.text).not.toContain("What should I clarify");
+  });
+
   it("explains the active pending contact and queued next contact", async () => {
     const repo = createRelationshipRepository({ users: [fixtureUser] });
     const tools = createRelationshipTools(repo);
@@ -2211,6 +2371,154 @@ describe("interpreted relationship agent", () => {
     expect(repo.listMemories(fixtureUser.id)).toHaveLength(0);
   });
 
+  it("answers person-detail questions via list_people_detail when the model routes them", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Kenneth Jiang", "my best friend at USF"),
+        { ...memoryFixture("Kenneth Jiang", "He graduated USF class 2026"), id: "memory_kenneth_2026" }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "list_people_detail",
+        domain: "relationship_memory",
+        conversationRelation: "starts_new_relationship_task",
+        query: "Kenneth",
+        target: { displayName: "Kenneth" },
+        search: {
+          mode: "lookup_person",
+          semanticQuery: "Kenneth",
+          exactTerms: ["kenneth"],
+          filters: { personName: "Kenneth" },
+          topK: 5
+        }
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("What do you know about Kenneth?"));
+
+    expect(result.toolCalls).toEqual(["list_people_detail"]);
+    expect(result.outbound.text).toContain("Kenneth Jiang");
+    expect(result.outbound.text).toContain("USF");
+    expect(result.outbound.text).toContain("2026");
+  });
+
+  it("routes list detail about {name} deterministically without the model", async () => {
+    const person = createRelationshipRepository({ users: [fixtureUser] }).createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Chị Bông"
+    });
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        { ...memoryFixture("Chị Bông", "I met her at USF"), personId: person.id },
+        {
+          ...memoryFixture("Chị Bông", "She likes ML, more on the data science side"),
+          id: "memory_chi_ml",
+          personId: person.id
+        }
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("model should not run for list detail about {name}");
+        }
+      },
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List me detail about chị Bông"));
+
+    expect(result.toolCalls).toEqual(["list_people_detail"]);
+    expect(result.outbound.text).toContain("Chị Bông");
+    expect(result.outbound.text).toContain("USF");
+    expect(result.outbound.text).toContain("ML");
+    expect(result.outbound.text).not.toMatch(/don't have enough/i);
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      routeSource: "deterministic",
+      intent: "list_people_detail"
+    });
+  });
+
+  it("answers role-at-company who-is questions via field-aware list_people_detail search", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Julie Chen", "GTM at Photon; From China"),
+        memoryFixture("Daniel", "HackPrinceton, Photon CEO")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          throw new Error("model should not run for who is role at company");
+        }
+      },
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("Who is the CEO at Photon?"));
+
+    expect(result.toolCalls).toEqual(["list_people_detail"]);
+    expect(result.outbound.text).toContain("Daniel");
+    expect(result.outbound.text).toContain("Photon CEO");
+    expect(result.outbound.text).not.toMatch(/don't have enough/i);
+  });
+
+  it("repairs list_people into list_people_detail for list {name} commands", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      memories: [
+        memoryFixture("Nathan Chen", "my friend at USF and Microsoft intern"),
+        memoryFixture("Harold", "my best friend at USF")
+      ]
+    });
+    const tools = createRelationshipTools(repo);
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: modelInterpreter({
+        intent: "list_people",
+        domain: "relationship_memory",
+        conversationRelation: "starts_new_relationship_task",
+        query: "Nathan",
+        search: {
+          mode: "list_people",
+          semanticQuery: "Nathan",
+          exactTerms: [],
+          topK: 20
+        }
+      }),
+      strictMode: false,
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(inbound("List Nathan"));
+
+    expect(result.toolCalls).toEqual(["list_people_detail"]);
+    expect(result.outbound.text).toContain("Nathan Chen");
+    expect(result.outbound.text).not.toContain("Harold");
+  });
+
   it("treats second-person contact inventory questions as list-all recall", async () => {
     const { agent } = createTestAgentWithMemories([
       memoryFixture("Testing 2", "Met during testing friendy"),
@@ -2254,8 +2562,8 @@ describe("interpreted relationship agent", () => {
 
     expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.trace.routeSource).toBe("deterministic");
-    expect(result.outbound.text).toContain("- Testing 2 - Met during testing friendy");
-    expect(result.outbound.text).toContain("- Sarah Fan - community lead at Photon Residency II");
+    expect(result.outbound.text).toContain("1. Testing 2 - Met during testing friendy");
+    expect(result.outbound.text).toContain("2. Sarah Fan - community lead at Photon Residency II");
   });
 
   it.each([
@@ -2299,8 +2607,8 @@ describe("interpreted relationship agent", () => {
 
     expect(result.toolCalls).toEqual(["list_people"]);
     expect(result.trace.routeSource).toBe("deterministic");
-    expect(result.outbound.text).toContain("- Z - I sleep with them; person I used to test friendy");
-    expect(result.outbound.text).toContain("- Z2 - I met Z2 while testing Friendy");
+    expect(result.outbound.text).toContain("1. Z - I sleep with them; person I used to test friendy");
+    expect(result.outbound.text).toContain("2. Z2 - I met Z2 while testing Friendy");
     expect(repo.getCandidate(candidate.id)?.status).toBe("pending");
     expect(repo.listMemories(fixtureUser.id).some((memory) => memory.candidateId === candidate.id)).toBe(false);
   });
@@ -2894,6 +3202,108 @@ describe("interpreted relationship agent", () => {
     expect(updateHarness.repo.listMemories(fixtureUser.id)[0].contextNote).toBe("old note from dinner");
   });
 
+  it("lists only matching people for list me all the Daniel without calling the model", async () => {
+    const { agent } = createTestAgentWithMemories([
+      { ...memoryFixture("Daniel", "HackPrinceton, Photon CEO"), id: "memory_daniel_hack" },
+      { ...memoryFixture("Daniel", "school/company: Photon"), id: "memory_daniel_school" },
+      memoryFixture("Sarah Fan", "community lead at Photon Residency II")
+    ]);
+
+    const result = await agent.handleMessage(inbound("Can you list me all the Daniel?"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace.routeSource).toBe("deterministic");
+    expect(result.trace.route?.intent).toBe("list_people");
+    expect(result.outbound.text).toContain("Daniel - HackPrinceton");
+    expect(result.outbound.text).toContain("Daniel - school/company");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
+    expect(result.outbound.text).not.toContain("Cecilia");
+  });
+
+  it("lists all saved memory for one named person from the live Daniel wording", async () => {
+    const { agent } = createTestAgentWithMemories([
+      { ...memoryFixture("Daniel", "HackPrinceton, Photon CEO"), id: "memory_daniel_hack" },
+      { ...memoryFixture("Daniel", "school/company: Photon"), id: "memory_daniel_school" },
+      memoryFixture("Sarah Fan", "community lead at Photon Residency II")
+    ]);
+
+    const result = await agent.handleMessage(inbound("List me all memory you have for Daniel"));
+
+    expect(result.toolCalls).toEqual(["list_people"]);
+    expect(result.trace.routeSource).toBe("deterministic");
+    expect(result.trace.route?.intent).toBe("list_people");
+    expect(result.outbound.text).toContain("Daniel - HackPrinceton");
+    expect(result.outbound.text).toContain("Daniel - school/company");
+    expect(result.outbound.text).not.toContain("Sarah Fan");
+    expect(result.outbound.text).not.toMatch(/don't have any matching people/i);
+  });
+
+  it("deletes a same-name memory by the number from the previous list", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      { ...memoryFixture("Daniel", "HackPrinceton, Photon CEO"), id: "memory_daniel_hack" },
+      { ...memoryFixture("Daniel", "school/company: Photon"), id: "memory_daniel_school" },
+      memoryFixture("Sarah Fan", "community lead at Photon Residency II")
+    ]);
+
+    const listed = await agent.handleMessage(inbound("List me all memory you have for Daniel"));
+
+    expect(listed.outbound.text).toContain("1. Daniel - HackPrinceton");
+    expect(listed.outbound.text).toContain("2. Daniel - school/company");
+
+    const requested = await agent.handleMessage(inbound("delete 2"));
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toBe("Do you want me to forget Daniel?\nReply yes to confirm or no to cancel.");
+
+    const confirmed = await agent.handleMessage(inbound("yes"));
+
+    expect(confirmed.toolCalls).toEqual(["delete_memory"]);
+    expect(repo.listMemories(fixtureUser.id).map((memory) => memory.id)).toEqual([
+      "memory_daniel_hack",
+      "memory_sarah fan"
+    ]);
+  });
+
+  it("disambiguates duplicate Daniels for delete me one Daniel please", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      { ...memoryFixture("Daniel", "HackPrinceton, Photon CEO"), id: "memory_daniel_hack" },
+      { ...memoryFixture("Daniel", "school/company: Photon"), id: "memory_daniel_school" }
+    ]);
+
+    const requested = await agent.handleMessage(inbound("Delete me one Daniel please"));
+
+    expect(requested.toolCalls).toEqual(["lookup_memory_target"]);
+    expect(requested.outbound.text).toBe(
+      "I found multiple people named Daniel:\n" +
+        "1. Daniel - HackPrinceton, Photon CEO\n" +
+        "2. Daniel - school/company: Photon\n" +
+        "Which one do you want to delete, or should I delete both?"
+    );
+    expect(requested.trace.activeWorkflowKind).toBe("pending_delete_disambiguation");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+  });
+
+  it("re-lists numbered duplicate delete options when the user asks which Daniel is being deleted", async () => {
+    const { agent, repo } = createTestAgentWithMemories([
+      { ...memoryFixture("Daniel", "HackPrinceton, Photon CEO"), id: "memory_daniel_hack" },
+      { ...memoryFixture("Daniel", "school/company: Photon"), id: "memory_daniel_school" }
+    ]);
+
+    await agent.handleMessage(inbound("Delete me one Daniel please"));
+    const clarification = await agent.handleMessage(inbound("Which Daniel are you deleting?"));
+
+    expect(clarification.toolCalls).toEqual([]);
+    expect(clarification.outbound.text).toBe(
+      "I found multiple people named Daniel:\n" +
+        "1. Daniel - HackPrinceton, Photon CEO\n" +
+        "2. Daniel - school/company: Photon\n" +
+        "Which one do you want to delete, or should I delete both?"
+    );
+    expect(clarification.trace.activeWorkflowKind).toBe("pending_delete_disambiguation");
+    expect(clarification.outbound.text).not.toContain("memory_candidate");
+    expect(repo.listMemories(fixtureUser.id)).toHaveLength(2);
+  });
+
   it("asks for disambiguation instead of throwing on an ambiguous executable delete in strict mode", async () => {
     const { agent, repo } = createTestAgentWithMemories(
       [memoryFixture("Sarah", "met at Photon dinner"), memoryFixture("Sara Kim", "met at recruiting meetup")],
@@ -3186,13 +3596,20 @@ function fullInterpretation(overrides: Partial<{
   intent:
     | "capture_memory"
     | "answer_pending_contact_prompt"
+    | "capture_pending_contact_context"
     | "search_memory"
     | "list_people"
+    | "list_people_detail"
     | "duplicate_audit"
+    | "explain_pending_workflow"
     | "explain_agent_state"
     | "conversation_repair"
     | "delete_memory_request"
+    | "manual_memory_create"
+    | "update_memory"
+    | "delete_memory"
     | "ignore_candidate"
+    | "reject"
     | "clarify"
     | "unknown"
     | "request_apple_contact_create"
@@ -3227,8 +3644,11 @@ function fullInterpretation(overrides: Partial<{
     semanticQuery: string;
     exactTerms: string[];
     filters?: {
+      personName?: string;
       eventName?: string;
       topic?: string;
+      companyOrSchool?: string;
+      dateText?: string;
       tags?: string[];
     };
     topK?: number;

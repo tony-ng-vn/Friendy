@@ -754,6 +754,71 @@ describe("relationship tools", () => {
     });
   });
 
+  it("list_people_detail groups all memories for one resolved person", () => {
+    const tools = createToolsWithMemories([
+      memory("Kenneth Jiang", "USF", "my best friend at USF"),
+      { ...memory("Kenneth Jiang", "class 2026", "He graduated USF class 2026"), id: "memory_kenneth_2026" },
+      memory("Harold", "work", "coworker at Acme")
+    ]);
+
+    const result = tools.list_people_detail(fixtureUser.id, "Kenneth");
+
+    expect(result).toMatchObject({
+      kind: "found",
+      person: {
+        displayName: "Kenneth Jiang",
+        memories: [
+          { summary: "my best friend at USF" },
+          { summary: "He graduated USF class 2026" }
+        ]
+      }
+    });
+  });
+
+  it("list_people_detail uses field-aware search for role and company clues", () => {
+    const tools = createToolsWithMemories([
+      memory("Julie Chen", "Photon", "GTM at Photon; From China; She likes Karaoke"),
+      memory("Daniel", "Photon", "HackPrinceton, Photon CEO"),
+      memory("Sarah Fan", "Photon Residency II", "goat of the photon residency II")
+    ]);
+
+    expect(tools.list_people_detail(fixtureUser.id, "the CEO at Photon")).toMatchObject({
+      kind: "found",
+      person: { displayName: "Daniel" }
+    });
+    expect(tools.list_people_detail(fixtureUser.id, "CEO of Photon")).toMatchObject({
+      kind: "found",
+      person: { displayName: "Daniel" }
+    });
+    expect(tools.list_people_detail(fixtureUser.id, "GTM at Photon")).toMatchObject({
+      kind: "found",
+      person: { displayName: "Julie Chen" }
+    });
+  });
+
+  it("list_people_detail resolves Vietnamese display names via personId", () => {
+    const person = createRelationshipRepository({ users: [fixtureUser] }).createPersonIdentity({
+      userId: fixtureUser.id,
+      canonicalDisplayName: "Chị Bông"
+    });
+    const tools = createToolsWithMemories([
+      { ...memory("Chị Bông", "USF", "I met her at USF"), personId: person.id },
+      {
+        ...memory("Chị Bông", "ML", "She likes ML, more on the data science side"),
+        id: "memory_chi_ml",
+        personId: person.id
+      }
+    ]);
+
+    const result = tools.list_people_detail(fixtureUser.id, "chị Bông");
+
+    expect(result.kind).toBe("found");
+    if (result.kind === "found") {
+      expect(result.person.displayName).toBe("Chị Bông");
+      expect(result.person.memories).toHaveLength(2);
+    }
+  });
+
   it("lookup_memory_target ignores deleted memories from the repository", () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

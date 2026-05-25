@@ -61,11 +61,100 @@ export function isListPeopleRecall(text: string): boolean {
   ].some((pattern) => pattern.test(normalized));
 }
 
+/**
+ * Person name from "list detail about {name}" / "what do you know about {name}" style requests.
+ */
+export function extractPersonFromDetailListCommand(text: string): string | undefined {
+  const trimmed = text.trim();
+  const patterns = [
+    /^(?:give|show|list|tell)(?:\s+me)?(?:\s+all)?(?:\s+the)?\s+(?:detail|details|info|information)\s+about\s+(.+?)[.?!]*$/i,
+    /^(?:give|show|list|tell)(?:\s+me)?\s+(?:everything|all)\s+(?:you\s+)?(?:know|remember)\s+about\s+(.+?)[.?!]*$/i,
+    /^(?:what\s+do\s+you\s+know\s+about|who\s+is|tell\s+me\s+about)\s+(.+?)[.?!]*$/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    const name = match?.[1]?.trim();
+    if (name && name.length >= 2 && !/\b(?:people|persons?|contacts?|network|everyone|everybody)\b/i.test(name)) {
+      return name;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Person name from "list me all the {name}" / "list everyone named {name}" style requests.
+ */
+export function extractFilteredPersonListCommand(text: string): string | undefined {
+  const trimmed = text.trim();
+  const patterns = [
+    /^(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:give|show|list|tell)(?:\s+me)?\s+all\s+memor(?:y|ies)(?:\s+you\s+(?:have|remember))?\s+for\s+(.+?)[.?!]*$/i,
+    /^(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:give|show|list|tell)(?:\s+me)?\s+all\s+(?:the\s+)?(.+?)[.?!]*$/i,
+    /^(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:give|show|list|tell)(?:\s+me)?\s+(?:every|everyone|everybody)\s+(?:named|called)\s+(.+?)[.?!]*$/i,
+    /^(?:(?:can|could|would)\s+(?:you|u)\s+)?(?:please\s+)?(?:give|show|list|tell)(?:\s+me)?\s+(?:the\s+)?\d+\s+(.+?)(?:\s+(?:you(?:'re| are)|that|i)\b.+)?[.?!]*$/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    const name = match?.[1]?.trim();
+    if (!name || name.length < 2) {
+      continue;
+    }
+    if (/\b(?:people|persons?|contacts?|network|everyone|everybody)\b/i.test(name)) {
+      continue;
+    }
+    if (/^(?:all|every|everyone|everybody)\b/i.test(name)) {
+      continue;
+    }
+    return name;
+  }
+
+  return undefined;
+}
+
+/**
+ * Person name after a list/show/tell command (e.g. "List Nathan"), when the request is not broad inventory.
+ */
+export function extractNamedPersonFromListCommand(text: string): string | undefined {
+  const filteredListPerson = extractFilteredPersonListCommand(text);
+  if (filteredListPerson) {
+    return undefined;
+  }
+
+  if (isBroadPeopleInventoryRequest(text) || isEventRecallQuestion(text)) {
+    return undefined;
+  }
+
+  const detailPerson = extractPersonFromDetailListCommand(text);
+  if (detailPerson) {
+    return detailPerson;
+  }
+
+  const match = text.trim().match(/^(?:give|show|list|tell)(?:\s+me)?\s+(.+?)[.?!]*$/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const tail = match[1].trim();
+  if (
+    /^(?:all|every|everyone|everybody)\b/i.test(tail) ||
+    /\b(?:people|persons?|contacts?|network)\b/i.test(tail)
+  ) {
+    return undefined;
+  }
+
+  return tail.length >= 2 ? tail : undefined;
+}
+
 /** True when the user asks who they met at/during a specific event (not a full roster). */
 export function isEventRecallQuestion(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/\bu\b/g, "you");
   return (
     /\bwho\b.*\b(?:did\s+i\s+)?(?:meet|met|add|added|save|saved)\b.*\b(?:at|during|from|while)\b.+/.test(
+      normalized
+    ) ||
+    /\b(?:what|which)\b.*\b(?:people|persons?|contacts?)\b.*\b(?:did\s+i\s+|i\s+)?(?:meet|met|add|added|save|saved)\b.*\b(?:at|during|from|while)\b.+/.test(
       normalized
     ) ||
     /\banyone\b.*\b(?:i\s+)?(?:met|meet|added|saved)\b.*\b(?:at|during|from|while)\b.+/.test(normalized)

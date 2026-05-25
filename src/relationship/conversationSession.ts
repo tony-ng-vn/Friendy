@@ -85,6 +85,14 @@ export type ActiveWorkflow =
       displayName: string;
       id: string;
       openedAt: string;
+    }
+  | {
+      kind: "pending_additional_memory";
+      personId: string;
+      displayName: string;
+      anchorMemoryId: string;
+      openedAt: string;
+      lastFriendyPrompt: string;
     };
 
 export type ConversationSession = {

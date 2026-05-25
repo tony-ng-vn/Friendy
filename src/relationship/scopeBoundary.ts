@@ -76,6 +76,10 @@ export function decideMessageScope({ text, hasPendingCandidate }: ScopeBoundaryI
       return inScope("candidate_ignore", "User is trying to ignore a pending relationship candidate.");
     }
 
+    if (isPendingContactsStatusInquiry(lower)) {
+      return inScope("candidate_confirmation", "User is asking whether Friendy has pending contact candidates.");
+    }
+
     if (isPendingCandidateInquiry(lower)) {
       return inScope("candidate_confirmation", "User is asking which contact the open prompt refers to.");
     }
@@ -181,9 +185,25 @@ function isIgnoreCandidate(text: string): boolean {
   return /^ignore\b/.test(text);
 }
 
+/** True when the user asks whether Friendy has unsaved pending contact candidates. */
+export function isPendingContactsStatusInquiry(text: string): boolean {
+  const lower = text.trim().toLowerCase().replace(/\bu\b/g, "you");
+  return (
+    /\b(any|there|see|list|show|got|have)\b.*\bpending\b.*\b(contact|contacts|people|person|one)?s?\b/.test(lower) ||
+    /\b(do|are|can)\b.*\b(you|friendy)\b.*\b(see|have|list|show)\b.*\bpending\b/.test(lower) ||
+    /\banyone\s+pending\b/.test(lower) ||
+    /\b(do|are)\s+there\s+any\s+pending\b/.test(lower) ||
+    /\bpending\s+(contact|contacts|people)\b/.test(lower)
+  );
+}
+
 /** True when the user asks which contact an open confirmation prompt refers to. */
 export function isPendingCandidateInquiry(text: string): boolean {
   const lower = text.trim().toLowerCase().replace(/\bu\b/g, "you");
+  if (isPendingContactsStatusInquiry(text)) {
+    return false;
+  }
+
   return (
     /\b(who did i (just )?add|who was that contact|which contact did i add|what contact did i add)\b/.test(lower) ||
     /\b(who|what|which)\b.*\b(you|friendy)\b.*\b(ask|asking|mean|referring)\b/.test(lower) ||

@@ -140,6 +140,16 @@ export type RelationshipRepository = {
     options?: ConfirmCandidateOptions
   ): RelationshipMemory;
   ignoreCandidate(candidateId: string): void;
+  /** Reopens an ignored or expired candidate for a fresh post-start contact detection. */
+  reactivateCandidateForIntake(
+    candidateId: string,
+    options?: { detectedAt?: string }
+  ): ContactCandidate;
+  /** Ignored/expired candidates without memories that still have recent sensor processing. */
+  listIgnoredCandidateIdsForReintake(
+    userId: string,
+    options?: { sensorActivitySince?: string }
+  ): string[];
   listMemories(userId?: string): RelationshipMemory[];
   listMemorySearchDocuments(userId?: string): MemorySearchDocument[];
   searchMemoryDocuments?(userId: string, query: string, terms: string[]): RetrievalCandidate[];
@@ -197,7 +207,7 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
       const candidateId = createCandidateId(contact);
       const existing = candidates.find((candidate) => candidate.id === candidateId);
       if (existing) {
-        return existing;
+        return reactivateCandidateForIntakeIfEligible(existing, contact.detectedAt);
       }
 
       const candidate: ContactCandidate = {
@@ -338,6 +348,33 @@ export function createRelationshipRepository(seed: RepositorySeed = {}): Relatio
         throw new Error(`Candidate is not ignorable: ${candidateId}`);
       }
       candidate.status = "ignored";
+    },
+
+    reactivateCandidateForIntake(candidateId: string, options: { detectedAt?: string } = {}): ContactCandidate {
+      const candidate = candidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      expireCandidateIfStale(candidate);
+      if (!isReintakeEligibleCandidateStatus(candidate.status)) {
+        throw new Error(`Candidate is not eligible for contact re-intake: ${candidateId}`);
+      }
+
+      candidate.status = "pending";
+      delete candidate.statusReason;
+      delete candidate.promptInteractionId;
+      delete candidate.promptSpaceId;
+      delete candidate.promptedAt;
+      if (options.detectedAt) {
+        candidate.detectedAt = options.detectedAt;
+        candidate.expiresAt = calculateCandidateExpiresAt(options.detectedAt);
+      }
+
+      return candidate;
+    },
+
+    listIgnoredCandidateIdsForReintake(): string[] {
+      return [];
     },
 
     listMemories(userId?: string): RelationshipMemory[] {
@@ -705,6 +742,31 @@ export function expireCandidateIfStale(candidate: ContactCandidate, now = new Da
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
   return status === "pending" || status === "prompted";
+}
+
+function isReintakeEligibleCandidateStatus(status: ContactCandidate["status"]): boolean {
+  return status === "ignored" || status === "expired";
+}
+
+function reactivateCandidateForIntakeIfEligible(
+  candidate: ContactCandidate,
+  detectedAt?: string
+): ContactCandidate {
+  if (!isReintakeEligibleCandidateStatus(candidate.status)) {
+    return candidate;
+  }
+
+  candidate.status = "pending";
+  delete candidate.statusReason;
+  delete candidate.promptInteractionId;
+  delete candidate.promptSpaceId;
+  delete candidate.promptedAt;
+  if (detectedAt) {
+    candidate.detectedAt = detectedAt;
+    candidate.expiresAt = calculateCandidateExpiresAt(detectedAt);
+  }
+
+  return candidate;
 }
 
 /**

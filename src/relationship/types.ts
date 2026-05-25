@@ -224,6 +224,7 @@ export type OutboundAgentMessage = {
  */
 export type AgentToolCall =
   | "list_people"
+  | "list_people_detail"
   | "find_duplicate_people"
   | "read_apple_contact"
   | "add_apple_contact"

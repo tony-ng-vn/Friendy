@@ -155,7 +155,23 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
           db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
         );
         if (existingCandidate) {
-          return existingCandidate;
+          const currentCandidate = expireSqliteCandidateIfStale(db, existingCandidate);
+          if (!isReintakeEligibleCandidateStatus(currentCandidate.status)) {
+            return currentCandidate;
+          }
+
+          const reactivated: ContactCandidate = {
+            ...currentCandidate,
+            status: "pending",
+            detectedAt: contact.detectedAt,
+            expiresAt: calculateCandidateExpiresAt(contact.detectedAt),
+            statusReason: undefined,
+            promptInteractionId: undefined,
+            promptSpaceId: undefined,
+            promptedAt: undefined
+          };
+          upsertCandidate(db, reactivated);
+          return reactivated;
         }
 
         const candidate: ContactCandidate = {
@@ -325,6 +341,60 @@ export function createSqliteRelationshipRepository(options: SqliteRelationshipRe
       }
 
       upsertCandidate(db, { ...currentCandidate, status: "ignored" });
+    },
+
+    reactivateCandidateForIntake(candidateId: string, options: { detectedAt?: string } = {}): ContactCandidate {
+      const candidate = readOptionalRow<ContactCandidate>(
+        db.prepare("SELECT raw_json FROM candidates WHERE id = ?").get(candidateId)
+      );
+      if (!candidate) {
+        throw new Error(`Candidate not found: ${candidateId}`);
+      }
+      const currentCandidate = expireSqliteCandidateIfStale(db, candidate);
+      if (!isReintakeEligibleCandidateStatus(currentCandidate.status)) {
+        throw new Error(`Candidate is not eligible for contact re-intake: ${candidateId}`);
+      }
+
+      const reactivated: ContactCandidate = {
+        ...currentCandidate,
+        status: "pending",
+        detectedAt: options.detectedAt ?? currentCandidate.detectedAt,
+        expiresAt: calculateCandidateExpiresAt(options.detectedAt ?? currentCandidate.detectedAt),
+        statusReason: undefined,
+        promptInteractionId: undefined,
+        promptSpaceId: undefined,
+        promptedAt: undefined
+      };
+      upsertCandidate(db, reactivated);
+      return reactivated;
+    },
+
+    listIgnoredCandidateIdsForReintake(
+      userId: string,
+      options: { sensorActivitySince?: string } = {}
+    ): string[] {
+      if (!options.sensorActivitySince) {
+        return [];
+      }
+
+      const rows = db
+        .prepare(
+          `SELECT DISTINCT c.id AS candidate_id
+           FROM candidates c
+           INNER JOIN processed_sensor_events p ON p.candidate_id = c.id
+           WHERE c.user_id = ?
+             AND c.status IN ('ignored', 'expired')
+             AND p.processed_at >= ?
+             AND NOT EXISTS (
+               SELECT 1
+               FROM memories m
+               WHERE m.candidate_id = c.id
+                 AND (json_extract(m.raw_json, '$.deletedAt') IS NULL OR json_extract(m.raw_json, '$.deletedAt') = '')
+             )`
+        )
+        .all(userId, options.sensorActivitySince) as Array<{ candidate_id: string }>;
+
+      return rows.map((row) => row.candidate_id);
     },
 
     listMemories(userId?: string): RelationshipMemory[] {
@@ -632,6 +702,15 @@ export function createSqliteRuntimeStateStore({ path }: { path: string }): Sqlit
       return readProcessedEvent(
         db.prepare("SELECT * FROM processed_sensor_events WHERE sensor_event_id = ? ORDER BY processed_at DESC LIMIT 1").get(sensorEventId)
       );
+    },
+
+    clearProcessedEventsForCandidateIds(candidateIds: string[]): void {
+      if (candidateIds.length === 0) {
+        return;
+      }
+
+      const placeholders = candidateIds.map(() => "?").join(", ");
+      db.prepare(`DELETE FROM processed_sensor_events WHERE candidate_id IN (${placeholders})`).run(...candidateIds);
     },
 
     recordProcessedEvent(event: ProcessedSensorEvent): void {
@@ -1428,6 +1507,10 @@ function expireSqliteCandidateIfStale(db: DatabaseSync, candidate: ContactCandid
 
 function isReviewableCandidateStatus(status: ContactCandidate["status"]): boolean {
   return status === "pending" || status === "prompted";
+}
+
+function isReintakeEligibleCandidateStatus(status: ContactCandidate["status"]): boolean {
+  return status === "ignored" || status === "expired";
 }
 
 function eventMatchContact(contact: ContactCandidateDetected): ContactCandidateDetected {

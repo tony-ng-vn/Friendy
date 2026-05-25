@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import packageJson from "../../../package.json";
-import { createSqliteRelationshipRepository } from "../sqliteRepository";
+import { createOnboardingStateController } from "../onboardingState";
+import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore } from "../sqliteRepository";
 import { createRuntimePromptSender, resolveFriendyRuntimeConfig, startFriendyForegroundRuntime } from "./friendyRuntimeCli";
 import type { SensorChildProcess, SensorRuntimeLineProcessor } from "./sensorProcess";
 
@@ -151,6 +152,17 @@ describe("Friendy foreground runtime CLI configuration", () => {
     existingRepo.markCandidatePrompted(staleCandidate.id, "interaction_old_prompt", {
       promptedAt: "2026-05-20T12:00:00.000Z"
     });
+    const staleState = createSqliteRuntimeStateStore({ path: sqlitePath });
+    staleState.recordProcessedEvent({
+      idempotencyKey: "contacts:mac_1:OLD-CONTACT:add",
+      sensorEventId: "sensor_evt_contact_old",
+      sensorName: "macos_contacts_calendar",
+      eventType: "contact_added",
+      status: "candidate_created",
+      candidateId: staleCandidate.id,
+      processedAt: "2026-05-20T12:00:00.000Z"
+    });
+    staleState.close();
     existingRepo.close();
 
     const started = await startFriendyForegroundRuntime({
@@ -174,6 +186,198 @@ describe("Friendy foreground runtime CLI configuration", () => {
     expect(started.repo.getCandidate(staleCandidate.id)).toMatchObject({
       status: "ignored"
     });
+    expect(started.state.getProcessedEvent("contacts:mac_1:OLD-CONTACT:add")).toBeUndefined();
+    started.close();
+  });
+
+  it("re-queues an ignored prior-run contact after start when the sensor replays the same Apple contact id", async () => {
+    const cwd = tempDir();
+    const sqlitePath = join(cwd, ".friendy", "friendy.sqlite");
+    mkdirSync(join(cwd, ".friendy"), { recursive: true });
+    const haroldStableId = "0077EDB0-D8D4-426B-9575-E3C88EDF7B71:ABPerson";
+    const haroldIdempotencyKey = `contacts:mac_1:${haroldStableId}:add`;
+    const existingRepo = createSqliteRelationshipRepository({ path: sqlitePath });
+    const harold = existingRepo.createCandidateFromDetectedContact({
+      userId: "user_friendy",
+      displayName: "Harold",
+      phoneNumbers: ["ending in 5596"],
+      emails: [],
+      detectedAt: "2026-05-24T19:18:54.000Z",
+      source: "contacts_delta",
+      contactIdentifier: haroldStableId
+    });
+    existingRepo.ignoreCandidate(harold.id);
+    existingRepo.close();
+
+    const existingState = createSqliteRuntimeStateStore({ path: sqlitePath });
+    existingState.recordProcessedEvent({
+      idempotencyKey: haroldIdempotencyKey,
+      sensorEventId: "sensor_evt_contact_18E57805-7F56-4F01-9DFC-D2B268742AD2",
+      sensorName: "macos_contacts_calendar",
+      eventType: "contact_added",
+      status: "candidate_created",
+      candidateId: harold.id,
+      processedAt: "2026-05-24T19:18:54.000Z"
+    });
+    existingState.close();
+
+    const prompts: Array<{ userId: string; candidateId?: string; text: string }> = [];
+    const logs: string[] = [];
+    let runtime: SensorRuntimeLineProcessor | undefined;
+    const duplicateEventId = "sensor_evt_contact_F5C9968A-C64B-49BB-86B4-687CEFB0504C";
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      onboarding: createOnboardingStateController("ready_pending_user_start"),
+      sender: {
+        async sendPrompt(input) {
+          prompts.push(input);
+          return { interactionId: "interaction_prompt_harold" };
+        }
+      },
+      startSensor({ runtime: startedRuntime }) {
+        runtime = startedRuntime;
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger(logs)
+    });
+
+    started.onboarding.applyControl("started");
+    const intakeStartedAt = started.onboarding.getContactIntakeStartedAt();
+    if (!intakeStartedAt) {
+      throw new Error("Expected contact intake start timestamp after onboarding start");
+    }
+    const detectedAt = new Date(Date.parse(intakeStartedAt) + 1_000).toISOString();
+    await runtime?.processLine(
+      JSON.stringify(
+        contactAddedEvent({
+          eventId: duplicateEventId,
+          stableId: haroldStableId,
+          displayName: "Harold",
+          detectedAt
+        })
+      )
+    );
+    await runtime?.processLine(
+      JSON.stringify({
+        schemaVersion: 1,
+        eventId: "sensor_evt_history_batch_harold",
+        type: "history_batch_complete",
+        sensorName: "macos_contacts_calendar",
+        sensorVersion: "0.1.0",
+        runId: "sensor_run_1",
+        deviceId: "mac_1",
+        emittedAt: "2026-05-24T21:09:06.000Z",
+        historyBatchId: "history_batch_harold",
+        contactEventIds: [duplicateEventId],
+        ackPath: join(cwd, ".friendy/macos-sensor-state/acks/history_batch_harold.ack")
+      })
+    );
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toMatchObject({
+      candidateId: harold.id,
+      text: expect.stringContaining("Harold")
+    });
+    expect(started.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(started.state.getProcessedEvent(haroldIdempotencyKey)).toMatchObject({
+      status: "candidate_created",
+      sensorEventId: duplicateEventId,
+      candidateId: harold.id
+    });
+    expect(logs.join("\n")).toContain("Re-queued ignored contact after post-start detection");
+    expect(logs.join("\n")).toContain("history_batch_ack_written batchId=history_batch_harold");
+    started.close();
+  });
+
+  it("re-queues an ignored contact deferred during pre-start history replay when the user texts start", async () => {
+    const cwd = tempDir();
+    const sqlitePath = join(cwd, ".friendy", "friendy.sqlite");
+    mkdirSync(join(cwd, ".friendy"), { recursive: true });
+    const haroldStableId = "0077EDB0-D8D4-426B-9575-E3C88EDF7B71:ABPerson";
+    const haroldIdempotencyKey = `contacts:mac_1:${haroldStableId}:add`;
+    const existingRepo = createSqliteRelationshipRepository({ path: sqlitePath });
+    const harold = existingRepo.createCandidateFromDetectedContact({
+      userId: "user_friendy",
+      displayName: "Harold",
+      phoneNumbers: ["ending in 5596"],
+      emails: [],
+      detectedAt: "2026-05-24T19:18:54.000Z",
+      source: "contacts_delta",
+      contactIdentifier: haroldStableId
+    });
+    existingRepo.ignoreCandidate(harold.id);
+    existingRepo.close();
+
+    const existingState = createSqliteRuntimeStateStore({ path: sqlitePath });
+    existingState.recordProcessedEvent({
+      idempotencyKey: haroldIdempotencyKey,
+      sensorEventId: "sensor_evt_contact_18E57805-7F56-4F01-9DFC-D2B268742AD2",
+      sensorName: "macos_contacts_calendar",
+      eventType: "contact_added",
+      status: "candidate_created",
+      candidateId: harold.id,
+      processedAt: "2026-05-24T19:18:54.000Z"
+    });
+    existingState.close();
+
+    const prompts: Array<{ userId: string; candidateId?: string; text: string }> = [];
+    const logs: string[] = [];
+    let runtime: SensorRuntimeLineProcessor | undefined;
+    const duplicateEventId = "sensor_evt_contact_F5C9968A-C64B-49BB-86B4-687CEFB0504C";
+
+    const started = await startFriendyForegroundRuntime({
+      cwd,
+      env: {
+        FRIENDY_SENSOR_MOCK: "1",
+        FRIENDY_LOCAL_USER_ID: "user_friendy"
+      },
+      sender: {
+        async sendPrompt(input) {
+          prompts.push(input);
+          return { interactionId: "interaction_prompt_harold" };
+        }
+      },
+      startSensor({ runtime: startedRuntime }) {
+        runtime = startedRuntime;
+        return { child: fakeChildProcess() };
+      },
+      logger: testLogger(logs)
+    });
+
+    await runtime?.processLine(
+      JSON.stringify(
+        contactAddedEvent({
+          eventId: duplicateEventId,
+          stableId: haroldStableId,
+          displayName: "Harold",
+          detectedAt: "2026-05-24T19:18:54.000Z"
+        })
+      )
+    );
+    expect(prompts).toHaveLength(0);
+    expect(logs.join("\n")).toContain("Duplicate sensor event ignored");
+
+    started.onboarding.applyControl("started");
+    await started.runtime.requeueDeferredReintakeCandidatesOnStart();
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toMatchObject({
+      candidateId: harold.id,
+      text: expect.stringContaining("Harold")
+    });
+    expect(started.repo.getCandidate(harold.id)).toMatchObject({
+      status: "prompted"
+    });
+    expect(started.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(
+      started.state.getProcessedEventBySensorEventId(duplicateEventId)?.status
+    ).toBe("duplicate");
+    expect(logs.join("\n")).toContain("[friendy:reintake] Re-queued Harold at intake start");
     started.close();
   });
 
@@ -366,7 +570,9 @@ function fakeChildProcess(): SensorChildProcess {
   return child;
 }
 
-function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = {}) {
+function contactAddedEvent(
+  overrides: { eventId?: string; stableId?: string; displayName?: string; detectedAt?: string } = {}
+) {
   const eventId = overrides.eventId ?? "sensor_evt_contact_1";
   const stableId = overrides.stableId ?? "ABCD-1234";
   return {
@@ -385,12 +591,12 @@ function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = 
     historyBatchSize: 1,
     historyTokenBeforeRef: "outbox:history_batch_1:before",
     historyTokenAfterRef: "outbox:history_batch_1:after",
-    detectedAt: "2026-05-21T20:30:00-07:00",
+    detectedAt: overrides.detectedAt ?? "2026-05-21T20:30:00-07:00",
     contact: {
       stableId,
       unifiedStableId: `UNIFIED-${stableId}`,
       containerId: "icloud_container",
-      displayName: "Maya",
+      displayName: overrides.displayName ?? "Maya",
       phoneNumberHashes: ["sha256:phone"],
       phoneNumberHints: [{ last4: "4567", label: "mobile" }],
       emailHashes: [],

@@ -9,9 +9,11 @@ import {
   composeListPeopleReply,
   composeOnboardingControlReply,
   composePendingContactsFooter,
+  composePendingContactsInventoryReply,
   composeRuntimeStartupReply,
   composeNoMatchReply,
   composeSaveConfirmation,
+  composeSaveConfirmationWithAdditionalMemoryPrompt,
   composeSearchReply,
   composeUpdateMemoryConfirmReply,
   composeUpdateMemoryDisambiguationReply
@@ -127,6 +129,21 @@ describe("relationship response composer", () => {
     expect(saved).not.toContain("I'll remember I met them");
   });
 
+  it("appends the additional-memory follow-up question after save confirmation", () => {
+    const text = composeSaveConfirmationWithAdditionalMemoryPrompt({
+      memories: [
+        memory({
+          displayName: "Harold",
+          contextNote: "my best friend at USF"
+        })
+      ],
+      displayName: "Harold"
+    });
+
+    expect(text).toContain("Got it, saved Harold");
+    expect(text).toContain("Anything else you want to remember about Harold?");
+  });
+
   it("phrases short event-only context as a meeting fact", () => {
     expect(
       composeSaveConfirmation({
@@ -182,8 +199,8 @@ describe("relationship response composer", () => {
       [
         "I remember these people from testing friendy:",
         "",
-        "- Testing 12 - Met them during testing Friendy",
-        "- Testing 1 - Testing Friendy",
+        "1. Testing 12 - Met them during testing Friendy",
+        "2. Testing 1 - Testing Friendy",
         "",
         "I also see possible duplicates:",
         "",
@@ -191,6 +208,21 @@ describe("relationship response composer", () => {
       ].join("\n")
     );
     expectNoInternalLanguage(reply);
+  });
+
+  it("numbers saved people so follow-up delete can refer to the visible row", () => {
+    const reply = composeListPeopleReply({
+      result: listPeopleResult({
+        people: [
+          { displayName: "Daniel", memories: [{ memoryId: "memory_daniel_hack", summary: "HackPrinceton, Photon CEO" }] },
+          { displayName: "Daniel", memories: [{ memoryId: "memory_daniel_school", summary: "school/company: Photon" }] }
+        ]
+      })
+    });
+
+    expect(reply).toContain("1. Daniel - HackPrinceton, Photon CEO");
+    expect(reply).toContain("2. Daniel - school/company: Photon");
+    expect(reply).not.toContain("- Daniel -");
   });
 
   it("formats pending candidates without exposing candidate internals", () => {
@@ -283,6 +315,18 @@ describe("relationship response composer", () => {
     );
   });
 
+  it("formats a pending contacts inventory reply", () => {
+    expect(composePendingContactsInventoryReply({ candidates: [] })).toMatch(/do not see a pending contact/i);
+    expect(composePendingContactsInventoryReply({ candidates: [{ displayName: "Testing 4" }] })).toBe(
+      "Yes — I have 1 unsaved contact waiting: Testing 4."
+    );
+    expect(
+      composePendingContactsInventoryReply({
+        candidates: [{ displayName: "Testing 2" }, { displayName: "Testing 1" }]
+      })
+    ).toBe("Yes — I have 2 unsaved contacts waiting: Testing 2, Testing 1.");
+  });
+
   it("formats a pending contacts footer with singular copy", () => {
     expect(
       composePendingContactsFooter({
@@ -334,6 +378,31 @@ describe("relationship response composer", () => {
         'I found multiple possible matches for "Srah":',
         "1. Sarah - met at Photon dinner",
         "2. Sara Kim - met at recruiting meetup",
+        "Which one do you want to delete, or should I delete both?"
+      ].join("\n")
+    );
+    expectNoInternalLanguage(reply);
+  });
+
+  it("strips internal candidate ids from delete disambiguation options", () => {
+    const reply = composeDeleteMemoryDisambiguationReply({
+      query: "Noah Kostesku",
+      options: [
+        {
+          displayName: "Noah Kostesku (candidate_noah_kostesku_1779655573000_484ee5a9_41cd_4a90_9203_a611c7877223_abperson)"
+        },
+        {
+          displayName: "Noah Kostesku (candidate_noah_kostesku_1779655573000_16eec589_ec65_48d5_aaa1_832092dc797a_abperson)",
+          detail: "candidate_noah_kostesku_1779655573000_16eec589_ec65_48d5_aaa1_832092dc797a_abperson"
+        }
+      ]
+    });
+
+    expect(reply).toBe(
+      [
+        "I found multiple people named Noah Kostesku:",
+        "1. Noah Kostesku",
+        "2. Noah Kostesku",
         "Which one do you want to delete, or should I delete both?"
       ].join("\n")
     );

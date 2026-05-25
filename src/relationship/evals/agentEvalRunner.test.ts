@@ -61,10 +61,12 @@ describe("relationship agent eval runner", () => {
       "duplicate-exact-name-delete-disambiguation-regression",
       "delete-everyone-confirmation-regression",
       "sarah-fan-beside-role-update-regression",
-      "sarah-fan-named-role-update-regression"
+      "sarah-fan-named-role-update-regression",
+      "daniel-list-all-memory-regression",
+      "photon-residency-what-people-event-recall-regression"
     ];
 
-    expect(relationshipAgentEvalCases).toHaveLength(51);
+    expect(relationshipAgentEvalCases).toHaveLength(53);
     expect(relationshipAgentEvalCases.map((item) => item.id)).toEqual(requiredIds);
     for (const evalCase of relationshipAgentEvalCases) {
       expect(evalCase.required).toBe(true);
@@ -80,8 +82,8 @@ describe("relationship agent eval runner", () => {
       now: () => "2026-05-20T12:00:00.000Z"
     });
 
-    expect(summary.total).toBe(51);
-    expect(summary.requiredTotal).toBe(51);
+    expect(summary.total).toBe(53);
+    expect(summary.requiredTotal).toBe(53);
     expect(summary.failed).toBe(0);
     expect(summary.metrics.passRate).toBe(1);
     expect(summary.metrics.intentAccuracy).toBe(1);

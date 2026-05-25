@@ -67,6 +67,8 @@ export type PendingReminderContext = {
   sameNameDisambiguationPending: boolean;
   listedEntityIds?: string[];
   reminderState: PendingReminderState;
+  /** Open optional post-save memory loop for the same person; suppress unrelated pending footers. */
+  additionalMemoryCaptureOpen?: boolean;
 };
 
 export type PendingReminderDecision =
@@ -80,6 +82,7 @@ export const COMPLAINT_COOLDOWN_MS = 10 * 60 * 1000;
 /** Intents that must never trigger a pending-contact reminder append. Shared with route policy during migration. */
 export const NEVER_REMIND_INTENTS = new Set<MessageInterpretation["intent"]>([
   "list_people",
+  "list_people_detail",
   "duplicate_audit",
   "delete_memory_request",
   "delete_memory",
@@ -122,6 +125,10 @@ const NEVER_REMIND_RESPONSE_KINDS = new Set<PendingReminderResponseKind>([
  * Pure policy: decides whether to suppress, defer, or append a pending-contact reminder footer.
  */
 export function decidePendingReminder(context: PendingReminderContext): PendingReminderDecision {
+  if (context.additionalMemoryCaptureOpen) {
+    return suppress("intent_suppressed");
+  }
+
   if (!context.activeWorkflow) {
     return suppress("no_active_workflow");
   }

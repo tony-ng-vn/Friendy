@@ -31,7 +31,27 @@ Whenever you **finish meaningful work**, **change runtime behavior**, **close a 
 
 Skip updates only for trivial typo/docs-only edits with no behavioral impact.
 
-## Current Status (2026-05-24)
+## Current Status (2026-05-25)
+
+### Live Photon Residency Context Retrieval Fix
+
+- Fixed a live iMessage regression where `What are the people I met during Photon Residency?` routed through the LLM as generic `search_memory` / semantic recall and returned generic Photon-only matches such as Daniel and Julie Chen instead of only residency-context people.
+- Root cause: the shared event-recall detector recognized `Who did I meet...` and `anyone I met...` shapes, but not `what/which people did I meet during...`; the model route therefore stayed semantic and retrieval accepted partial multi-word context matches like `Photon` without requiring `Residency`.
+- `isEventRecallQuestion` now recognizes `what/which people|contacts did I meet at/during/from/while...` phrasing, LLM `search_memory` routes for event-scoped raw text are repaired to `event_recall`, and event-wide multi-term retrieval now requires all normalized event/context terms before returning matches.
+- Added focused coverage in `listPeopleRecall.test.ts`, `interpretedAgent.test.ts`, and the required trajectory eval `photon-residency-what-people-event-recall-regression`.
+- Verification on 2026-05-25: focused tests passed 5 files/184 tests; `npm run eval:agent` passed 53/53 with 0 unsafe mutations and 0 hallucinations; `npm run build` passed; `git diff --check` passed.
+- Build blocker cleanup on 2026-05-25: added the missing `appleContactSnapshot.ts` helper and updated stale interpreted-agent test helper types for pending-workflow/list-detail routes.
+
+## Previous Status (2026-05-24)
+
+### Live Daniel Memory Retrieval Fix
+
+- Fixed a live iMessage regression where `List me all memory you have for Daniel` routed deterministically to `list_people` but normalized the filter target as `memory you have for Daniel`, causing Friendy to reply that no matching people existed even though `Do I know anyone in Photon?` had just found Daniel.
+- The filtered-person list extractor now recognizes `all memory/memories ... for <person>` wording and extracts the person name before building the deterministic `list_people` route.
+- Follow-up UX change: saved people lists now render as numbered rows (`1. Name - context`) instead of dash bullets, and delete/update target lookup can resolve a numeric follow-up such as `delete 2` against the most recent list.
+- Added focused coverage in `listPeopleRecall.test.ts`, `interpretedAgent.test.ts`, and the required trajectory eval `daniel-list-all-memory-regression`.
+- Verification on 2026-05-24: focused tests passed 3 files/143 tests; `npm run eval:agent` passed 52/52 with 0 unsafe mutations and 0 hallucinations; temp-copy SQLite smoke verified `List me all memory you have for Daniel` followed by `delete 2` only deletes the second Daniel row; `git diff --check` passed.
+- The earlier `npm run build` blocker from missing `appleContactSnapshot.ts` and stale interpreted-agent test helper types was fixed on 2026-05-25; `npm run build` now passes.
 
 ### Bi-Directional Apple Contacts Integration
 

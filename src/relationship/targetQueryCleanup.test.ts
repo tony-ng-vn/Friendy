@@ -11,7 +11,9 @@ describe("cleanMemoryTargetQuery", () => {
     ["Z for me", "Z"],
     ["Z?", "Z"],
     ["delete Z2 please", "Z2"],
-    ["forget AJ from memory", "AJ"]
+    ["forget AJ from memory", "AJ"],
+    ["me one Daniel please", "Daniel"],
+    ["one Daniel", "Daniel"]
   ])("cleans %s to %s", (query, expected) => {
     expect(cleanMemoryTargetQuery(query)).toBe(expected);
   });

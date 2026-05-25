@@ -82,6 +82,31 @@ export function composeSaveConfirmation({ memories }: SaveConfirmationInput): st
   return `Got it, saved ${memories.length} people: ${memories.map((memory) => memory.displayName).join(", ")}.`;
 }
 
+/** Follow-up question after the first memory for a person is saved. */
+export function composeAdditionalMemoryFollowUpQuestion(displayName: string): string {
+  return `Anything else you want to remember about ${displayName}?`;
+}
+
+/** Appends the optional additional-memory prompt after a save confirmation. */
+export function composeSaveConfirmationWithAdditionalMemoryPrompt({
+  memories,
+  displayName
+}: SaveConfirmationInput & { displayName: string }): string {
+  const confirmation = composeSaveConfirmation({ memories });
+  const followUp = composeAdditionalMemoryFollowUpQuestion(displayName);
+  return `${confirmation}\n\n${followUp}`;
+}
+
+/** Closes the additional-memory loop when the user declines. */
+export function composeAdditionalMemoryCaptureComplete(displayName: string): string {
+  return `Sounds good — I'll keep what you shared about ${displayName}.`;
+}
+
+/** Asks for concrete detail when the user says yes without content. */
+export function composeAdditionalMemoryPromptForDetail(displayName: string): string {
+  return `What else should I remember about ${displayName}?`;
+}
+
 /**
  * Formats deterministic search results as a conversational answer.
  *
@@ -106,6 +131,13 @@ export function composeSearchReply({ matches, ambiguous = false }: SearchReplyIn
   return [`I found ${matches.length} people:`, "", ...matches.map((match) => formatSearchListMatch(match.memory))].join("\n");
 }
 
+/** Formats everything saved about one person after a targeted lookup request. */
+export function composePersonLookupReply(person: ListPeopleResult["people"][number]): string {
+  const contexts = person.memories.map((memory) => memory.summary.trim()).filter(Boolean);
+  const context = contexts.length > 0 ? contexts.join("; ") : "no context saved yet";
+  return `Here's what I remember about ${person.displayName}:\n\n- ${person.displayName} - ${context}`;
+}
+
 /** Formats structured people inventory results without using search diagnostics. */
 export function composeListPeopleReply({ result, preferBullets = false }: ListPeopleReplyInput): string {
   const hasAppleContactsUnsupported = result.unsupportedSources?.includes("apple_contacts") ?? false;
@@ -128,7 +160,7 @@ export function composeListPeopleReply({ result, preferBullets = false }: ListPe
     const heading = result.appliedFilterLabel
       ? `I remember these people from ${result.appliedFilterLabel}:`
       : `I remember ${result.people.length === 1 ? "this person" : "these people"} in Friendy memory:`;
-    const peopleLines = result.people.map((person) => formatListedPerson(person, preferBullets));
+    const peopleLines = result.people.map((person, index) => formatListedPerson(person, index));
     sections.push(heading, "", ...peopleLines);
   }
 
@@ -149,10 +181,10 @@ export function composeListPeopleReply({ result, preferBullets = false }: ListPe
   return sections.join("\n");
 }
 
-function formatListedPerson(person: ListPeopleResult["people"][number], _preferBullets: boolean): string {
+function formatListedPerson(person: ListPeopleResult["people"][number], index: number): string {
   const contexts = person.memories.map((memory) => memory.summary.trim()).filter(Boolean);
   const context = contexts.length > 0 ? contexts.join("; ") : "no context saved";
-  return `- ${person.displayName} - ${context}`;
+  return `${index + 1}. ${person.displayName} - ${context}`;
 }
 
 function formatDuplicateGroup(group: ListPeopleResult["duplicateGroups"][number]): string {
@@ -188,6 +220,29 @@ export function composeCandidateAmbiguityReply({ candidates }: CandidateAmbiguit
 /** Formats the no-pending-candidate reply for confirmation attempts. */
 export function composeNoPendingCandidateReply(): string {
   return "I do not see a pending contact to confirm.";
+}
+
+/** Answers whether Friendy has unsaved pending contacts and lists their display names. */
+export function composePendingContactsInventoryReply({
+  candidates
+}: {
+  candidates: Array<{ displayName: string }>;
+}): string {
+  if (candidates.length === 0) {
+    return composeNoPendingCandidateReply();
+  }
+
+  if (candidates.length === 1) {
+    const name = candidates[0].displayName;
+    if (name === "Unnamed Contact") {
+      return "Yes — I have 1 unsaved contact waiting. Contacts hasn't given me the name yet.";
+    }
+
+    return `Yes — I have 1 unsaved contact waiting: ${name}.`;
+  }
+
+  const names = candidates.map((candidate) => candidate.displayName).join(", ");
+  return `Yes — I have ${candidates.length} unsaved contacts waiting: ${names}.`;
 }
 
 /** Explains which contact is waiting for meeting context when the user asks mid-prompt. */
@@ -407,16 +462,30 @@ export function composeDeleteMemoryDisambiguationReply({
   query,
   options
 }: DeleteMemoryDisambiguationReplyInput): string {
-  const allSameName = options.length > 1 && options.every((option) => option.displayName === options[0]?.displayName);
-  const optionLines = options.map((option, index) => {
+  const safeOptions = options.map((option) => ({
+    displayName: sanitizeUserFacingOptionText(option.displayName),
+    detail: option.detail ? sanitizeUserFacingOptionText(option.detail) : undefined
+  }));
+  const allSameName =
+    safeOptions.length > 1 && safeOptions.every((option) => option.displayName === safeOptions[0]?.displayName);
+  const optionLines = safeOptions.map((option, index) => {
     const detail = option.detail ? ` - ${option.detail}` : "";
     return `${index + 1}. ${option.displayName}${detail}`;
   });
   const header = allSameName
-    ? `I found multiple people named ${options[0]?.displayName ?? query}:`
+    ? `I found multiple people named ${safeOptions[0]?.displayName ?? sanitizeUserFacingOptionText(query)}:`
     : `I found multiple possible matches for "${query}":`;
 
   return [header, ...optionLines, "Which one do you want to delete, or should I delete both?"].join("\n");
+}
+
+function sanitizeUserFacingOptionText(value: string): string {
+  return value
+    .replace(/\s*\((?:candidate|memory|apple_contact|contact)[_-][^)]+\)/gi, "")
+    .replace(/\b(?:candidate|memory|apple_contact|contact)[_-][\w-]+\b/gi, "")
+    .replace(/\s+-\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 type UpdateMemoryConfirmReplyInput = {

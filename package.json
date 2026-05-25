@@ -14,6 +14,7 @@
     "agent:friendy": "tsx src/relationship/runtime/friendyRuntimeCli.ts",
     "agent:friendy:local-api": "tsx src/relationship/onboardingLocalApi.ts",
     "agent:friendy:check": "tsx src/relationship/runtime/friendyRuntimeCheck.ts",
+    "friendy:reintake-ignored": "tsx src/relationship/runtime/friendyReintakeCli.ts",
     "build:macos-sensor": "node scripts/build-macos-sensor.mjs",
     "doctor:macos-sensor": "tsx src/relationship/runtime/macosSensorDoctor.ts",
     "doctor:friendy": "tsx src/relationship/runtime/friendyDoctor.ts",

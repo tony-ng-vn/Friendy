@@ -225,6 +225,23 @@ function lookupRecentListedPerson(
   recentPeople: Array<{ displayName: string; memoryIds: string[] }>
 ): MemoryTargetLookupResult | undefined {
   const normalizedQuery = normalizeDisplayName(query);
+  const ordinal = parseRecentListOrdinal(normalizedQuery);
+  if (ordinal !== undefined) {
+    const match = recentPeople[ordinal - 1];
+    if (!match) {
+      return undefined;
+    }
+
+    return {
+      kind: "single",
+      memoryId: match.memoryIds[0],
+      memoryIds: match.memoryIds.length > 1 ? match.memoryIds : undefined,
+      displayName: match.displayName,
+      score: 100,
+      matchedVia: "exact"
+    };
+  }
+
   const matches = recentPeople.filter((person) => normalizeDisplayName(person.displayName) === normalizedQuery);
   if (matches.length === 0) {
     return undefined;
@@ -255,12 +272,25 @@ function lookupRecentListedPerson(
   };
 }
 
+function parseRecentListOrdinal(query: string): number | undefined {
+  const match = query.match(/^(?:#|number\s+|no\.\s*)?(\d{1,2})$/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const value = Number.parseInt(match[1], 10);
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 function dedupeRecentPeople(
   people: Array<{ displayName: string; memoryIds: string[] }>
 ): Array<{ displayName: string; memoryIds: string[] }> {
   const groups = new Map<string, { displayName: string; memoryIds: string[] }>();
   for (const person of people) {
-    const key = normalizeDisplayName(person.displayName);
+    const anchorMemoryId = person.memoryIds[0] ?? "";
+    const key = anchorMemoryId
+      ? `${normalizeDisplayName(person.displayName)}::${anchorMemoryId}`
+      : normalizeDisplayName(person.displayName);
     const existing = groups.get(key);
     if (existing) {
       existing.memoryIds.push(...person.memoryIds.filter((id) => !existing.memoryIds.includes(id)));

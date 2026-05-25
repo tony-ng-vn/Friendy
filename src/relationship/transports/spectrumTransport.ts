@@ -44,6 +44,7 @@ export type SpectrumRuntimeOptions = {
   tools?: RelationshipTools;
   expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
+  requeueDeferredContactsOnStart?: () => Promise<void>;
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
@@ -55,6 +56,7 @@ export type StartSpectrumFriendyAgentOptions = {
   tools?: RelationshipTools;
   expression?: AgentExpressionComposer;
   onboarding?: OnboardingStateController;
+  requeueDeferredContactsOnStart?: () => Promise<void>;
   env?: Partial<NodeJS.ProcessEnv>;
 };
 
@@ -139,6 +141,7 @@ export function createSpectrumFriendyRuntime({
   tools: providedTools,
   expression: providedExpression,
   onboarding,
+  requeueDeferredContactsOnStart,
   env = process.env
 }: SpectrumRuntimeOptions) {
   const repo = providedRepo ?? createRuntimeRelationshipRepository({
@@ -151,7 +154,16 @@ export function createSpectrumFriendyRuntime({
   const tools = providedTools ?? createRelationshipTools(repo);
   const strictMode = readFriendyStrictMode(env);
   const expression = providedExpression ?? createEnvExpressionComposer(env);
-  const agent = createInterpretedRelationshipAgent({ repo, tools, expression, onboarding, interpreter, strictMode, now });
+  const agent = createInterpretedRelationshipAgent({
+    repo,
+    tools,
+    expression,
+    onboarding,
+    requeueDeferredContactsOnStart,
+    interpreter,
+    strictMode,
+    now
+  });
 
   return {
     repo,
@@ -202,6 +214,7 @@ export async function startSpectrumFriendyAgent({
   tools,
   expression,
   onboarding,
+  requeueDeferredContactsOnStart,
   env = process.env
 }: StartSpectrumFriendyAgentOptions = {}) {
   loadFriendyEnv();
@@ -215,6 +228,7 @@ export async function startSpectrumFriendyAgent({
     tools,
     expression,
     onboarding,
+    requeueDeferredContactsOnStart,
     env
   });
 

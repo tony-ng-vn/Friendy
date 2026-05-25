@@ -37,7 +37,9 @@ export function buildInterpreterSystemPrompt(): string {
     "Duplicate questions route to duplicate_audit.",
     "Delete/remove/forget memory requests route to delete_memory_request.",
     "Route who-did-I-meet-at/during/from questions as event_recall, not list_people.",
-    "Route list/inventory/bullet requests as list_people.",
+    "Route list/inventory/bullet requests as list_people only when the user wants everyone (all/everyone/whole roster).",
+    "Route list/show/tell {person name} and questions about everything saved for one named person to list_people_detail; set target.displayName or query to the person name.",
+    "Route clue-based or event-based recall as search_memory with the appropriate search.mode.",
     "Route add/save/remember Person as/is/from/at context as manual_memory_create.",
     "Apple Contacts are separate from Friendy memory; route Apple Contacts create/update/delete requests to Apple-specific intents only.",
     "Never imply Apple Contacts were changed from the first route. Apple Contacts mutations require explicit user confirmation before tools run.",
@@ -50,7 +52,7 @@ export function buildStructuredOutputInstructions(): string {
   return [
     "Return JSON that matches the provided schema.",
     "Emit exactly one schema-supported intent.",
-    "Supported current intents include capture_memory, answer_pending_contact_prompt, capture_pending_contact_context, explain_pending_workflow, explain_agent_state, conversation_repair, duplicate_audit, delete_memory_request, list_people, search_memory, manual_memory_create, update_memory, delete_memory, request_apple_contact_create, request_apple_contact_update, request_apple_contact_delete, ignore_candidate, clarify, reject, and unknown.",
+    "Supported current intents include capture_memory, answer_pending_contact_prompt, capture_pending_contact_context, explain_pending_workflow, explain_agent_state, conversation_repair, duplicate_audit, delete_memory_request, list_people, list_people_detail, search_memory, manual_memory_create, update_memory, delete_memory, request_apple_contact_create, request_apple_contact_update, request_apple_contact_delete, ignore_candidate, clarify, reject, and unknown.",
     "Do not include prose outside the JSON response."
   ].join(" ");
 }

@@ -323,6 +323,17 @@ export const relationshipAgentEvalCases: RelationshipAgentEvalCase[] = [
     "Sarah Fan named role update opens confirmation",
     "Sarah Fan named role update does not create duplicate memory",
     "Sarah Fan named role update appends after confirmation"
+  ]),
+  evalCase("daniel-list-all-memory-regression", "interpreted", [
+    "Daniel list-all memory routes deterministically",
+    "Daniel list-all memory returns both Daniel memories",
+    "Daniel list-all memory excludes unrelated people"
+  ]),
+  evalCase("photon-residency-what-people-event-recall-regression", "interpreted", [
+    "Photon Residency what-people recall is event recall",
+    "Photon Residency what-people recall returns residency people",
+    "Photon Residency what-people recall excludes generic Photon-only people",
+    "Photon Residency what-people recall does not ask disambiguation"
   ])
 ];
 
@@ -1823,6 +1834,132 @@ const executableEvalCases: ExecutableEvalCase[] = [
           toolCallsInclude(confirmed.toolCalls, "update_memory") &&
             memoriesAfterConfirm.length === 1 &&
             includesAll(memoriesAfterConfirm[0]?.contextNote ?? "", ["Photon Residency II", "community leader"])
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[51],
+    async run({ now, interpreter }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_daniel_hack", "Daniel", "HackPrinceton, Photon CEO", "Photon"),
+          memory("memory_daniel_school", "Daniel", "school/company: Photon", "Photon"),
+          memory("memory_sarah_fan", "Sarah Fan", "community lead at Photon Residency II", "Photon Residency II")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter,
+        strictMode: false,
+        now,
+        timezone
+      });
+      const result = await agent.handleMessage(interpretedInbound("List me all memory you have for Daniel"));
+
+      return [
+        assertion(
+          "Daniel list-all memory routes deterministically",
+          "intent",
+          result.trace.routeSource === "deterministic" &&
+            result.trace.route?.intent === "list_people" &&
+            toolCallsInclude(result.toolCalls, "list_people")
+        ),
+        assertion(
+          "Daniel list-all memory returns both Daniel memories",
+          "searchRecall",
+          includesAll(result.outbound.text, ["Daniel - HackPrinceton", "Daniel - school/company"])
+        ),
+        assertion(
+          "Daniel list-all memory excludes unrelated people",
+          "searchRecall",
+          !result.outbound.text.includes("Sarah Fan")
+        )
+      ];
+    }
+  },
+  {
+    ...relationshipAgentEvalCases[52],
+    async run({ now }) {
+      const repo = createRelationshipRepository({
+        users: [fixtureUser],
+        memories: [
+          memory("memory_cecilia", "Cecilia Zeng", "I met them during Photon Residency", "Photon Residency"),
+          memory("memory_sarah", "Sarah Fan", "goat of the photon residency II", "Photon Residency II"),
+          memory("memory_daniel", "Daniel", "school or company: Photon", ""),
+          memory("memory_julie", "Julie Chen", "GTM at Photon", ""),
+          memory("memory_harold", "Harold", "my best friend at USF", "")
+        ]
+      });
+      const tools = createRelationshipTools(repo);
+      const semanticSearchInterpreter: MessageInterpreter = {
+        async interpret() {
+          return {
+            modelUsed: "eval-semantic-search",
+            error: "",
+            routeSource: "llm" as const,
+            fallbackUsed: false,
+            modelRequested: "eval-semantic-search",
+            modelResponseSchemaValid: true,
+            interpretation: {
+              intent: "search_memory",
+              confidence: 0.92,
+              domain: "relationship_memory",
+              conversationRelation: "starts_new_relationship_task",
+              query: "Photon Residency",
+              search: {
+                mode: "semantic_recall",
+                semanticQuery: "Photon Residency",
+                exactTerms: ["photon", "residency"],
+                filters: {},
+                topK: 20
+              },
+              people: [],
+              event: { name: "", dateText: "", location: "" },
+              dateContext: undefined,
+              contextNote: "",
+              tags: [],
+              needsClarification: false,
+              clarificationQuestion: ""
+            }
+          };
+        }
+      };
+      const agent = createInterpretedRelationshipAgent({
+        repo,
+        tools,
+        interpreter: semanticSearchInterpreter,
+        strictMode: true,
+        now,
+        timezone
+      });
+      const result = await agent.handleMessage(interpretedInbound("What are the people I met during Photon Residency?"));
+
+      return [
+        assertion(
+          "Photon Residency what-people recall is event recall",
+          "intent",
+          result.trace.route?.intent === "search_memory" &&
+            result.trace.route.searchMode === "event_recall" &&
+            toolCallsInclude(result.toolCalls, "search_memories")
+        ),
+        assertion(
+          "Photon Residency what-people recall returns residency people",
+          "searchRecall",
+          includesAll(result.outbound.text, ["Cecilia Zeng", "Sarah Fan"])
+        ),
+        assertion(
+          "Photon Residency what-people recall excludes generic Photon-only people",
+          "searchRecall",
+          !includesAny(result.outbound.text, ["Daniel", "Julie Chen", "Harold"])
+        ),
+        assertion(
+          "Photon Residency what-people recall does not ask disambiguation",
+          "clarification",
+          !result.outbound.text.includes("Which person do you mean?")
         )
       ];
     }

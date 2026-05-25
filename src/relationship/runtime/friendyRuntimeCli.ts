@@ -25,7 +25,7 @@ import { terminateExistingMacosSensorProcesses } from "./terminateMacosSensorPro
 import { composeRuntimeStartupReply } from "../responseComposer";
 import type { RelationshipRepository } from "../repository";
 import { createSqliteRelationshipRepository, createSqliteRuntimeStateStore, type SqliteRelationshipRepository, type SqliteRuntimeStateStore } from "../sqliteRepository";
-import { createFriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
+import { createFriendySensorRuntime, type FriendySensorRuntime, type RuntimeAckWriter, type RuntimeLogger, type RuntimePromptSender } from "./friendyRuntime";
 import { startSensorProcess, type SensorRuntimeLineProcessor, type StartedSensorProcess } from "./sensorProcess";
 import { createLiveSpectrumPromptSender } from "../transports/spectrumPromptSender";
 import { startSpectrumFriendyAgent } from "../transports/spectrumTransport";
@@ -83,6 +83,7 @@ export type StartedFriendyForegroundRuntime = {
   repo: SqliteRelationshipRepository;
   state: SqliteRuntimeStateStore;
   onboarding: OnboardingStateController;
+  runtime: FriendySensorRuntime;
   sensor: StartedSensorProcess;
   inboundAgent?: StartedInboundAgent;
   close(): void;
@@ -96,6 +97,7 @@ export type FriendyInboundAgentStarter = (input: {
   repo: RelationshipRepository;
   userId: string;
   onboarding: OnboardingStateController;
+  requeueDeferredContactsOnStart?: () => Promise<void>;
   env: Partial<NodeJS.ProcessEnv>;
   logger: RuntimeLogger;
 }) => StartedInboundAgent;
@@ -136,6 +138,7 @@ export async function startFriendyForegroundRuntime({
 }: StartFriendyForegroundRuntimeInput = {}): Promise<StartedFriendyForegroundRuntime> {
   logger.info("[friendy] loading env");
   const config = resolveFriendyRuntimeConfig({ cwd, env });
+  const runtimeHolder: { runtime?: FriendySensorRuntime } = {};
   const resolvedOnboarding =
     onboarding ??
     createOnboardingStateController("ready_pending_user_start", {
@@ -150,6 +153,11 @@ export async function startFriendyForegroundRuntime({
             ? "[friendy] reset macOS contact identifier snapshot for post-start detection"
             : "[friendy] requested macOS contact snapshot reset signal for post-start detection"
         );
+        void runtimeHolder.runtime?.requeueDeferredReintakeCandidatesOnStart().catch((error) => {
+          logger.error(
+            `[friendy:reintake] failed on onboarding start: ${error instanceof Error ? error.message : String(error)}`
+          );
+        });
       }
     });
   logger.info("[friendy] config resolved");
@@ -162,7 +170,7 @@ export async function startFriendyForegroundRuntime({
   const repo = createSqliteRelationshipRepository({ path: config.sqlitePath });
   const state = createSqliteRuntimeStateStore({ path: config.sqlitePath });
   logger.info("[friendy] sqlite store ready");
-  clearPreviousRunPendingCandidates({ repo, userId, logger });
+  clearPreviousRunPendingCandidates({ repo, state, userId, logger });
   logger.info("[friendy] contact memory ready; waiting for user start");
   const promptSender = sender ?? (await createRuntimePromptSender({ env, sensorMode: config.sensor.mode, logger }));
   logger.info(`[friendy] prompt transport ready: ${promptSenderKind(promptSender)}`);
@@ -173,11 +181,21 @@ export async function startFriendyForegroundRuntime({
     sender: promptSender,
     ackWriter,
     logger,
-    getOnboardingState: () => resolvedOnboarding.getState()
+    sqlitePath: config.sqlitePath,
+    getOnboardingState: () => resolvedOnboarding.getState(),
+    getContactIntakeStartedAt: () => resolvedOnboarding.getContactIntakeStartedAt()
   });
+  runtimeHolder.runtime = runtime;
   warnIfStrictModeDisabledForInboundAgent(config, env, logger);
   const inboundAgent = shouldStartInboundAgent(config, env)
-    ? startInboundAgent({ repo, userId, onboarding: resolvedOnboarding, env, logger })
+    ? startInboundAgent({
+        repo,
+        userId,
+        onboarding: resolvedOnboarding,
+        requeueDeferredContactsOnStart: () => runtime.requeueDeferredReintakeCandidatesOnStart(),
+        env,
+        logger
+      })
     : undefined;
   logger.info(`[friendy] macos sensor launching: ${config.sensor.mode}`);
   if (config.sensor.mode === "real") {
@@ -197,6 +215,7 @@ export async function startFriendyForegroundRuntime({
     repo,
     state,
     onboarding: resolvedOnboarding,
+    runtime,
     sensor,
     inboundAgent,
     close() {
@@ -245,10 +264,12 @@ function promptSenderKind(sender: RuntimePromptSender): string {
 
 function clearPreviousRunPendingCandidates({
   repo,
+  state,
   userId,
   logger
 }: {
   repo: RelationshipRepository;
+  state: SqliteRuntimeStateStore;
   userId: string;
   logger: RuntimeLogger;
 }): void {
@@ -257,9 +278,12 @@ function clearPreviousRunPendingCandidates({
     return;
   }
 
+  const clearedCandidateIds: string[] = [];
   for (const candidate of pending) {
     repo.ignoreCandidate(candidate.id);
+    clearedCandidateIds.push(candidate.id);
   }
+  state.clearProcessedEventsForCandidateIds(clearedCandidateIds);
   logger.info(`[friendy] cleared ${pending.length} stale pending contact candidate(s) from previous runtime runs`);
 }
 
@@ -373,15 +397,17 @@ function defaultStartSensor({
 function defaultStartInboundAgent({
   repo,
   onboarding,
+  requeueDeferredContactsOnStart,
   env,
   logger
 }: {
   repo: RelationshipRepository;
   onboarding: OnboardingStateController;
+  requeueDeferredContactsOnStart?: () => Promise<void>;
   env: Partial<NodeJS.ProcessEnv>;
   logger: RuntimeLogger;
 }): StartedInboundAgent {
-  void startSpectrumFriendyAgent({ repo, onboarding, env }).catch((error) => {
+  void startSpectrumFriendyAgent({ repo, onboarding, requeueDeferredContactsOnStart, env }).catch((error) => {
     logger.error(`[friendy:inbound_agent:error] ${error instanceof Error ? error.message : String(error)}`);
   });
 

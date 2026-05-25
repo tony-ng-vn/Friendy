@@ -376,6 +376,36 @@ describe("sqlite relationship repository", () => {
     }
   });
 
+  it("lists ignored candidates with recent processed sensor activity for re-intake", () => {
+    const dbPath = tempDatabasePath();
+    const repo = trackRepository(createSqliteRelationshipRepository({
+      path: dbPath,
+      seed: {
+        users: [fixtureUser],
+        calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+      }
+    }));
+    const state = trackCloseable(createSqliteRuntimeStateStore({ path: dbPath }));
+    const candidate = repo.createCandidateFromDetectedContact(fixtureDetectedContact);
+    repo.ignoreCandidate(candidate.id);
+    state.recordProcessedEvent({
+      idempotencyKey: "contacts:mac_1:fixture-contact-1:add",
+      sensorEventId: "sensor_evt_contact_fixture",
+      sensorName: "macos_contacts_calendar",
+      eventType: "contact_added",
+      status: "candidate_created",
+      candidateId: candidate.id,
+      processedAt: "2026-05-24T22:00:00.000Z"
+    });
+
+    const reopened = trackRepository(createSqliteRelationshipRepository({ path: dbPath }));
+    expect(
+      reopened.listIgnoredCandidateIdsForReintake(fixtureUser.id, {
+        sensorActivitySince: "2026-05-24T21:59:00.000Z"
+      })
+    ).toEqual([candidate.id]);
+  });
+
   it("keeps ignored candidates out of later pending queues without creating memory", () => {
     const dbPath = tempDatabasePath();
     const repo = trackRepository(createSqliteRelationshipRepository({

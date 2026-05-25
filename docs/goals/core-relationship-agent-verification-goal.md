@@ -15,6 +15,25 @@ Confirm the current agent can:
 
 ## Current Result
 
+2026-05-25 live Photon Residency context retrieval follow-up:
+
+- Fixed the live case `What are the people I met during Photon Residency?`, which routed through the LLM as generic semantic `search_memory` and returned generic Photon-only matches.
+- `isEventRecallQuestion` now recognizes `what/which people|contacts did I meet at/during/from/while...` event-scoped wording.
+- LLM `search_memory` routes are repaired to `event_recall` when the raw user message is clearly event-scoped, even if the model returns `semantic_recall`.
+- Event-wide multi-word retrieval now requires all normalized context terms, so `Photon Residency` can match residency memories while excluding `Photon`-only company/school notes.
+- Added unit coverage, interpreted-agent coverage for the live wording, and the required eval `photon-residency-what-people-event-recall-regression`.
+- Verification passed with focused tests 5 files/184 tests, `npm run eval:agent` 53/53 with 0 unsafe mutations and 0 hallucinations, `npm run build`, and `git diff --check`.
+- Build blocker cleanup: added the missing `appleContactSnapshot.ts` helper and updated stale interpreted-agent test helper types for pending-workflow/list-detail routes.
+
+2026-05-24 live Daniel list-all-memory follow-up:
+
+- Fixed the live case `List me all memory you have for Daniel`, which was incorrectly normalized to the filter target `memory you have for Daniel` and returned `I don't have any matching people...`.
+- `extractFilteredPersonListCommand` now recognizes `all memory/memories ... for <person>` phrasing and extracts the person name for deterministic `list_people` filtering.
+- Saved people lists now use numbered rows instead of dash bullets, and a follow-up delete target such as `delete 2` resolves against the most recent numbered list before asking for confirmation.
+- Added unit coverage for the extractor, interpreted-agent coverage for the live Daniel wording, and the required eval `daniel-list-all-memory-regression`.
+- Verification passed with focused tests 3 files/143 tests, `npm run eval:agent` 52/52 with 0 unsafe mutations and 0 hallucinations, temp-copy SQLite smoke for Daniel list plus `delete 2`, and `git diff --check`.
+- The earlier `npm run build` blocker from missing `appleContactSnapshot.ts` and stale interpreted-agent test helper types was fixed on 2026-05-25; `npm run build` now passes.
+
 2026-05-24 live Sarah Fan append-memory follow-up:
 
 - Fixed the live case `For Sarah Fan beside I met her during photon residency ii, she is also a community lead there`.

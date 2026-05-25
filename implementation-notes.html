@@ -6,6 +6,23 @@
   </head>
   <body>
     <h1>Implementation Notes</h1>
+    <h2>Live Photon Residency Context Retrieval Fix (2026-05-25)</h2>
+    <ul>
+      <li>Live iMessage testing showed <code>What are the people I met during Photon Residency?</code> returned a long generic Photon list and asked <code>Which person do you mean?</code>. The trace was strict-mode LLM routing with a valid <code>search_memory</code> interpretation, so the failure was model/routing plus retrieval filtering, not sensor ingestion.</li>
+      <li>Root cause: the event-recall detector only covered <code>Who did I meet...</code> and <code>anyone I met...</code> wording. The live <code>what are the people I met during...</code> phrasing stayed on semantic recall, and multi-word context retrieval accepted partial matches such as <code>Photon</code> without requiring <code>Residency</code>.</li>
+      <li>Expanded <code>isEventRecallQuestion</code> to cover <code>what/which people|contacts did I meet at/during/from/while...</code>. When the raw user text is event-scoped, LLM <code>search_memory</code> interpretations are repaired to <code>event_recall</code> even if the model returned <code>semantic_recall</code>.</li>
+      <li>For event-wide multi-term searches, retrieval now requires all normalized event/context terms before returning matches. This keeps <code>Photon Residency</code> recall from returning generic <code>Photon</code>-only company/school notes while preserving one-word event recall such as <code>Photon</code>.</li>
+      <li>Added red-first coverage in <code>listPeopleRecall.test.ts</code> and <code>interpretedAgent.test.ts</code>, plus the required trajectory eval <code>photon-residency-what-people-event-recall-regression</code>.</li>
+      <li>Verification passed: focused tests passed 5 files/184 tests, <code>npm run eval:agent</code> passed 53/53 with zero unsafe mutations and zero hallucinations, <code>npm run build</code> passed, and <code>git diff --check</code> passed. Build blocker cleanup added the missing <code>appleContactSnapshot.ts</code> helper and updated stale interpreted-agent test helper types for pending-workflow/list-detail routes.</li>
+    </ul>
+    <h2>Live Daniel List-All-Memory Retrieval Fix (2026-05-24)</h2>
+    <ul>
+      <li>Live iMessage testing showed <code>List me all memory you have for Daniel</code> returned <code>I don't have any matching people in Friendy memory yet.</code> immediately after <code>Do I know anyone in Photon?</code> found Daniel. Root cause: the deterministic filtered-list extractor matched the broad <code>list all ...</code> pattern first and treated <code>memory you have for Daniel</code> as the person filter.</li>
+      <li>Added a narrower extractor pattern for <code>all memory/memories ... for &lt;person&gt;</code> before the generic <code>list all &lt;target&gt;</code> pattern, so the deterministic <code>list_people</code> route filters on <code>Daniel</code>.</li>
+      <li>Changed saved-people list rows from dash bullets to numbered rows, for example <code>1. Daniel - HackPrinceton, Photon CEO</code>. The recent-list target lookup now accepts numeric follow-ups such as <code>delete 2</code>, resolves them to the visible row, and still asks for confirmation before deleting.</li>
+      <li>Added red-first coverage in <code>listPeopleRecall.test.ts</code> and <code>interpretedAgent.test.ts</code>, plus the required trajectory eval <code>daniel-list-all-memory-regression</code>.</li>
+      <li>Verification passed: focused tests passed 3 files/143 tests, <code>npm run eval:agent</code> passed 52/52 with zero unsafe mutations and zero hallucinations, a temp-copy SQLite smoke verified Daniel list plus <code>delete 2</code>, and <code>git diff --check</code> passed. The earlier build blocker from missing <code>appleContactSnapshot.ts</code> and stale interpreted-agent test helper types was fixed on 2026-05-25; <code>npm run build</code> now passes.</li>
+    </ul>
     <h2>Local Onboarding API Backend Slice (2026-05-24)</h2>
     <ul>
       <li>Added <code>src/relationship/onboardingLocalApi.ts</code> as a composable local backend module rather than wiring the deployed frontend or starting the full Mac sensor runtime. The new command is <code>npm run agent:friendy:local-api</code>, defaulting to <code>http://127.0.0.1:8788</code>.</li>

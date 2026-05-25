@@ -157,6 +157,7 @@ const ROUTE_CAPABILITY_ORDER = [
   "duplicate_audit",
   "delete_memory_request",
   "list_people",
+  "list_people_detail",
   "search_memory",
   "manual_memory_create",
   "update_memory",

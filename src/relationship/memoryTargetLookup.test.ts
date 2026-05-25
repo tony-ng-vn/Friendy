@@ -240,4 +240,30 @@ describe("lookupMemoryTarget", () => {
       expect(result.memoryId).toBe("memory_unnamed");
     }
   });
+
+  it("resolves a number against the most recent listed people", () => {
+    const memories = [
+      memory("memory_daniel_hack", "Daniel", { contextNote: "HackPrinceton, Photon CEO" }),
+      memory("memory_daniel_school", "Daniel", { contextNote: "school/company: Photon" }),
+    ];
+
+    const result = lookupMemoryTarget({
+      userId,
+      query: "2",
+      memories,
+      operation: "delete",
+      recentPeople: [
+        { displayName: "Daniel", memoryIds: ["memory_daniel_hack"] },
+        { displayName: "Daniel", memoryIds: ["memory_daniel_school"] },
+      ],
+    });
+
+    expect(result).toEqual({
+      kind: "single",
+      memoryId: "memory_daniel_school",
+      displayName: "Daniel",
+      score: 100,
+      matchedVia: "exact",
+    });
+  });
 });

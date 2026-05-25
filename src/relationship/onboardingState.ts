@@ -40,6 +40,8 @@ export type OnboardingStateControllerOptions = {
 export type OnboardingStateController = {
   getState(): OnboardingState;
   applyControl(action: OnboardingControlAction): OnboardingState;
+  /** ISO timestamp set when the user texts `start`; used to gate post-start contact re-intake. */
+  getContactIntakeStartedAt(): string | undefined;
 };
 
 /** Pure transition table for onboarding lifecycle events. */
@@ -86,13 +88,18 @@ export function createOnboardingStateController(
   options: OnboardingStateControllerOptions = {}
 ): OnboardingStateController {
   let state = initialState;
+  let contactIntakeStartedAt: string | undefined;
 
   return {
     getState() {
       return state;
     },
+    getContactIntakeStartedAt() {
+      return contactIntakeStartedAt;
+    },
     applyControl(action) {
       if (action === "started") {
+        contactIntakeStartedAt = new Date().toISOString();
         state = reduceOnboardingState(state, { type: "user_started" });
       } else if (action === "paused") {
         state = reduceOnboardingState(state, { type: "pause" });

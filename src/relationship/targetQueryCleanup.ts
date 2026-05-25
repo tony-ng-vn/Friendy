@@ -15,6 +15,7 @@ export function cleanMemoryTargetQuery(query: string): string {
       .replace(/\s+memory$/i, "")
       .replace(/\s+for\s+me$/i, "")
       .replace(/\s+(?:please|pls|thanks|thank\s+you)$/i, "")
+      .replace(/^(?:me\s+)?(?:(?:one|a|an|the)\s+)+/i, "")
       .replace(/[?.!]+$/g, "")
       .trim()
       .replace(/\s+/g, " ");

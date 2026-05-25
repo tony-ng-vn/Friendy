@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decideMessageScope, type ScopeDecision } from "./scopeBoundary";
+import {
+  decideMessageScope,
+  isPendingContactsStatusInquiry,
+  type ScopeDecision
+} from "./scopeBoundary";
 
 describe("relationship agent scope boundary", () => {
   it("blocks general math without allowing tools", () => {
@@ -169,6 +173,21 @@ describe("relationship agent scope boundary", () => {
     ]) {
       expect(decideMessageScope({ text, hasPendingCandidate: false })).toMatchObject({
         scope: "out_of_scope"
+      });
+    }
+  });
+
+  it("recognizes pending-contact status questions", () => {
+    for (const text of [
+      "Are there any pending contacts?",
+      "Do u see anyone pending?",
+      "Do you see any pending contacts?",
+      "Any pending contacts right now?"
+    ]) {
+      expect(isPendingContactsStatusInquiry(text)).toBe(true);
+      expect(decideMessageScope({ text, hasPendingCandidate: true })).toMatchObject({
+        scope: "in_scope",
+        capability: "candidate_confirmation"
       });
     }
   });

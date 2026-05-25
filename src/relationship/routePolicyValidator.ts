@@ -131,12 +131,24 @@ function requiredToolForInterpretation(interpretation: MessageInterpretation): A
     return "list_people";
   }
 
+  if (interpretation.intent === "list_people_detail") {
+    return "list_people_detail";
+  }
+
   if (interpretation.intent === "duplicate_audit") {
     return "find_duplicate_people";
   }
 
   if (interpretation.intent === "search_memory") {
-    return interpretation.search?.mode === "list_people" ? "list_people" : "search_memories";
+    if (interpretation.search?.mode === "list_people") {
+      return "list_people";
+    }
+
+    if (interpretation.search?.mode === "lookup_person") {
+      return "list_people_detail";
+    }
+
+    return "search_memories";
   }
 
   if (interpretation.intent === "capture_memory") {

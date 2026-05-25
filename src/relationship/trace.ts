@@ -20,6 +20,7 @@ export type ActiveWorkflowKind =
   | "pending_apple_contact_create"
   | "pending_apple_contact_update"
   | "pending_apple_contact_delete"
+  | "pending_additional_memory"
   | "none";
 
 export type FriendyRouteTrace = {

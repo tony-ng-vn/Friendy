@@ -414,6 +414,113 @@ describe("Friendy macOS sensor runtime", () => {
     ]);
   });
 
+  it("re-queues immediately when a stale duplicate arrives after start", async () => {
+    let onboardingState: OnboardingState = "active";
+    const harness = createHarness(
+      {},
+      {
+        getOnboardingState: () => onboardingState,
+        getContactIntakeStartedAt: () => "2026-05-21T18:00:00.000Z"
+      }
+    );
+    const firstLine = JSON.stringify(contactAddedEvent());
+    const staleDuplicateLine = JSON.stringify(
+      contactAddedEvent({
+        eventId: "sensor_evt_contact_stale",
+        detectedAt: "2026-05-21T16:00:00.000Z"
+      })
+    );
+
+    await harness.runtime.processLine(firstLine);
+    const [created] = harness.repo.listPendingCandidates("user_friendy");
+    harness.repo.ignoreCandidate(created.id);
+    expect(harness.prompts).toHaveLength(1);
+
+    await harness.runtime.processLine(staleDuplicateLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.prompts).toHaveLength(2);
+    expect(harness.logs.join("\n")).toContain("[friendy:reintake] Re-queued");
+  });
+
+  it("re-queues deferred ignored candidates when intake starts after pre-start duplicate replay", async () => {
+    let onboardingState: OnboardingState = "ready_pending_user_start";
+    const harness = createHarness(
+      {},
+      {
+        getOnboardingState: () => onboardingState,
+        getContactIntakeStartedAt: () =>
+          onboardingState === "active" ? "2026-05-21T18:00:00.000Z" : undefined
+      }
+    );
+    const firstLine = JSON.stringify(contactAddedEvent());
+    const duplicateLine = JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2" }));
+
+    await harness.runtime.processLine(firstLine);
+    const [created] = harness.repo.listPendingCandidates("user_friendy");
+    harness.repo.ignoreCandidate(created.id);
+    expect(harness.prompts).toHaveLength(1);
+
+    await harness.runtime.processLine(duplicateLine);
+    expect(harness.prompts).toHaveLength(1);
+
+    onboardingState = "active";
+    await harness.runtime.requeueDeferredReintakeCandidatesOnStart();
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.prompts).toHaveLength(2);
+    expect(harness.logs.join("\n")).toContain("[friendy:reintake] Re-queued");
+  });
+
+  it("re-queues an ignored candidate when the same contact is detected again after start", async () => {
+    const harness = createHarness(
+      {},
+      {
+        getOnboardingState: () => "active",
+        getContactIntakeStartedAt: () => "2026-05-21T18:00:00.000Z"
+      }
+    );
+    const firstLine = JSON.stringify(contactAddedEvent());
+    const duplicateLine = JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2" }));
+
+    await harness.runtime.processLine(firstLine);
+    const [created] = harness.repo.listPendingCandidates("user_friendy");
+    harness.repo.ignoreCandidate(created.id);
+    expect(harness.prompts).toHaveLength(1);
+
+    await harness.runtime.processLine(duplicateLine);
+
+    expect(harness.repo.listPendingCandidates("user_friendy")).toHaveLength(1);
+    expect(harness.prompts).toHaveLength(2);
+    expect(harness.logs.join("\n")).toContain("Re-queued ignored contact after post-start detection");
+    expect(harness.state.getProcessedEventBySensorEventId("sensor_evt_contact_2")).toMatchObject({
+      status: "candidate_created",
+      candidateId: created.id
+    });
+  });
+
+  it("records duplicate sensor event aliases so history batches can ack", async () => {
+    const harness = createHarness();
+    const contactLine = JSON.stringify(contactAddedEvent());
+    const duplicateLine = JSON.stringify(contactAddedEvent({ eventId: "sensor_evt_contact_2" }));
+    const duplicateBatchLine = JSON.stringify({
+      ...baseEvent("history_batch_complete"),
+      historyBatchId: "history_batch_2",
+      contactEventIds: ["sensor_evt_contact_2"],
+      ackPath: ".friendy/macos-sensor-state/acks/history_batch_2.ack"
+    });
+
+    await harness.runtime.processLine(contactLine);
+    await harness.runtime.processLine(duplicateLine);
+    await harness.runtime.processLine(duplicateBatchLine);
+
+    expect(harness.state.getProcessedEventBySensorEventId("sensor_evt_contact_2")).toMatchObject({
+      status: "duplicate"
+    });
+    expect(harness.acks).toEqual([".friendy/macos-sensor-state/acks/history_batch_2.ack"]);
+    expect(harness.logs.join("\n")).toContain("history_batch_ack_written batchId=history_batch_2");
+  });
+
   it("does not create duplicate candidates or prompts for replayed idempotency keys", async () => {
     const harness = createHarness();
     const line = JSON.stringify(contactAddedEvent());
@@ -519,7 +626,10 @@ describe("Friendy macOS sensor runtime", () => {
 
 function createHarness(
   overrides: Partial<RuntimePromptSender> = {},
-  runtimeOptions: { getOnboardingState?: () => OnboardingState } = {}
+  runtimeOptions: {
+    getOnboardingState?: () => OnboardingState;
+    getContactIntakeStartedAt?: () => string | undefined;
+  } = {}
 ) {
   const repo = createRelationshipRepository();
   const state = createInMemoryRuntimeStateStore();
@@ -555,13 +665,14 @@ function createHarness(
       }
     },
     getOnboardingState: runtimeOptions.getOnboardingState,
+    getContactIntakeStartedAt: runtimeOptions.getContactIntakeStartedAt,
     now: () => "2026-05-21T18:36:51.000Z"
   });
 
   return { runtime, repo, state, prompts, acks, logs };
 }
 
-function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = {}) {
+function contactAddedEvent(overrides: { eventId?: string; stableId?: string; detectedAt?: string } = {}) {
   const eventId = overrides.eventId ?? "sensor_evt_contact_1";
   const stableId = overrides.stableId ?? "ABCD-1234";
   return {
@@ -574,7 +685,7 @@ function contactAddedEvent(overrides: { eventId?: string; stableId?: string } = 
     historyBatchSize: 1,
     historyTokenBeforeRef: "outbox:history_batch_1:before",
     historyTokenAfterRef: "outbox:history_batch_1:after",
-    detectedAt: "2026-05-21T20:30:00-07:00",
+    detectedAt: overrides.detectedAt ?? "2026-05-21T20:30:00-07:00",
     contact: {
       stableId,
       unifiedStableId: `UNIFIED-${stableId}`,
