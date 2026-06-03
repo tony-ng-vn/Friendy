@@ -1780,6 +1780,66 @@ describe("interpreted relationship agent", () => {
     expect(result.trace.suppressedPendingReminder).toBe(true);
   });
 
+  it("captures school and role context for the active pending contact instead of follow-up search", async () => {
+    const repo = createRelationshipRepository({
+      users: [fixtureUser],
+      calendarEvents: [fixtureLongEvent, fixtureShortEvent]
+    });
+    const tools = createRelationshipTools(repo);
+    const candidate = tools.create_contact_candidate({
+      ...fixtureDetectedContact,
+      displayName: "Lois Leung",
+      detectedAt: "2026-06-02T12:00:00.000Z",
+      phoneNumbers: ["+15550101058"]
+    });
+    repo.markCandidatePrompted(candidate.id, "interaction_prompt_lois", {
+      spaceId: "imessage_space_sarah",
+      promptedAt: "2026-05-20T11:59:00.000Z"
+    });
+    let interpreterCalls = 0;
+    const agent = createInterpretedRelationshipAgent({
+      repo,
+      tools,
+      interpreter: {
+        async interpret() {
+          interpreterCalls += 1;
+          throw new Error("interpreter should not run for active pending-contact context");
+        }
+      },
+      now: () => "2026-05-20T12:00:00.000Z",
+      timezone: "America/Los_Angeles"
+    });
+
+    const result = await agent.handleMessage(
+      inboundInSpace("She goes to school in Minerva, 2k5, ChatGPT Lab member cohort 4, GTM role and do social media video")
+    );
+
+    const [memory] = repo.listMemories(fixtureUser.id);
+    expect(interpreterCalls).toBe(0);
+    expect(result.toolCalls).toEqual([
+      "list_pending_candidates",
+      "list_candidate_event_matches",
+      "confirm_candidate"
+    ]);
+    expect(result.outbound.text).toContain("Got it, saved Lois Leung");
+    expect(result.outbound.text).not.toContain("previous search");
+    expect(memory).toMatchObject({
+      displayName: "Lois Leung",
+      contextNote: "goes to school in Minerva, 2k5, ChatGPT Lab member cohort 4, GTM role and do social media video"
+    });
+    expect(result.interaction.interpretedIntentJson).toMatchObject({
+      domain: "relationship_memory",
+      intent: "capture_pending_contact_context",
+      conversationRelation: "answers_open_workflow",
+      target: {
+        candidateId: candidate.id,
+        displayName: "Lois Leung"
+      },
+      extractedContext: "goes to school in Minerva, 2k5, ChatGPT Lab member cohort 4, GTM role and do social media video",
+      policyDecision: { decision: "allow" }
+    });
+  });
+
   it("asks for pending-contact context instead of saving greeting replies", async () => {
     const repo = createRelationshipRepository({
       users: [fixtureUser],

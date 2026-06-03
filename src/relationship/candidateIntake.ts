@@ -238,11 +238,26 @@ export function cleanCandidateContextReply(replyText: string, candidate: Pick<Co
     if (cleaned !== normalized && cleaned.length > 0) {
       return cleaned;
     }
+
+    const nameSubject = new RegExp(
+      `^(?:${nameAlternatives})\\s+(?=(?:goes?|studies|does|works?|knows?|met|talked|needs?|has|had)\\b)`,
+      "i"
+    );
+    const subjectCleaned = normalized.replace(nameSubject, "").trim();
+    if (subjectCleaned !== normalized && subjectCleaned.length > 0) {
+      return subjectCleaned;
+    }
   }
 
   const pronounCopula = /^(?:she|he|they|them|her|him)\s+(?:is|was|are|were)\s+(?:an?\s+|the\s+)?/i;
   const cleaned = normalized.replace(pronounCopula, "").trim();
-  return cleaned.length > 0 ? cleaned : normalized;
+  if (cleaned !== normalized && cleaned.length > 0) {
+    return cleaned;
+  }
+
+  const pronounSubject = /^(?:she|he|they)\s+(?=(?:goes?|studies|does|works?|knows?|met|talked|needs?|has|had)\b)/i;
+  const subjectCleaned = normalized.replace(pronounSubject, "").trim();
+  return subjectCleaned.length > 0 ? subjectCleaned : normalized;
 }
 
 function escapeRegExp(value: string): string {

@@ -3701,7 +3701,7 @@ function looksLikeDirectPendingContactContext(text: string, frame: PendingContac
     return true;
   }
 
-  if (/^(she|he|they|them|her|him)\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had)\b/i.test(trimmed)) {
+  if (/^(she|he|they|them|her|him)\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had|goes?|studies|does)\b/i.test(trimmed)) {
     return true;
   }
 
@@ -3709,7 +3709,7 @@ function looksLikeDirectPendingContactContext(text: string, frame: PendingContac
   const namePattern = [frame.displayName, firstName].filter(Boolean).map(escapeRegExp).join("|");
   if (namePattern.length > 0) {
     const namedFact = new RegExp(
-      `^(?:${namePattern})\\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had)\\b`,
+      `^(?:${namePattern})\\s+(?:is|was|are|were|works?|knows?|met|talked|needs?|has|had|goes?|studies|does)\\b`,
       "i"
     );
     if (namedFact.test(trimmed)) {
