@@ -27,13 +27,12 @@ Live Mac changes: also `npm run doctor:friendy` and manual E2E per `friendy-mac-
 ## Session read order
 
 1. `REFERENCE.md`
-2. `docs/agent-handoff.md`
-3. Active goal under `docs/goals/`
-4. `implementation-notes.html` for history (not as first read)
+2. Active goal under `docs/goals/` (`PLAN.md` for what is in flight)
+3. `implementation-notes.html` for history (not as first read)
 
-## Handoff trilogy (after meaningful work)
+## Handoff updates (after meaningful work)
 
-Update all: `docs/agent-handoff.md`, active goal file, `implementation-notes.html`.
+Update the active goal file and `implementation-notes.html`.
 
 ## Multi-agent
 

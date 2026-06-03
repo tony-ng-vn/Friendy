@@ -16,23 +16,34 @@ Friendy-native skills live in `.agents/skills/` (Codex) and `.cursor/skills/` (C
 
 **PR stack status:** `npm run friendy:stack-status` — agents should run this when the user asks stack progress or before fix-stack implementation.
 
+## Planning Workflow
+
+For anything related to planning — specs, plans, implementation plans, execution planning, or planning-related repo changes — agents must always invoke and use the Superpowers `brainstorming` skill with the user before writing the plan, regardless of task size or complexity.
+
 ## Session Handoff
 
-When resuming work or handing off to a new agent, read `docs/agent-handoff.md` after `REFERENCE.md`. That file holds current status, the active goal, and blockers.
+When resuming work or handing off to a new agent, read `REFERENCE.md`, then the active goal under `docs/goals/` (see `docs/goals/README.md` and `docs/goals/PLAN.md` for what is in flight).
 
-When you finish meaningful work or close a goal, update `docs/agent-handoff.md`, the active goal file under `docs/goals/`, and `implementation-notes.html`. See `docs/agent-handoff.md` for the required update rule.
+When you finish meaningful work or close a goal, update the active goal file under `docs/goals/` and `implementation-notes.html`.
 
 ## Implementation Notes
 
 When implementing a spec, keep a running `implementation-notes.html` file, or a Markdown equivalent if HTML is impractical.
 
-Use it to record decisions that were not in the spec, things that had to change, tradeoffs that had to be made, and anything else the user should know. Do not use it as the only handoff doc — pair it with `docs/agent-handoff.md`.
+Use it to record decisions that were not in the spec, things that had to change, tradeoffs that had to be made, and anything else the user should know. Pair it with the active goal file under `docs/goals/` when work is in progress or complete.
+
+## Mandatory Quality Gate After Changes
+
+After every new code change (including refactors, test updates, and config edits), run both:
+
+- `[$code-simplification](/Users/minhthiennguyen/.codex/skills/code-simplification/SKILL.md)` to simplify and tighten the patch.
+- `[$code-review-and-quality](/Users/minhthiennguyen/.codex/skills/code-review-and-quality/SKILL.md)` to verify correctness, readability, architecture, security, and performance.
 
 ## Future scaling (parking lot)
 
 `scaling.html` at the repo root holds **deferred scale work** — correct to track, **not** default implementation priority.
 
-When you find a problem that is a **future scaling** concern (not blocking current MVP, active goals in `docs/goals/`, or open blockers in `docs/agent-handoff.md`):
+When you find a problem that is a **future scaling** concern (not blocking current MVP or active goals in `docs/goals/`):
 
 1. **Do not** expand scope to build it now unless the user explicitly asks.
 2. **Append** a short entry to `scaling.html` under **Parking lot (agent additions)** using the template in that file (date, class A/B/C, observed issue, why not now, proposed later mitigation, trigger metrics).

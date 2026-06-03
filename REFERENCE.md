@@ -28,7 +28,6 @@ Transport message
 ## Start Here By Task
 
 - Product understanding: `docs/product-spec.md`, `docs/product-flow-plan.md`, `docs/handoff.md`
-- **Agent session handoff (read first on new session):** `docs/agent-handoff.md`
 - **Developer workflow preferences:** `docs/friendy-dev-preferences.md`
 - **Project agent skills:** `.agents/skills/README.md`
 - Agent repo graph index: `.understand-anything/knowledge-graph.json` (`project`, `layers`, and `tour` are the fastest entry points; use targeted searches rather than loading the full file)

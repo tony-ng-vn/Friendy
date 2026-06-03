@@ -1,6 +1,6 @@
 # Friendy Handoff
 
-> **For coding agents:** use [`docs/agent-handoff.md`](agent-handoff.md) for current Mac MVP status, active goals, and the required handoff update rule. This file is legacy product context from the early web MVP scaffold.
+> **For coding agents:** use `REFERENCE.md`, active goals under `docs/goals/`, and `implementation-notes.html` for current status. This file is legacy product context from the early web MVP scaffold.
 
 ## Repo
 
