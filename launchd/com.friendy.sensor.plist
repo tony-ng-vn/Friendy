@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.friendy.sensor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd "$FRIENDY_REPO_DIR" &amp;&amp; npm run agent:friendy</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FRIENDY_REPO_DIR</key>
+    <string>__FRIENDY_REPO_DIR__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__FRIENDY_HOME__/Library/Logs/friendy-sensor.log</string>
+  <key>StandardErrorPath</key>
+  <string>__FRIENDY_HOME__/Library/Logs/friendy-sensor.error.log</string>
+  <key>WorkingDirectory</key>
+  <string>__FRIENDY_REPO_DIR__</string>
+</dict>
+</plist>

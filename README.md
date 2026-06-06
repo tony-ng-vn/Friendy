@@ -94,6 +94,38 @@ npm run agent:friendy
 
 Friendy notices new contacts on your Mac and uses Calendar only to guess where you met them. It never reads your iMessages or scrapes social profiles, and it always asks before saving someone.
 
+
+## Background Contact Sensor Daemon
+
+Install the macOS LaunchAgent after building the sensor and configuring `.env.local`:
+
+```bash
+npm run build:macos-sensor
+scripts/install-daemon.sh
+```
+
+The installer copies `launchd/com.friendy.sensor.plist` into `~/Library/LaunchAgents/`, fills in the current repository path, loads it with `launchctl`, and starts `npm run agent:friendy` on login. Logs are written to `~/Library/Logs/friendy-sensor.log` and `~/Library/Logs/friendy-sensor.error.log`.
+
+Stop the daemon without removing it:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.friendy.sensor"
+```
+
+Start it again:
+
+```bash
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.friendy.sensor.plist
+launchctl kickstart -k "gui/$(id -u)/com.friendy.sensor"
+```
+
+Uninstall it:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.friendy.sensor" 2>/dev/null || true
+rm ~/Library/LaunchAgents/com.friendy.sensor.plist
+```
+
 ## Live iMessage Agent
 
 Create `.env.local`:
